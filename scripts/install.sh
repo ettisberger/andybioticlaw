@@ -158,12 +158,15 @@ fi
 # ---------------------------------------------------------------------------
 # 5. Render + install systemd unit
 # ---------------------------------------------------------------------------
-# Template ships with __INSTALL_DIR__ placeholders; sed substitutes them
-# with the actual path (escaped for sed's BRE — no slashes in replacement).
+# Template ships with __INSTALL_DIR__ and __SERVICE_HOME__ placeholders;
+# sed substitutes both with the concrete paths before copying to
+# /etc/systemd/system/.
 SERVICE_TEMPLATE="$INSTALL_DIR/systemd/andybioticlaw.service.template"
 if [[ -f "$SERVICE_TEMPLATE" ]]; then
-  # Use pipe as sed delimiter so install paths with / don't need escaping.
-  sed "s|__INSTALL_DIR__|$INSTALL_DIR|g" "$SERVICE_TEMPLATE" \
+  # Pipe delimiter so install paths with / don't need escaping.
+  sed -e "s|__INSTALL_DIR__|$INSTALL_DIR|g" \
+      -e "s|__SERVICE_HOME__|$HOME_DIR|g" \
+      "$SERVICE_TEMPLATE" \
     > "$SYSTEMD_DIR/andybioticlaw.service"
   chmod 0644 "$SYSTEMD_DIR/andybioticlaw.service"
   echo "✓ rendered + installed andybioticlaw.service"

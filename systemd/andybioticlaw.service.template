@@ -34,11 +34,17 @@ Environment=NODE_ENV=production
 # Sandboxing (Linux-only; ignored on development macOS).
 ProtectSystem=strict
 ProtectHome=read-only
+# Data dir for SQLite, logs, session workspaces.
 ReadWritePaths=__INSTALL_DIR__/data
+# Claude CLI's subscription-token cache — the CLI periodically refreshes
+# the OAuth token in-place, which fails under ProtectHome=read-only
+# without this exception.
+ReadWritePaths=__SERVICE_HOME__/.claude
+# Claude CLI's HTTP / tmp cache (XDG default). Without this, live sessions
+# fail with a generic "result event marked as error" and 0 tokens in/out.
+ReadWritePaths=__SERVICE_HOME__/.cache
 PrivateTmp=yes
 NoNewPrivileges=yes
-# Allow reading the service user's ~/.claude for subscription credentials.
-# ProtectHome=read-only already permits that.
 
 # Logging to journald; our pino logger ALSO writes data/logs/andybioticlaw.log.
 StandardOutput=journal
