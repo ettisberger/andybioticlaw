@@ -55,6 +55,8 @@ There is a soft daily token budget — our own rule, not an Anthropic one. When 
 
 The CLI prints `budget reset: <before> → <after> used` on success. Verify that line appears before telling the user it's done. The natural daily reset still fires at its configured time; your reset just shifts THIS window's start to now.
 
+**Every reset sends the principal a Telegram warning** so unauthorized resets are visible. Only run it after the principal explicitly asked — never speculatively, never to preempt a predicted limit. If in doubt, ask.
+
 Use `andybioticlaw budget show` if the user asks where they stand.
 
 ## Safety

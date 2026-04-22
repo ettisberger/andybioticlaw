@@ -925,8 +925,11 @@ budget
 budget
   .command('reset')
   .description('Zero the daily-budget counter by anchoring its window to now. Intended as a manual override for the principal.')
-  .action(() => {
+  .action(async () => {
     const { config, dbHandle } = openRuntime();
+    let before: ReturnType<ReturnType<typeof createBudgetTracker>['status']>;
+    let after: typeof before;
+    let now: number;
     try {
       const sessionsRepo = createSessionsRepo(dbHandle.db);
       const stateRepo = createBudgetStateRepo(dbHandle.db);
@@ -941,8 +944,8 @@ budget
         }),
         stateRepo,
       );
-      const before = tracker.status();
-      const now = Date.now();
+      before = tracker.status();
+      now = Date.now();
       stateRepo.setResetAnchor(now);
       auditRepo.record({
         kind: 'budget_reset',
@@ -953,7 +956,7 @@ budget
           anchorMs: now,
         },
       });
-      const after = tracker.status();
+      after = tracker.status();
       process.stdout.write(
         `budget reset: ${before.used.toLocaleString()} → ${after.used.toLocaleString()} used (limit ${after.dailyLimit.toLocaleString()})\n`,
       );
@@ -963,7 +966,64 @@ budget
     } finally {
       dbHandle.close();
     }
+
+    // Best-effort principal-DM. Budget-reset is a sensitive operation —
+    // Emma can trigger it (prompt-injection risk), so the principal
+    // wants to see it immediately. We POST directly to Telegram's HTTP
+    // API (no grammy dep needed here) using the bot token from .env
+    // and the first allowed DM user id as the chat id. All failures
+    // are non-fatal: the reset already happened, the audit row is
+    // written, the DM is just a notification.
+    try {
+      await notifyPrincipalOfBudgetReset({
+        botToken: process.env.TELEGRAM_BOT_TOKEN,
+        chatId: config.telegram.dm.allowedUserIds[0],
+        previousUsed: before.used,
+        limit: after.dailyLimit,
+        timezone: config.service.timezone,
+      });
+    } catch (e) {
+      process.stderr.write(
+        `(note: principal-DM failed: ${(e as Error).message} — audit row still written)\n`,
+      );
+    }
   });
+
+async function notifyPrincipalOfBudgetReset(opts: {
+  botToken: string | undefined;
+  chatId: number | undefined;
+  previousUsed: number;
+  limit: number;
+  timezone: string;
+}): Promise<void> {
+  if (!opts.botToken) {
+    process.stderr.write(
+      `(note: TELEGRAM_BOT_TOKEN not set — skipping principal-DM)\n`,
+    );
+    return;
+  }
+  if (opts.chatId === undefined) {
+    process.stderr.write(
+      `(note: no allowedUserIds configured — skipping principal-DM)\n`,
+    );
+    return;
+  }
+  const text =
+    `⚠️ Budget was reset.\n` +
+    `Previous usage: ${opts.previousUsed.toLocaleString()} / ${opts.limit.toLocaleString()} tokens (${opts.timezone}).\n` +
+    `If you didn't run this yourself, check the audit log (kind=budget_reset) — the service agent can reach this CLI too.`;
+  const res = await fetch(
+    `https://api.telegram.org/bot${opts.botToken}/sendMessage`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ chat_id: opts.chatId, text }),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(`telegram sendMessage returned ${res.status}`);
+  }
+}
 
 program.parseAsync(process.argv).catch((e) => {
   process.stderr.write(`CLI error: ${(e as Error).message}\n`);
