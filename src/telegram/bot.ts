@@ -16,6 +16,7 @@ import type {
 } from '../agent/session.js';
 import type { SkillRegistry } from '../skills/registry.js';
 import { createChatRunner, createQueueManager } from '../agent/queue.js';
+import type { RateLimitTracker } from '../agent/rate-limit-tracker.js';
 import { executeSession } from '../agent/session.js';
 import { registerCommands } from './handlers/commands.js';
 import { registerDmHandler } from './handlers/dm.js';
@@ -60,7 +61,7 @@ export interface BotDeps {
   /** Resolves a skill's scoped secret. Throws if out of scope (audited). */
   resolveSkillSecret: (skillName: string, secretName: string) => string | undefined;
   /** Rate-limit tracker — captures CLI `rate_limit_event` payloads for dashboard. */
-  rateLimitTracker?: import('../agent/rate-limit-tracker.js').RateLimitTracker;
+  rateLimitTracker?: RateLimitTracker;
 }
 
 export interface TelegramService {

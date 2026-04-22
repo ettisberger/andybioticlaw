@@ -141,15 +141,26 @@ async function main(): Promise<void> {
   });
 
   const skillsDir = expandPath(config.skills.dir, projectRoot());
-  const loadResult = loadSkills({ dir: skillsDir, logger, registry: skillRegistry });
-  if (loadResult.failed.length > 0) {
-    for (const f of loadResult.failed) {
-      errors.report({
-        kind: 'skill_load_failed',
-        message: `skill "${f.name}" failed to load: ${f.error}`,
-      });
+
+  function rescanSkills(): void {
+    // Drop every current registry entry, then re-scan from disk. Active
+    // sessions are unaffected because they captured `activeFor(scope)` at
+    // session-start into local variables — they don't re-read the registry
+    // mid-turn. Safe to call while the service is serving traffic.
+    for (const rec of skillRegistry.list()) {
+      skillRegistry.unregister(rec.name);
+    }
+    const result = loadSkills({ dir: skillsDir, logger, registry: skillRegistry });
+    if (result.failed.length > 0) {
+      for (const f of result.failed) {
+        errors.report({
+          kind: 'skill_load_failed',
+          message: `skill "${f.name}" failed to load: ${f.error}`,
+        });
+      }
     }
   }
+  rescanSkills();
 
   // Memory manager + TTL cron.
   const memoryManager = createMemoryManager({ repo: memoryRepo, logger });
@@ -300,7 +311,13 @@ async function main(): Promise<void> {
     //      CONFIG fields changed. A separate SIGHUP handler covers the
     //      DB-only case (reload.ts doesn't know about DB changes).
     reloader.onReload(() => scheduler?.refresh());
-    process.on('SIGHUP', () => scheduler?.refresh());
+    // Re-scan skills on SIGHUP too — CLI `skill install/enable/disable` or
+    // dropping new manifests in `skills/<name>/` then SIGHUPing the daemon
+    // now picks up changes without a full restart.
+    process.on('SIGHUP', () => {
+      scheduler?.refresh();
+      rescanSkills();
+    });
 
     bus.on('error:reported', (payload) => {
       if (!config.observability.errorsToTelegram) return;

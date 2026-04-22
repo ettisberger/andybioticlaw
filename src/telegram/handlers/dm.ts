@@ -17,7 +17,17 @@ import type {
 import { dispatchUserPrompt } from '../../agent/dispatch.js';
 import type { DispatchDeps } from '../../agent/dispatch.js';
 
-export type TelegramDmSubmit = (ctx: Context, userText: string) => Promise<void>;
+export interface TelegramSubmitOptions {
+  /** Set when this prompt is a `/retry` of a prior session — audit row
+   *  gets `origin: "telegram-retry"` and `retryOfSessionId`. */
+  retryOfSessionId?: string;
+}
+
+export type TelegramDmSubmit = (
+  ctx: Context,
+  userText: string,
+  opts?: TelegramSubmitOptions,
+) => Promise<void>;
 export type TelegramCancel = (
   chatId: string,
 ) => Promise<{ cancelledCurrent: boolean; droppedQueued: number }>;
@@ -84,7 +94,7 @@ function dispatchDepsFromHandler(deps: DmHandlerDeps): DispatchDeps {
 export function registerDmHandler(deps: DmHandlerDeps): TelegramDmSubmit {
   const dispatchDeps = dispatchDepsFromHandler(deps);
 
-  const submit: TelegramDmSubmit = async (ctx, userText) => {
+  const submit: TelegramDmSubmit = async (ctx, userText, opts) => {
     if (!ctx.chat || ctx.chat.type !== 'private') return;
 
     const outcome = await dispatchUserPrompt(
@@ -92,7 +102,8 @@ export function registerDmHandler(deps: DmHandlerDeps): TelegramDmSubmit {
         chatId: ctx.chat.id,
         userText,
         fromUserId: ctx.from?.id ?? null,
-        origin: 'telegram-dm',
+        origin: opts?.retryOfSessionId ? 'telegram-retry' : 'telegram-dm',
+        ...(opts?.retryOfSessionId ? { retryOfSessionId: opts.retryOfSessionId } : {}),
       },
       dispatchDeps,
       deps.principalUserId,

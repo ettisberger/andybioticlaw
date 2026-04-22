@@ -96,7 +96,7 @@ export function registerCommands(bot: Bot, deps: CommandsDeps): void {
       return;
     }
     deps.logger.info({ retryOf: arg }, 'retrying session with prior input');
-    await deps.submit(ctx, prior.input_preview);
+    await deps.submit(ctx, prior.input_preview, { retryOfSessionId: prior.id });
   });
 }
 

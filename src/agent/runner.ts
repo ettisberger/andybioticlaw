@@ -61,8 +61,13 @@ export type RunStatus = 'completed' | 'failed' | 'cancelled' | 'crashed';
 export interface RunClaudeResult {
   status: RunStatus;
   text: string;
+  /** Sum of `input_tokens + cache_creation + cache_read` for billing purposes. */
   tokensInput: number;
   tokensOutput: number;
+  /** Breakdown of `tokensInput` for observability (cache optimization monitoring). */
+  tokensInputFresh?: number;
+  tokensCacheCreation?: number;
+  tokensCacheRead?: number;
   error?: string;
   exitCode?: number | null;
   signal?: NodeJS.Signals | null;
@@ -135,6 +140,9 @@ export function runClaude(input: RunClaudeInput): Promise<RunClaudeResult> {
   let aggregatedText = '';
   let tokensInput = 0;
   let tokensOutput = 0;
+  let tokensInputFresh = 0;
+  let tokensCacheCreation = 0;
+  let tokensCacheRead = 0;
   let cliSessionId: string | undefined;
   let resultSeen = false;
   let transientApiError = false;
@@ -268,10 +276,10 @@ export function runClaude(input: RunClaudeInput): Promise<RunClaudeResult> {
             }
           | undefined;
         if (usage) {
-          tokensInput =
-            (usage.input_tokens ?? 0) +
-            (usage.cache_creation_input_tokens ?? 0) +
-            (usage.cache_read_input_tokens ?? 0);
+          tokensInputFresh = usage.input_tokens ?? 0;
+          tokensCacheCreation = usage.cache_creation_input_tokens ?? 0;
+          tokensCacheRead = usage.cache_read_input_tokens ?? 0;
+          tokensInput = tokensInputFresh + tokensCacheCreation + tokensCacheRead;
           tokensOutput = usage.output_tokens ?? 0;
         }
         if (obj.is_error === true || obj.subtype === 'error_during_execution') {
@@ -346,6 +354,9 @@ export function runClaude(input: RunClaudeInput): Promise<RunClaudeResult> {
         text: aggregatedText,
         tokensInput,
         tokensOutput,
+        tokensInputFresh,
+        tokensCacheCreation,
+        tokensCacheRead,
         ...(error ? { error } : {}),
         exitCode: code,
         signal,

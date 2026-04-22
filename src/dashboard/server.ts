@@ -21,6 +21,7 @@ import type {
 } from '../agent/session.js';
 import type { Config } from '../config/schema.js';
 import type { DispatchDeps } from '../agent/dispatch.js';
+import type { RateLimitTracker } from '../agent/rate-limit-tracker.js';
 import { overviewRoutes } from './routes/overview.js';
 import { sessionsRoutes } from './routes/sessions.js';
 import { schedulesRoutes } from './routes/schedules.js';
@@ -54,7 +55,7 @@ export interface DashboardDeps {
   frontendDistDir: string;
   /** Called when the scheduler should re-read DB state (after API mutations). */
   onSchedulesChanged: () => void;
-  rateLimitTracker: import('../agent/rate-limit-tracker.js').RateLimitTracker;
+  rateLimitTracker: RateLimitTracker;
 }
 
 export interface DashboardService {

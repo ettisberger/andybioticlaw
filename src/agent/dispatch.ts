@@ -50,7 +50,7 @@ export interface DispatchRequest {
    *  configured principal when null. */
   fromUserId: number | null;
   /** Origin label for logs + session rows. */
-  origin: 'telegram-dm' | 'dashboard-retry' | 'retry-cli';
+  origin: 'telegram-dm' | 'telegram-retry' | 'dashboard-retry' | 'retry-cli';
   /** If this is a retry of a prior session, its id — captured in session row. */
   retryOfSessionId?: string;
 }

@@ -227,12 +227,25 @@ export function createTelegramStreamSink(
         await flush({ final: !errorPrefix, ...(errorPrefix ? { errorPrefix } : {}) });
       }
 
+      // Cache-hit ratio: how much of the input was served from the prompt
+      // cache vs fresh. High cacheRead = our cache-stable prefix is working.
+      const fresh = result.tokensInputFresh ?? 0;
+      const cacheCreation = result.tokensCacheCreation ?? 0;
+      const cacheRead = result.tokensCacheRead ?? 0;
+      const cachedShare =
+        result.tokensInput > 0
+          ? Math.round((cacheRead / result.tokensInput) * 100)
+          : 0;
       deps.logger.info(
         {
           sessionId: result.sessionId,
           status: result.status,
           tokensIn: result.tokensInput,
           tokensOut: result.tokensOutput,
+          fresh,
+          cacheCreation,
+          cacheRead,
+          cachedPct: cachedShare,
           durationMs: Date.now() - startedAt,
           totalChars: totalText.length,
         },

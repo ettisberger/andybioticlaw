@@ -71,8 +71,13 @@ export interface SessionExecuteResult {
   sessionId: string;
   status: RunClaudeResult['status'];
   error?: string;
+  /** Total billable input (sum of fresh + cache_creation + cache_read). */
   tokensInput: number;
   tokensOutput: number;
+  /** Breakdown for observability. Same as `RunClaudeResult` fields. */
+  tokensInputFresh?: number;
+  tokensCacheCreation?: number;
+  tokensCacheRead?: number;
   text: string;
   exitCode?: number | null;
   transientApiError?: boolean;
@@ -273,6 +278,15 @@ export async function executeSession(
     tokensInput: runResult.tokensInput,
     tokensOutput: runResult.tokensOutput,
     text: runResult.text,
+    ...(runResult.tokensInputFresh !== undefined
+      ? { tokensInputFresh: runResult.tokensInputFresh }
+      : {}),
+    ...(runResult.tokensCacheCreation !== undefined
+      ? { tokensCacheCreation: runResult.tokensCacheCreation }
+      : {}),
+    ...(runResult.tokensCacheRead !== undefined
+      ? { tokensCacheRead: runResult.tokensCacheRead }
+      : {}),
     exitCode: runResult.exitCode ?? null,
     ...(runResult.transientApiError ? { transientApiError: true } : {}),
   };
