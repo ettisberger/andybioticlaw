@@ -61,6 +61,20 @@ program
     }
   });
 
+// --- update --------------------------------------------------------------
+program
+  .command('update')
+  .description('Pull latest source, rebuild backend + frontend, prune dev deps.')
+  .action(async () => {
+    const { runUpdateCommand } = await import('./update.js');
+    try {
+      await runUpdateCommand();
+    } catch (e) {
+      process.stderr.write(`\nupdate failed: ${(e as Error).message}\n`);
+      process.exit(1);
+    }
+  });
+
 // --- config ---------------------------------------------------------------
 const config = program.command('config').description('Inspect and reload configuration');
 

@@ -36,18 +36,26 @@ export async function runInteractiveMenu(): Promise<void> {
         ? 'Re-run setup wizard (safe, idempotent)'
         : 'Run setup wizard — Telegram bot token, principal id, timezone',
       handler: async () => {
-        // Leave raw mode before handing off to readline-based wizard.
         const { runInitCommand } = await import('./init.js');
         await runInitCommand();
       },
     },
-    {
-      label: 'Quit',
-      handler: async () => {
-        /* no-op — caller exits */
-      },
-    },
   ];
+  if (setupDone) {
+    items.push({
+      label: 'Update — git pull + rebuild + prune dev deps',
+      handler: async () => {
+        const { runUpdateCommand } = await import('./update.js');
+        await runUpdateCommand();
+      },
+    });
+  }
+  items.push({
+    label: 'Quit',
+    handler: async () => {
+      /* no-op — caller exits */
+    },
+  });
 
   const selected = await pickItem(items, version, setupDone);
   if (selected < 0) {
