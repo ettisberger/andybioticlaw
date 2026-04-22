@@ -49,7 +49,7 @@ If the credentials check fails, the service stays up — you'll see an `ERROR` w
 
 `config/config.yaml` is the authoritative runtime config. See `config/config.example.yaml` for the full schema. Validation lives in `config/config.schema.ts` (Zod).
 
-Secrets live in `.env` — see `.env.example`. Never commit `.env`. Only a short hard-coded allowlist (`TELEGRAM_BOT_TOKEN`, `DASHBOARD_BASIC_AUTH_PASSWORD`) is readable by the core service; skill-specific secrets must be declared in the skill's `manifest.yaml` under `required_secrets` and are otherwise inaccessible.
+Secrets live in `.env` — see `.env.example`. Never commit `.env`. Only a short hard-coded allowlist (currently just `TELEGRAM_BOT_TOKEN`) is readable by the core service; skill-specific secrets must be declared in the skill's `manifest.yaml` under `required_secrets` and are otherwise inaccessible. The dashboard's basic-auth password is argon2-hashed by `andybioticlaw init` into `config.yaml` — no plain password is ever stored.
 
 ### Hot reload
 

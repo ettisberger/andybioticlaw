@@ -102,7 +102,7 @@ After the env-var collection, the wizard runs `install.sh` if present.
 
 ### Secret scoping
 
-Secrets listed in `required_secrets` are the ONLY secrets this skill may read at runtime. Core secrets (`TELEGRAM_BOT_TOKEN`, `DASHBOARD_BASIC_AUTH_PASSWORD`) are never exposed to skills. A skill attempting to read a secret not in its manifest raises a `SecretScopeViolationError` and produces a `secret_scope_violation` row in the audit log.
+Secrets listed in `required_secrets` are the ONLY secrets this skill may read at runtime. Core secrets (currently just `TELEGRAM_BOT_TOKEN`) are never exposed to skills. A skill attempting to read a secret not in its manifest raises a `SecretScopeViolationError` and produces a `secret_scope_violation` row in the audit log.
 
 The Claude subprocess env for a session is:
 

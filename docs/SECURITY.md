@@ -66,8 +66,7 @@ Skills declare `required_secrets` in their `manifest.yaml`. At runtime,
 writes an `audit.kind='secret_scope_violation'` row — if:
 
 - the `context` is `'core'` and `name` isn't in the hard-coded
-  `CORE_SECRETS` list (`TELEGRAM_BOT_TOKEN`,
-  `DASHBOARD_BASIC_AUTH_PASSWORD`), OR
+  `CORE_SECRETS` list (currently just `TELEGRAM_BOT_TOKEN`), OR
 - the `context` is `{ skill: 'X' }` and `name` isn't in skill X's
   manifest.
 

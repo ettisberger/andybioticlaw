@@ -15,7 +15,10 @@ import type { AuditRepo } from '../db/repositories/audit.js';
  * `secret_scope_violation`. The caller should propagate the error.
  */
 
-export const CORE_SECRETS = ['TELEGRAM_BOT_TOKEN', 'DASHBOARD_BASIC_AUTH_PASSWORD'] as const;
+// Only TELEGRAM_BOT_TOKEN lives in .env. The dashboard's basic-auth is
+// verified against an argon2 hash in config.yaml (`dashboard.basicAuth.
+// passwordHash`) — never a plain password in env.
+export const CORE_SECRETS = ['TELEGRAM_BOT_TOKEN'] as const;
 export type CoreSecret = (typeof CORE_SECRETS)[number];
 
 export type SecretContext = 'core' | { skill: string };
