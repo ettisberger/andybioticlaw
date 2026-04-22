@@ -1,4 +1,3 @@
-import { createInterface } from 'node:readline';
 import type { WizardQuestion, SetupWizard } from '../skills/manifest.js';
 import { readEnvFile, writeEnvFileUpdates } from '../config/env-file.js';
 
@@ -39,12 +38,6 @@ export async function runSetupWizard(
   const skippedEmpty: string[] = [];
   const toWrite: Record<string, string> = {};
 
-  const rl = createInterface({
-    input: stdin,
-    output: stdout,
-    terminal: true,
-  });
-
   stdout.write(`\n${opts.skillName} — ${opts.wizard.description}\n\n`);
 
   const totalAsked = opts.wizard.questions.filter(
@@ -66,7 +59,7 @@ export async function runSetupWizard(
         continue;
       }
 
-      const answer = await askOne(rl, stdin, stdout, q);
+      const answer = await askOne(stdin, stdout, q);
 
       if (answer === null) {
         // User interrupted (Ctrl-C or EOF). Abort.
@@ -87,7 +80,9 @@ export async function runSetupWizard(
       toWrite[q.key] = answer;
     }
   } finally {
-    rl.close();
+    // No readline to close; the raw-mode prompt helpers tear down their
+    // own stdin listeners after each answer.
+    (stdin as unknown as { pause?: () => void }).pause?.();
   }
 
   let writes: { updated: string[]; appended: string[] } = {
@@ -106,9 +101,10 @@ export async function runSetupWizard(
   return { reused, collected, skippedEmpty, writes };
 }
 
+type Stdin = NodeJS.ReadableStream & { setRawMode?: (mode: boolean) => void };
+
 async function askOne(
-  rl: ReturnType<typeof createInterface>,
-  stdin: NodeJS.ReadableStream & { setRawMode?: (mode: boolean) => void },
+  stdin: Stdin,
   stdout: NodeJS.WritableStream,
   q: WizardQuestion,
 ): Promise<string | null> {
@@ -122,9 +118,7 @@ async function askOne(
   const prompt = `  ? ${q.key} — ${q.prompt}${defaultHint}${suffix}: `;
 
   while (true) {
-    const raw = q.secret
-      ? await readSecret(stdin, stdout, prompt, rl)
-      : await readLine(rl, prompt);
+    const raw = await readOneLine(stdin, stdout, prompt, !!q.secret);
     if (raw === null) return null;
     const trimmed = raw.trim();
     const value = trimmed === '' && q.default ? q.default : trimmed;
@@ -166,29 +160,22 @@ function validate(value: string, kind: WizardQuestion['validate']): string | nul
   }
 }
 
-function readLine(
-  rl: ReturnType<typeof createInterface>,
-  prompt: string,
-): Promise<string | null> {
-  return new Promise((resolve) => {
-    rl.question(prompt, (ans) => resolve(ans));
-    rl.once('close', () => resolve(null));
-  });
-}
-
 /**
- * Masked password reader. Flips stdin into raw mode, echoes `*` per
- * keystroke, restores cooked mode on Enter. Backspace supported.
+ * Raw-mode prompt. Handles Enter, Ctrl-C/D, backspace. When `mask` is
+ * true echoes `*` per keystroke (for secrets); otherwise echoes the char.
+ *
+ * We deliberately do NOT use Node's readline here. Mixing a persistent
+ * readline interface with a raw-mode secret prompt produces double-
+ * echoed characters — readline's own handler stays attached across
+ * `.pause()` calls and races with our onData. A single raw-mode impl
+ * sidesteps the whole problem.
  */
-async function readSecret(
-  stdin: NodeJS.ReadableStream & { setRawMode?: (mode: boolean) => void },
+function readOneLine(
+  stdin: Stdin,
   stdout: NodeJS.WritableStream,
   prompt: string,
-  rl?: ReturnType<typeof createInterface>,
+  mask: boolean,
 ): Promise<string | null> {
-  // Pause readline while we take over stdin — otherwise its own echo
-  // prints each keystroke alongside our masked `*`.
-  rl?.pause();
   stdout.write(prompt);
   return new Promise((resolve) => {
     let input = '';
@@ -203,7 +190,14 @@ async function readSecret(
           return;
         }
         if (char === '\x03') {
-          // Ctrl+C
+          // Ctrl-C
+          cleanup();
+          stdout.write('\n');
+          resolve(null);
+          return;
+        }
+        if (char === '\x04' && input.length === 0) {
+          // Ctrl-D on empty line
           cleanup();
           stdout.write('\n');
           resolve(null);
@@ -216,20 +210,16 @@ async function readSecret(
           }
           continue;
         }
-        // Ignore other control characters.
+        // Ignore other control chars (e.g. stray arrow-key escape seqs).
         if (char.charCodeAt(0) < 0x20) continue;
         input += char;
-        stdout.write('*');
+        stdout.write(mask ? '*' : char);
       }
     };
 
     const cleanup = () => {
       stdin.off('data', onData);
       if (stdin.setRawMode) stdin.setRawMode(false);
-      // Re-enable the readline interface so subsequent line-mode prompts
-      // resume correctly. Don't `stdin.pause()` — that would break the
-      // next readline.question (it needs a flowing stream).
-      rl?.resume();
     };
 
     if (stdin.setRawMode) stdin.setRawMode(true);

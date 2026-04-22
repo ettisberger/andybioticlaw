@@ -1,5 +1,4 @@
 import { existsSync, readFileSync, writeFileSync, copyFileSync, chmodSync } from 'node:fs';
-import { createInterface } from 'node:readline';
 import { resolve } from 'node:path';
 import argon2 from 'argon2';
 import { readEnvFile, writeEnvFileUpdates } from '../config/env-file.js';
@@ -71,8 +70,6 @@ export async function runInitCommand(): Promise<void> {
     stdout.write(`✓ created ${configPath} from config.example.yaml\n`);
   }
 
-  const rl = createInterface({ input: stdin, output: stdout, terminal: true });
-
   try {
     const envExisting = readEnvFile(envPath);
     const envUpdates: Record<string, string> = {};
@@ -88,12 +85,7 @@ export async function runInitCommand(): Promise<void> {
           `  ${dim('  2. send /newbot, pick display name + @username')}\n` +
           `  ${dim('  3. copy the token (format: 1234567890:ABC-DEF…)')}\n\n`,
       );
-      const token = await askSecret(
-        stdin,
-        stdout,
-        `  ${lavender('?')} bot token: `,
-        rl,
-      );
+      const token = await askSecret(stdin, stdout, `  ${lavender('?')} bot token: `);
       if (!token) throw new InitAbortedError();
       envUpdates.TELEGRAM_BOT_TOKEN = token;
     }
@@ -112,7 +104,7 @@ export async function runInitCommand(): Promise<void> {
           `  ${dim('Only this user will be allowed to talk to your bot.')}\n\n`,
       );
       while (principalUserId === null) {
-        const raw = await askLine(rl, `  ${lavender('?')} user id: `);
+        const raw = await askLine(stdin, stdout, `  ${lavender('?')} user id: `);
         if (raw === null) throw new InitAbortedError();
         const n = Number(raw.trim());
         if (!Number.isInteger(n) || n <= 0) {
@@ -136,7 +128,8 @@ export async function runInitCommand(): Promise<void> {
       );
     } else {
       const raw = await askLine(
-        rl,
+        stdin,
+        stdout,
         `  ${lavender('?')} timezone ${dim(`[default: ${systemTz}]`)}: `,
       );
       if (raw === null) throw new InitAbortedError();
@@ -165,7 +158,6 @@ export async function runInitCommand(): Promise<void> {
         stdin,
         stdout,
         `  ${lavender('?')} dashboard password: `,
-        rl,
       );
       if (pwd && pwd.length > 0) {
         stdout.write(`  ${dim('hashing with argon2id…')}\n`);
@@ -236,7 +228,9 @@ export async function runInitCommand(): Promise<void> {
       writeFileSync(configPath, body);
     }
   } finally {
-    rl.close();
+    // No readline interface to close — we drove everything through
+    // raw-mode `askLine` / `askSecret` which clean up after themselves.
+    (stdin as unknown as { pause?: () => void }).pause?.();
   }
 
   // --- 8. Validate the result ------------------------------------------
@@ -299,46 +293,48 @@ function readPasswordHash(configPath: string): string {
   return m && m[1] !== undefined ? m[1] : '';
 }
 
-// --- readline helpers -------------------------------------------------
+// --- prompt helpers ---------------------------------------------------
+// Both askLine and askSecret run in raw mode with our OWN onData handler.
+// We deliberately don't use readline: its internal data listener can't
+// be cleanly suspended around a raw-mode secret prompt, which was
+// producing doubled output like `e*t*t*i*...` during password entry.
 
-function askLine(
-  rl: ReturnType<typeof createInterface>,
-  prompt: string,
-): Promise<string | null> {
-  return new Promise((resolve) => {
-    rl.question(prompt, (ans) => resolve(ans));
-    rl.once('close', () => resolve(null));
-  });
-}
+type Stdin = NodeJS.ReadableStream & { setRawMode?: (mode: boolean) => void };
 
-async function askSecret(
-  stdin: NodeJS.ReadableStream & { setRawMode?: (mode: boolean) => void },
+function readOneLine(
+  stdin: Stdin,
   stdout: NodeJS.WritableStream,
   prompt: string,
-  rl?: ReturnType<typeof createInterface>,
+  mask: boolean,
 ): Promise<string | null> {
-  // Pause the readline interface if one is passed in — otherwise readline
-  // keeps consuming stdin and echoing characters alongside our masked `*`,
-  // producing output like `e*t*t*i*...` instead of `******`.
-  rl?.pause();
   stdout.write(prompt);
   return new Promise((resolve) => {
     let input = '';
     const onData = (chunk: Buffer) => {
       const s = chunk.toString();
       for (const char of s) {
+        // Enter
         if (char === '\r' || char === '\n') {
           cleanup();
           stdout.write('\n');
           resolve(input);
           return;
         }
+        // Ctrl-C
         if (char === '\x03') {
           cleanup();
           stdout.write('\n');
           resolve(null);
           return;
         }
+        // Ctrl-D on an empty line → abort
+        if (char === '\x04' && input.length === 0) {
+          cleanup();
+          stdout.write('\n');
+          resolve(null);
+          return;
+        }
+        // Backspace / DEL
         if (char === '\x7f' || char === '\b') {
           if (input.length > 0) {
             input = input.slice(0, -1);
@@ -346,21 +342,28 @@ async function askSecret(
           }
           continue;
         }
+        // Ignore other control chars (including stray escape sequences
+        // from arrow keys — we don't support editing mid-line beyond
+        // backspace).
         if (char.charCodeAt(0) < 0x20) continue;
         input += char;
-        stdout.write('*');
+        stdout.write(mask ? '*' : char);
       }
     };
     const cleanup = () => {
       stdin.off('data', onData);
       if (stdin.setRawMode) stdin.setRawMode(false);
-      // Re-enable the readline interface (if any) so subsequent line-mode
-      // prompts work again. We don't `stdin.pause()` — that breaks the
-      // next readline.question (it waits for flow, doesn't auto-resume).
-      rl?.resume();
     };
     if (stdin.setRawMode) stdin.setRawMode(true);
     (stdin as unknown as { resume?: () => void }).resume?.();
     stdin.on('data', onData);
   });
+}
+
+function askLine(stdin: Stdin, stdout: NodeJS.WritableStream, prompt: string) {
+  return readOneLine(stdin, stdout, prompt, false);
+}
+
+function askSecret(stdin: Stdin, stdout: NodeJS.WritableStream, prompt: string) {
+  return readOneLine(stdin, stdout, prompt, true);
 }
