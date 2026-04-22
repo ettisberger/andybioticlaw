@@ -8,15 +8,18 @@ import { createSchedulesRepo } from '../../src/db/repositories/schedules.js';
 
 function makeDb() {
   const db = new Database(':memory:');
-  db.exec(
-    readFileSync(resolve(__dirname, '..', '..', 'src', 'db', 'migrations', '0001_init.sql'), 'utf8'),
-  );
-  db.exec(
-    readFileSync(
-      resolve(__dirname, '..', '..', 'src', 'db', 'migrations', '0002_memory_proposals_skill_state.sql'),
-      'utf8',
-    ),
-  );
+  const migrations = [
+    '0001_init.sql',
+    '0002_memory_proposals_skill_state.sql',
+    '0003_pending_email_sends.sql',
+    '0004_schedules_one_shot.sql',
+    '0005_budget_state.sql',
+  ];
+  for (const file of migrations) {
+    db.exec(
+      readFileSync(resolve(__dirname, '..', '..', 'src', 'db', 'migrations', file), 'utf8'),
+    );
+  }
   return db;
 }
 

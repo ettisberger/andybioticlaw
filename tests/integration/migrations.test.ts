@@ -18,7 +18,7 @@ describe('migration runner — fresh boot', () => {
     try {
       const { db, close } = openDatabase(dbPath, logger);
 
-      // Expected tables per the current migration set (0001 + 0002).
+      // Expected tables per the current migration set (0001..0005).
       const tables = db
         .prepare<[], { name: string }>(
           `SELECT name FROM sqlite_master WHERE type='table' ORDER BY name`,
@@ -27,6 +27,7 @@ describe('migration runner — fresh boot', () => {
         .map((r) => r.name);
       const expected = [
         'audit',
+        'budget_state',
         'heartbeats',
         'memory',
         'memory_proposals',
@@ -40,12 +41,27 @@ describe('migration runner — fresh boot', () => {
       ];
       for (const t of expected) expect(tables).toContain(t);
 
-      // The runner recorded two rows in schema_version.
+      // The `recurring` column was added by migration 0004.
+      const scheduleCols = db
+        .prepare<[], { name: string }>(`PRAGMA table_info(schedules)`)
+        .all()
+        .map((r) => r.name);
+      expect(scheduleCols).toContain('recurring');
+
+      // Migration 0005 seeds exactly one row with a null anchor.
+      const budgetRows = db
+        .prepare<[], { id: number; daily_reset_anchor_ms: number | null }>(
+          'SELECT id, daily_reset_anchor_ms FROM budget_state',
+        )
+        .all();
+      expect(budgetRows).toEqual([{ id: 1, daily_reset_anchor_ms: null }]);
+
+      // The runner recorded five rows in schema_version.
       const versions = db
         .prepare<[], { version: number }>('SELECT version FROM schema_version ORDER BY version')
         .all()
         .map((r) => r.version);
-      expect(versions).toEqual([1, 2, 3]);
+      expect(versions).toEqual([1, 2, 3, 4, 5]);
 
       close();
     } finally {
@@ -64,7 +80,7 @@ describe('migration runner — fresh boot', () => {
       const rows = second.db
         .prepare<[], { n: number }>('SELECT COUNT(*) AS n FROM schema_version')
         .all();
-      expect(rows[0]!.n).toBe(3);
+      expect(rows[0]!.n).toBe(5);
       second.close();
     } finally {
       rmSync(dir, { recursive: true, force: true });

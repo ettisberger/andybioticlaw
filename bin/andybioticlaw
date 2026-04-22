@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# andybioticlaw — project-local wrapper for the admin CLI.
+#
+# Why this file exists: the CLI entry is declared in package.json's `bin`
+# field, but the package is never installed globally (nor via `pnpm link`),
+# so the name never lands in anybody's $PATH automatically. The live
+# service spawns Emma as a claude subprocess with a derived env; Emma's
+# Bash tool therefore can't resolve `andybioticlaw` unless a real file of
+# that name lives somewhere on $PATH.
+#
+# Install via: `ln -sf <repo>/bin/andybioticlaw ~/.local/bin/andybioticlaw`
+# (done automatically by `bin/install-wrapper`).
+set -euo pipefail
+# Resolve symlinks so `$SCRIPT_DIR` is the real wrapper directory, not
+# whatever ~/.local/bin/ entry points at us. macOS has no GNU `readlink -f`
+# by default — this manual walk works on both macOS and Linux.
+SOURCE="${BASH_SOURCE[0]}"
+while [[ -L "$SOURCE" ]]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+exec node "$SCRIPT_DIR/../dist/cli/admin.js" "$@"

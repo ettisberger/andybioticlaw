@@ -11,6 +11,9 @@ import { createSkillRegistry } from '../skills/registry.js';
 import { loadSkills } from '../skills/loader.js';
 import { installSkill, uninstallSkill } from '../skills/installer.js';
 import { createSchedulesRepo } from '../db/repositories/schedules.js';
+import { createBudgetStateRepo } from '../db/repositories/budget-state.js';
+import { createSessionsRepo } from '../db/repositories/sessions.js';
+import { createBudgetTracker } from '../agent/budget.js';
 import { parsePayload, ScheduleKind } from '../scheduler/payloads.js';
 import cron from 'node-cron';
 import pino from 'pino';
@@ -565,22 +568,64 @@ schedule
   .command('add')
   .description('Create a new schedule')
   .requiredOption('-n, --name <name>', 'unique schedule name')
-  .requiredOption('-c, --cron <expr>', 'cron expression (5- or 6-field)')
+  .option('-c, --cron <expr>', 'cron expression (5- or 6-field) — use this OR --at, not both')
+  .option(
+    '--at <iso>',
+    'fire once at this local timestamp (YYYY-MM-DDTHH:MM). Implies --once.',
+  )
   .requiredOption('-k, --kind <kind>', 'bash | http-check | agent-task | reminder')
   .requiredOption('-p, --payload <json>', 'kind-specific JSON payload')
+  .option(
+    '--once',
+    'one-shot: fire once at the next cron match then delete. Use with --cron for "tonight at 23:00" style pinned expressions.',
+  )
   .option('-b, --budget <tokens>', 'per-day token budget (agent-task / triggered chains)')
   .option('--disabled', 'create disabled')
   .action(
     (opts: {
       name: string;
-      cron: string;
+      cron?: string;
+      at?: string;
       kind: string;
       payload: string;
+      once?: boolean;
       budget?: string;
       disabled?: boolean;
     }) => {
-      if (!cron.validate(opts.cron)) {
-        process.stderr.write(`invalid cron expression: "${opts.cron}"\n`);
+      // --at and --cron are mutually exclusive; exactly one is required.
+      if (opts.at && opts.cron) {
+        process.stderr.write(`use either --at or --cron, not both\n`);
+        process.exit(2);
+      }
+      if (!opts.at && !opts.cron) {
+        process.stderr.write(`one of --at or --cron is required\n`);
+        process.exit(2);
+      }
+
+      let cronExpr: string;
+      let recurring = !opts.once;
+      if (opts.at) {
+        const parsed = parseAtTimestamp(opts.at);
+        if (!parsed) {
+          process.stderr.write(
+            `invalid --at "${opts.at}" — expected ISO local timestamp like 2026-04-22T15:30\n`,
+          );
+          process.exit(2);
+        }
+        if (parsed.getTime() <= Date.now()) {
+          process.stderr.write(
+            `--at "${opts.at}" is in the past — reminder would never fire\n`,
+          );
+          process.exit(2);
+        }
+        cronExpr = cronFromDate(parsed);
+        recurring = false; // --at is always one-shot
+      } else {
+        cronExpr = opts.cron!;
+      }
+
+      if (!cron.validate(cronExpr)) {
+        process.stderr.write(`invalid cron expression: "${cronExpr}"\n`);
         process.exit(2);
       }
       const kindRes = ScheduleKind.safeParse(opts.kind);
@@ -605,14 +650,16 @@ schedule
         }
         const row = repo.create({
           name: opts.name,
-          cron_expr: opts.cron,
+          cron_expr: cronExpr,
           kind: kindRes.data,
           payload: opts.payload,
           enabled: !opts.disabled,
+          recurring,
           budget_tokens_per_day: opts.budget ? Number(opts.budget) : null,
         });
+        const tag = recurring ? '' : '  (one-shot)';
         process.stdout.write(
-          `created #${row.id}  ${row.name}  [${row.kind}]  cron='${row.cron_expr}'${row.enabled ? '' : '  (disabled)'}\n`,
+          `created #${row.id}  ${row.name}  [${row.kind}]  cron='${row.cron_expr}'${tag}${row.enabled ? '' : '  (disabled)'}\n`,
         );
         sendSighupIfRunning(dataDir);
       } finally {
@@ -620,6 +667,49 @@ schedule
       }
     },
   );
+
+/**
+ * Parse an ISO-ish local timestamp like "2026-04-22T15:30" or
+ * "2026-04-22 15:30" into a Date. Rejects anything containing a timezone
+ * suffix ("Z", "+02:00") — for those, the caller should pass a cron expr
+ * directly. Returns null on any parse/validity failure.
+ */
+function parseAtTimestamp(raw: string): Date | null {
+  const trimmed = raw.trim();
+  if (/[zZ]|[+-]\d{2}:?\d{2}$/.test(trimmed)) return null;
+  const m = trimmed.match(
+    /^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2}))?$/,
+  );
+  if (!m) return null;
+  const [, y, mo, d, h, mi, s] = m;
+  const date = new Date(
+    Number(y),
+    Number(mo) - 1,
+    Number(d),
+    Number(h),
+    Number(mi),
+    s ? Number(s) : 0,
+  );
+  if (Number.isNaN(date.getTime())) return null;
+  // Validate round-trip — guards against e.g. month=13 silently normalizing.
+  if (
+    date.getFullYear() !== Number(y) ||
+    date.getMonth() !== Number(mo) - 1 ||
+    date.getDate() !== Number(d)
+  ) {
+    return null;
+  }
+  return date;
+}
+
+/**
+ * Cron expression that fires exactly once at the given local date. Pinned
+ * minute + hour + day + month; day-of-week wildcarded (node-cron requires
+ * at least one of DoM/DoW — pinned DoM is enough).
+ */
+function cronFromDate(d: Date): string {
+  return `${d.getMinutes()} ${d.getHours()} ${d.getDate()} ${d.getMonth() + 1} *`;
+}
 
 schedule
   .command('remove')
@@ -730,10 +820,95 @@ const stub = (name: string, summary: string) => {
 
 stub('status', 'Show service status summary');
 stub('session', 'Session inspection and control');
-stub('budget', 'Show daily and monthly token usage');
 stub('secrets', 'List declared secrets (names only)');
 stub('audit', 'Show audit log entries');
 stub('db', 'DB utilities (backup, etc.)');
+
+// --- budget ---------------------------------------------------------------
+// The daily token budget is a SOFT spend-guard — it's our own limit, not
+// Anthropic's. `show` prints current state; `reset` shifts the effective
+// window start to "now" so the counter is zeroed until the next natural
+// daily reset rolls past the anchor.
+
+const budget = program.command('budget').description('Inspect or reset the soft daily token budget');
+
+budget
+  .command('show')
+  .description('Print the current daily-budget status')
+  .action(() => {
+    const { config, dbHandle } = openRuntime();
+    try {
+      const sessionsRepo = createSessionsRepo(dbHandle.db);
+      const stateRepo = createBudgetStateRepo(dbHandle.db);
+      const tracker = createBudgetTracker(
+        sessionsRepo,
+        () => ({
+          dailyTokenLimit: config.budget.dailyTokenLimit,
+          perSessionTokenLimit: config.budget.perSessionTokenLimit,
+          dailyResetTime: config.budget.dailyResetTime,
+          timezone: config.service.timezone,
+        }),
+        stateRepo,
+      );
+      const s = tracker.status();
+      process.stdout.write(
+        `used:      ${s.used.toLocaleString()} / ${s.dailyLimit.toLocaleString()} tokens\n`,
+      );
+      process.stdout.write(`remaining: ${s.remaining.toLocaleString()}\n`);
+      process.stdout.write(`exhausted: ${s.exhausted ? 'YES' : 'no'}\n`);
+      process.stdout.write(`window:    ${formatTs(s.window.fromMs)} → ${formatTs(s.window.toMs)}\n`);
+      if (s.window.manualResetAt !== null) {
+        process.stdout.write(
+          `manual reset active since ${formatTs(s.window.manualResetAt)} (overrides natural window start)\n`,
+        );
+      }
+    } finally {
+      dbHandle.close();
+    }
+  });
+
+budget
+  .command('reset')
+  .description('Zero the daily-budget counter by anchoring its window to now. Intended as a manual override for the principal.')
+  .action(() => {
+    const { config, dbHandle } = openRuntime();
+    try {
+      const sessionsRepo = createSessionsRepo(dbHandle.db);
+      const stateRepo = createBudgetStateRepo(dbHandle.db);
+      const auditRepo = createAuditRepo(dbHandle.db);
+      const tracker = createBudgetTracker(
+        sessionsRepo,
+        () => ({
+          dailyTokenLimit: config.budget.dailyTokenLimit,
+          perSessionTokenLimit: config.budget.perSessionTokenLimit,
+          dailyResetTime: config.budget.dailyResetTime,
+          timezone: config.service.timezone,
+        }),
+        stateRepo,
+      );
+      const before = tracker.status();
+      const now = Date.now();
+      stateRepo.setResetAnchor(now);
+      auditRepo.record({
+        kind: 'budget_reset',
+        actor: 'cli',
+        detail: {
+          previousUsed: before.used,
+          previousRemaining: before.remaining,
+          anchorMs: now,
+        },
+      });
+      const after = tracker.status();
+      process.stdout.write(
+        `budget reset: ${before.used.toLocaleString()} → ${after.used.toLocaleString()} used (limit ${after.dailyLimit.toLocaleString()})\n`,
+      );
+      process.stdout.write(
+        `window anchor now: ${formatTs(now)} — natural reset still at ${formatTs(after.window.nextResetMs)}\n`,
+      );
+    } finally {
+      dbHandle.close();
+    }
+  });
 
 program.parseAsync(process.argv).catch((e) => {
   process.stderr.write(`CLI error: ${(e as Error).message}\n`);

@@ -8,6 +8,13 @@ export interface ScheduleRecord {
   kind: ScheduleKind;
   payload: string; // JSON string
   enabled: 0 | 1;
+  /**
+   * 1 = fire on every cron match forever (classic cron job).
+   * 0 = fire once at the next cron match, then the scheduler deletes the
+   *     row. Used for "remind me at 15:30" style one-shot requests where
+   *     the cron expression is pinned (e.g. `30 15 22 4 *`).
+   */
+  recurring: 0 | 1;
   budget_tokens_per_day: number | null;
   budget_used_today: number;
   budget_reset_at: number | null;
@@ -23,6 +30,8 @@ export interface CreateScheduleInput {
   kind: ScheduleKind;
   payload: string; // JSON string
   enabled?: boolean;
+  /** Default: true (classic recurring). Pass false for one-shot semantics. */
+  recurring?: boolean;
   budget_tokens_per_day?: number | null;
 }
 
@@ -91,8 +100,8 @@ const ALLOWED_SCHEDULE_UPDATE_KEYS: readonly (keyof UpdateScheduleInput)[] = [
 
 export function createSchedulesRepo(db: Database): SchedulesRepo {
   const insert = db.prepare(
-    `INSERT INTO schedules (name, cron_expr, kind, payload, enabled, budget_tokens_per_day, budget_used_today, created_at)
-     VALUES (@name, @cron_expr, @kind, @payload, @enabled, @budget_tokens_per_day, 0, @created_at)`,
+    `INSERT INTO schedules (name, cron_expr, kind, payload, enabled, recurring, budget_tokens_per_day, budget_used_today, created_at)
+     VALUES (@name, @cron_expr, @kind, @payload, @enabled, @recurring, @budget_tokens_per_day, 0, @created_at)`,
   );
   const selectOne = db.prepare<{ id: number }, ScheduleRecord>(
     `SELECT * FROM schedules WHERE id = @id`,
@@ -141,6 +150,7 @@ export function createSchedulesRepo(db: Database): SchedulesRepo {
         kind: input.kind,
         payload: input.payload,
         enabled: input.enabled === false ? 0 : 1,
+        recurring: input.recurring === false ? 0 : 1,
         budget_tokens_per_day: input.budget_tokens_per_day ?? null,
         created_at: now,
       });

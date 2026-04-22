@@ -239,6 +239,25 @@ export function createSchedulerEngine(deps: SchedulerEngineDeps): SchedulerEngin
         });
       }
     }
+
+    // One-shot schedules (reminders, "run this once at 15:30") self-destruct
+    // after firing — regardless of success/fail — so they can't fire again.
+    // We stop the node-cron task and delete the row; audit records the
+    // outcome so the run is still inspectable in the dashboard's audit view.
+    if (fresh.recurring === 0) {
+      stopTask(fresh.id);
+      deps.schedulesRepo.remove(fresh.id);
+      deps.audit.record({
+        kind: 'schedule_one_shot_completed',
+        actor: 'scheduler',
+        detail: {
+          scheduleId: fresh.id,
+          name: fresh.name,
+          status: result.status,
+          cron: fresh.cron_expr,
+        },
+      });
+    }
   }
 
   function autoDisable(schedule: ScheduleRecord, reason: string): void {

@@ -36,6 +36,7 @@ import { createRateLimitTracker } from './agent/rate-limit-tracker.js';
 import { createAuthChecker } from './telegram/auth.js';
 import { createTelegramService } from './telegram/bot.js';
 import { createSchedulesRepo } from './db/repositories/schedules.js';
+import { createBudgetStateRepo } from './db/repositories/budget-state.js';
 import { createSchedulerEngine } from './scheduler/engine.js';
 import { createDashboard } from './dashboard/server.js';
 import type { DispatchDeps } from './agent/dispatch.js';
@@ -94,6 +95,7 @@ async function main(): Promise<void> {
   const messages = createMessagesRepo(dbHandle.db);
   const memoryRepo = createMemoryRepo(dbHandle.db);
   const schedulesRepo = createSchedulesRepo(dbHandle.db);
+  const budgetStateRepo = createBudgetStateRepo(dbHandle.db);
 
   const orphanResult = sessions.markRunningAsOrphaned();
   if (orphanResult.count > 0) {
@@ -177,12 +179,16 @@ async function main(): Promise<void> {
 
   const rateLimitTracker = createRateLimitTracker();
 
-  const budget = createBudgetTracker(sessions, () => ({
-    dailyTokenLimit: config.budget.dailyTokenLimit,
-    perSessionTokenLimit: config.budget.perSessionTokenLimit,
-    dailyResetTime: config.budget.dailyResetTime,
-    timezone: config.service.timezone,
-  }));
+  const budget = createBudgetTracker(
+    sessions,
+    () => ({
+      dailyTokenLimit: config.budget.dailyTokenLimit,
+      perSessionTokenLimit: config.budget.perSessionTokenLimit,
+      dailyResetTime: config.budget.dailyResetTime,
+      timezone: config.service.timezone,
+    }),
+    budgetStateRepo,
+  );
 
   let telegramQueueDepths: () => Record<string, number> = () => ({});
   const heartbeat = createHeartbeatDriver({

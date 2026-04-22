@@ -1,5 +1,6 @@
 import { readFileSync, existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import yaml from 'js-yaml';
 import { Config } from './schema.js';
 import type { Config as ConfigType } from './schema.js';
@@ -55,8 +56,18 @@ export function loadEnvFile(envPath: string): void {
   }
 }
 
+/**
+ * Absolute path to the repo root — derived from THIS module's own file
+ * location, not `process.cwd()`. The previous cwd-based implementation
+ * broke the admin CLI when invoked by Emma's Bash tool (Emma's cwd is
+ * `data/workspaces/dm/`, so `cwd()/config/config.yaml` didn't exist).
+ *
+ * Layout assumption: `config/load.{ts,js}` lives two directories below
+ * the repo root in both `src/` and `dist/` — true today for both the
+ * tsx dev path and the compiled `dist/` path.
+ */
 export function projectRoot(): string {
-  return resolve(process.cwd());
+  return resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 }
 
 export function loadConfig(overridePath?: string): LoadResult {

@@ -25,8 +25,26 @@ fi
 echo "validate config:"
 pnpm exec tsx src/cli/admin.ts config validate || true
 
+# Install the `andybioticlaw` CLI wrapper on PATH. The package.json `bin`
+# field only takes effect when the package is installed globally or linked,
+# which nobody does in this repo. Emma's Bash tool and the user both need
+# the command resolvable from their shell — symlinking into ~/.local/bin/
+# achieves that without touching /usr/local.
+USER_BIN="$HOME/.local/bin"
+mkdir -p "$USER_BIN"
+ln -sf "$ROOT/bin/andybioticlaw" "$USER_BIN/andybioticlaw"
+echo "✓ andybioticlaw wrapper symlinked into $USER_BIN/"
+case ":$PATH:" in
+  *":$USER_BIN:"*) ;;
+  *)
+    echo "  NOTE: $USER_BIN is not on your \$PATH. Add it to your shell rc:"
+    echo '    export PATH="$HOME/.local/bin:$PATH"'
+    ;;
+esac
+
 echo
 echo "next steps:"
+echo "  pnpm build                                         # build dist/ (required — wrapper runs dist/cli/admin.js)"
 echo "  pnpm dev                                           # run the service"
 echo "  pnpm exec tsx src/cli/admin.ts config validate     # validate config"
 echo "  pnpm test                                          # run unit tests"

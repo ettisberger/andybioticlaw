@@ -1,4 +1,5 @@
 import type { SessionsRepo } from '../db/repositories/sessions.js';
+import type { BudgetStateRepo } from '../db/repositories/budget-state.js';
 
 export interface BudgetWindow {
   /** Inclusive lower bound (epoch ms). */
@@ -9,6 +10,8 @@ export interface BudgetWindow {
   windowLabel: string;
   /** When the current window flips (epoch ms). */
   nextResetMs: number;
+  /** Manual reset anchor (ms) active for this window, or null if not set. */
+  manualResetAt: number | null;
 }
 
 export interface BudgetStatus {
@@ -41,10 +44,36 @@ export interface BudgetTracker {
 export function createBudgetTracker(
   repo: SessionsRepo,
   cfg: () => BudgetConfigView,
+  /**
+   * Optional — when provided, the tracker honors a manual "reset anchor"
+   * stored in `budget_state`. If the anchor is newer than the natural
+   * window start but older than the next natural reset, it becomes the
+   * effective window start. Nothing else changes: the natural reset
+   * still fires at its normal time and implicitly retires the anchor.
+   *
+   * Tests that don't care about the override path can pass `null`.
+   */
+  budgetState: BudgetStateRepo | null = null,
 ): BudgetTracker {
   function status(now = Date.now()): BudgetStatus {
     const c = cfg();
-    const window = currentWindow(now, c.dailyResetTime, c.timezone);
+    const natural = currentWindow(now, c.dailyResetTime, c.timezone);
+    const anchor = budgetState?.getResetAnchor() ?? null;
+
+    // Anchor only bites when it's INSIDE the current natural window.
+    // Older anchors are stale (the natural reset already happened);
+    // future anchors shouldn't exist but would be ignored safely.
+    const effectiveFromMs =
+      anchor !== null && anchor > natural.fromMs && anchor < natural.toMs
+        ? anchor
+        : natural.fromMs;
+    const manualResetAt = effectiveFromMs === natural.fromMs ? null : anchor;
+
+    const window: BudgetWindow = {
+      ...natural,
+      fromMs: effectiveFromMs,
+      manualResetAt,
+    };
     const used = repo.tokensUsedBetween(window.fromMs, window.toMs);
     const remaining = Math.max(0, c.dailyTokenLimit - used);
     return {
@@ -120,7 +149,7 @@ export function currentWindow(
     hour12: false,
   });
 
-  return { fromMs, toMs, windowLabel, nextResetMs: toMs };
+  return { fromMs, toMs, windowLabel, nextResetMs: toMs, manualResetAt: null };
 }
 
 interface ZoneParts {
