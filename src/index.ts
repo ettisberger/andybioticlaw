@@ -162,16 +162,18 @@ async function main(): Promise<void> {
   }
   rescanSkills();
 
-  // Memory manager + TTL cron.
+  // Memory manager + TTL cron (also runs message-retention cleanup).
   const memoryManager = createMemoryManager({ repo: memoryRepo, logger });
   const memoryTtl = createMemoryTtlCron({
     manager: memoryManager,
     repo: memoryRepo,
     sessionsRepo: sessions,
+    messagesRepo: messages,
     logger,
     cronExpr: () => config.memory.ttlCleanupCron,
     timezone: config.service.timezone,
     sessionWorkspaceRoot: dmWorkspace,
+    messageRetentionDays: () => config.messages.retentionDays,
   });
   memoryTtl.start();
 

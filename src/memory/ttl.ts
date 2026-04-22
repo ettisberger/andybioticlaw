@@ -4,12 +4,14 @@ import type { Logger } from 'pino';
 import type { MemoryManager } from './manager.js';
 import type { MemoryRepo } from '../db/repositories/memory.js';
 import type { SessionsRepo } from '../db/repositories/sessions.js';
+import type { MessagesRepo } from '../db/repositories/messages.js';
 import { sweepSessionWorkspaces } from '../observability/workspace-cleanup.js';
 
 export interface MemoryTtlCronDeps {
   manager: MemoryManager;
   repo: MemoryRepo;
   sessionsRepo: SessionsRepo;
+  messagesRepo: MessagesRepo;
   logger: Logger;
   /** Cron expression, e.g. "0 3 * * *". Read from config.memory.ttlCleanupCron. */
   cronExpr: () => string;
@@ -19,6 +21,12 @@ export interface MemoryTtlCronDeps {
   proposalMaxAgeMs?: number;
   /** Root of per-session workspace dirs (one per session UUID). */
   sessionWorkspaceRoot: string;
+  /**
+   * Days to retain raw conversation messages. `null` → keep forever.
+   * Evaluated on every cron tick so hot-reloading the config takes effect
+   * the next night.
+   */
+  messageRetentionDays: () => number | null;
 }
 
 export interface MemoryTtlCron {
@@ -28,6 +36,7 @@ export interface MemoryTtlCron {
     memoryRemoved: number;
     proposalsExpired: number;
     workspacesRemoved: number;
+    messagesRemoved: number;
   };
 }
 
@@ -46,13 +55,33 @@ export function createMemoryTtlCron(deps: MemoryTtlCronDeps): MemoryTtlCron {
       workspaceRoot: deps.sessionWorkspaceRoot,
     });
     const workspacesRemoved = workspaceSweep.removed;
-    if (memoryRemoved > 0 || proposalsExpired > 0 || workspacesRemoved > 0) {
+
+    // Message retention — sessions are preserved (useful for audit /
+    // dashboard history), only the raw conversation bodies drop out.
+    let messagesRemoved = 0;
+    const retentionDays = deps.messageRetentionDays();
+    if (retentionDays !== null && retentionDays > 0) {
+      const messageCutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+      messagesRemoved = deps.messagesRepo.deleteOlderThan(messageCutoff);
+    }
+
+    if (
+      memoryRemoved > 0 ||
+      proposalsExpired > 0 ||
+      workspacesRemoved > 0 ||
+      messagesRemoved > 0
+    ) {
       deps.logger.info(
-        { memoryRemoved, proposalsExpired, workspacesRemoved },
+        { memoryRemoved, proposalsExpired, workspacesRemoved, messagesRemoved },
         'nightly cleanup ran',
       );
     }
-    return { memoryRemoved, proposalsExpired, workspacesRemoved };
+    return {
+      memoryRemoved,
+      proposalsExpired,
+      workspacesRemoved,
+      messagesRemoved,
+    };
   }
 
   return {

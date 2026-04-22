@@ -55,6 +55,15 @@ export const MemoryConfig = z.object({
   ttlCleanupCron: z.string().min(1),
 });
 
+export const MessagesConfig = z.object({
+  /**
+   * If set, the nightly TTL cron deletes messages older than this many
+   * days. Sessions themselves are retained — only the conversation
+   * bodies are pruned. `null` (default) means keep forever.
+   */
+  retentionDays: z.number().int().positive().nullable().default(null),
+});
+
 export const DashboardBasicAuthConfig = z.object({
   enabled: z.boolean(),
   username: z.string().default('admin'),
@@ -86,6 +95,7 @@ export const Config = z.object({
   telegram: TelegramConfig,
   budget: BudgetConfig,
   memory: MemoryConfig,
+  messages: MessagesConfig.default({ retentionDays: null }),
   dashboard: DashboardConfig,
   observability: ObservabilityConfig,
   skills: SkillsConfig,
@@ -108,6 +118,7 @@ export const HOT_RELOADABLE_PATHS: ReadonlyArray<string> = [
   'memory.autoAccept',
   'memory.defaultScopes',
   'memory.ttlCleanupCron',
+  'messages.retentionDays',
   'telegram.streamEditIntervalMs',
   'telegram.longTaskNotifyAfterMs',
   'telegram.conversationHistoryLimit',

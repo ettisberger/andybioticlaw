@@ -63,6 +63,13 @@ memory:
   defaultScopes: [global, user]
   ttlCleanupCron: '0 3 * * *'
 
+messages:
+  # If set, the nightly TTL cron deletes messages older than this many days.
+  # Sessions themselves are retained (so the dashboard's Sessions list stays
+  # useful for audit/debugging) — only the conversation bodies are pruned.
+  # `null` (default) means "keep forever".
+  retentionDays: null
+
 dashboard:
   enabled: true
   host: 127.0.0.1

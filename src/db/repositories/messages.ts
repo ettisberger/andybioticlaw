@@ -25,6 +25,12 @@ export interface MessagesRepo {
   setTelegramMessageId(id: number, telegramMessageId: number): void;
   latestByChat(chatId: string, limit: number): MessageRecord[];
   byChatSince(chatId: string, sinceMs: number): MessageRecord[];
+  /**
+   * Hard-delete messages whose `created_at` is strictly less than the
+   * cutoff. Returns the number of rows removed. Used by the nightly
+   * retention cron when `messages.retentionDays` is set.
+   */
+  deleteOlderThan(cutoffMs: number): number;
 }
 
 export function createMessagesRepo(db: Database): MessagesRepo {
@@ -43,6 +49,10 @@ export function createMessagesRepo(db: Database): MessagesRepo {
 
   const since = db.prepare<{ chat_id: string; ts: number }, MessageRecord>(
     `SELECT * FROM messages WHERE chat_id = @chat_id AND created_at >= @ts ORDER BY created_at ASC, id ASC`,
+  );
+
+  const deleteOld = db.prepare<{ cutoff: number }>(
+    `DELETE FROM messages WHERE created_at < @cutoff`,
   );
 
   return {
@@ -66,6 +76,9 @@ export function createMessagesRepo(db: Database): MessagesRepo {
     },
     byChatSince(chatId, sinceMs) {
       return since.all({ chat_id: chatId, ts: sinceMs });
+    },
+    deleteOlderThan(cutoffMs) {
+      return deleteOld.run({ cutoff: cutoffMs }).changes;
     },
   };
 }
