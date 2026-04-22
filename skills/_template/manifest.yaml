@@ -1,0 +1,17 @@
+# Template skill manifest. Copy this directory to skills/<your-skill-name>
+# and edit the fields below. The folder name MUST equal the `name` field.
+
+name: _template
+version: 0.0.0
+description: Placeholder skill used as a scaffold — not loaded by the service.
+enabled: false
+
+scope:
+  - dm
+
+required_secrets: []
+
+apt_dependencies: []
+system_commands: []
+
+mcp_servers: []

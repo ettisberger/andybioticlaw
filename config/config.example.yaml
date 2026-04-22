@@ -1,0 +1,79 @@
+# andybioticlaw — main configuration file
+#
+# Copy this file to config/config.yaml and edit to taste.
+# Secrets belong in .env (see .env.example).
+#
+# Reload behavior:
+#   - SIGHUP (or `andybioticlaw config reload`) re-reads this file and applies
+#     hot-reloadable fields in place.
+#   - Restart-required fields are listed in src/config/reload.ts. Changes to
+#     those fields while the service is running trigger a WARN log but the old
+#     value stays active until a full restart (`systemctl restart andybioticlaw`).
+
+service:
+  name: andybioticlaw
+  dataDir: ./data
+  logLevel: info # debug | info | warn | error
+  timezone: Europe/Zurich
+
+agent:
+  name: Emma
+  # Valid model IDs (as of April 2026):
+  #   claude-opus-4-7             — current flagship (default)
+  #   claude-opus-4-6
+  #   claude-sonnet-4-6
+  #   claude-haiku-4-5-20251001
+  model: claude-opus-4-7
+  credentialsDir: ~/.claude
+  streamIdleTimeoutSec: 120
+  # Claude-CLI tool permissions. "all" — grant all tools; or comma/space
+  # separated list like "Bash,Edit,Read".
+  allowedTools: all
+
+telegram:
+  dm:
+    allowedUserIds: [18998064]
+    runMode: host
+  group:
+    # PLANNED — group chats are rejected with an audit-log entry in v1.
+    allowedGroupIds: []
+    runMode: workspace
+    workspaceBase: ./data/workspaces/groups
+  streamEditIntervalMs: 1200
+  longTaskNotifyAfterMs: 60000
+  conversationHistoryLimit: 50
+
+budget:
+  dailyTokenLimit: 2000000
+  perSessionTokenLimit: 200000
+  perScheduleDefault: 50000
+  dailyResetTime: '00:00' # in service.timezone
+
+memory:
+  # When true (default): Emma silently stores anything she decides is worth
+  # remembering — matches the natural "just remember it" UX.
+  # When false: every proposal from Emma triggers a Telegram inline-button
+  # prompt ([✅ Add] / [❌ Dismiss]) before the entry is persisted. Flip to
+  # false if you want explicit curation over every memory write.
+  autoAccept: true
+  defaultScopes: [global, user]
+  ttlCleanupCron: '0 3 * * *'
+
+dashboard:
+  enabled: true
+  host: 127.0.0.1
+  port: 18790
+  basicAuth:
+    enabled: false
+    username: admin
+    passwordHash: ''
+
+observability:
+  heartbeatIntervalSec: 60
+  heartbeatRetentionDays: 7
+  errorsToTelegram: true
+  errorChatIdOverride: null
+
+skills:
+  dir: ./skills
+  autoLoadOnStart: true

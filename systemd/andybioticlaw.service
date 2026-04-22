@@ -1,0 +1,46 @@
+[Unit]
+Description=andybioticlaw — personal AI agent service
+Documentation=https://github.com/ettisberger/andybioticlaw
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=andybioticlaw
+Group=andybioticlaw
+
+# Absolute path to the deployed install. Adjust if you install elsewhere.
+WorkingDirectory=/opt/andybioticlaw
+ExecStart=/usr/bin/env node /opt/andybioticlaw/dist/index.js
+ExecReload=/bin/kill -HUP $MAINPID
+
+# Restart + startup-limit posture per spec.
+Restart=on-failure
+RestartSec=5
+StartLimitInterval=300
+StartLimitBurst=3
+
+# Graceful shutdown: spec allows up to 30s for in-flight sessions to finish.
+KillSignal=SIGTERM
+TimeoutStopSec=35
+SendSIGKILL=yes
+
+# Environment
+Environment=NODE_ENV=production
+# The service reads its `.env` file via src/config/load.ts; no EnvironmentFile= needed.
+
+# Sandboxing (Linux-only; ignored on development macOS).
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/andybioticlaw/data
+PrivateTmp=yes
+NoNewPrivileges=yes
+# Allow reading the service user's ~/.claude for subscription credentials.
+# ProtectHome=read-only already permits that.
+
+# Logging to journald; our pino logger ALSO writes data/logs/andybioticlaw.log.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
