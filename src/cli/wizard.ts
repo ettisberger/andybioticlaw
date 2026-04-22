@@ -123,7 +123,7 @@ async function askOne(
 
   while (true) {
     const raw = q.secret
-      ? await readSecret(stdin, stdout, prompt)
+      ? await readSecret(stdin, stdout, prompt, rl)
       : await readLine(rl, prompt);
     if (raw === null) return null;
     const trimmed = raw.trim();
@@ -184,7 +184,11 @@ async function readSecret(
   stdin: NodeJS.ReadableStream & { setRawMode?: (mode: boolean) => void },
   stdout: NodeJS.WritableStream,
   prompt: string,
+  rl?: ReturnType<typeof createInterface>,
 ): Promise<string | null> {
+  // Pause readline while we take over stdin — otherwise its own echo
+  // prints each keystroke alongside our masked `*`.
+  rl?.pause();
   stdout.write(prompt);
   return new Promise((resolve) => {
     let input = '';
@@ -222,8 +226,10 @@ async function readSecret(
     const cleanup = () => {
       stdin.off('data', onData);
       if (stdin.setRawMode) stdin.setRawMode(false);
-      // Do NOT pause stdin here — the next readline.question expects it
-      // to still be flowing, otherwise the next prompt closes immediately.
+      // Re-enable the readline interface so subsequent line-mode prompts
+      // resume correctly. Don't `stdin.pause()` — that would break the
+      // next readline.question (it needs a flowing stream).
+      rl?.resume();
     };
 
     if (stdin.setRawMode) stdin.setRawMode(true);

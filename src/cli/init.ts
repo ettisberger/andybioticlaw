@@ -88,7 +88,12 @@ export async function runInitCommand(): Promise<void> {
           `  ${dim('  2. send /newbot, pick display name + @username')}\n` +
           `  ${dim('  3. copy the token (format: 1234567890:ABC-DEF…)')}\n\n`,
       );
-      const token = await askSecret(stdin, stdout, `  ${lavender('?')} bot token: `);
+      const token = await askSecret(
+        stdin,
+        stdout,
+        `  ${lavender('?')} bot token: `,
+        rl,
+      );
       if (!token) throw new InitAbortedError();
       envUpdates.TELEGRAM_BOT_TOKEN = token;
     }
@@ -156,7 +161,12 @@ export async function runInitCommand(): Promise<void> {
         `  ${dim('Dashboard listens on 127.0.0.1:18790 (localhost only). Basic-auth')}\n` +
           `  ${dim('defaults to ON; set a password now, OR press Enter to disable it.')}\n\n`,
       );
-      const pwd = await askSecret(stdin, stdout, `  ${lavender('?')} dashboard password: `);
+      const pwd = await askSecret(
+        stdin,
+        stdout,
+        `  ${lavender('?')} dashboard password: `,
+        rl,
+      );
       if (pwd && pwd.length > 0) {
         stdout.write(`  ${dim('hashing with argon2id…')}\n`);
         dashboardPasswordHash = await argon2.hash(pwd, { type: argon2.argon2id });
@@ -305,7 +315,12 @@ async function askSecret(
   stdin: NodeJS.ReadableStream & { setRawMode?: (mode: boolean) => void },
   stdout: NodeJS.WritableStream,
   prompt: string,
+  rl?: ReturnType<typeof createInterface>,
 ): Promise<string | null> {
+  // Pause the readline interface if one is passed in — otherwise readline
+  // keeps consuming stdin and echoing characters alongside our masked `*`,
+  // producing output like `e*t*t*i*...` instead of `******`.
+  rl?.pause();
   stdout.write(prompt);
   return new Promise((resolve) => {
     let input = '';
@@ -339,10 +354,10 @@ async function askSecret(
     const cleanup = () => {
       stdin.off('data', onData);
       if (stdin.setRawMode) stdin.setRawMode(false);
-      // NB: we deliberately don't `stdin.pause()` here — the next readline
-      // question (for principal-id, timezone, etc.) expects the stream to
-      // be flowing, and pausing after a secret read left readline unable
-      // to receive the next Enter keystroke, closing immediately.
+      // Re-enable the readline interface (if any) so subsequent line-mode
+      // prompts work again. We don't `stdin.pause()` — that breaks the
+      // next readline.question (it waits for flow, doesn't auto-resume).
+      rl?.resume();
     };
     if (stdin.setRawMode) stdin.setRawMode(true);
     (stdin as unknown as { resume?: () => void }).resume?.();
