@@ -1,0 +1,16 @@
+# /etc/logrotate.d/andybioticlaw
+#
+# Our pino logger opens the log file path (not a long-lived fd) on every
+# append, so logrotate with the `create` directive works without a signal
+# to the service — the next write just lands in the freshly created file.
+
+/opt/andybioticlaw/data/logs/andybioticlaw.log {
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0600 andybioticlaw andybioticlaw
+    su andybioticlaw andybioticlaw
+}

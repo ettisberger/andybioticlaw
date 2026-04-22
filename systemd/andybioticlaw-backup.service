@@ -1,0 +1,20 @@
+[Unit]
+Description=andybioticlaw — SQLite online backup (oneshot)
+Documentation=file:///opt/andybioticlaw/scripts/backup.sh
+
+[Service]
+Type=oneshot
+User=andybioticlaw
+Group=andybioticlaw
+WorkingDirectory=/opt/andybioticlaw
+ExecStart=/usr/bin/env bash /opt/andybioticlaw/scripts/backup.sh
+
+# Sandboxing — backup only needs read access to the DB and write access to data/backups.
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/andybioticlaw/data
+PrivateTmp=yes
+NoNewPrivileges=yes
+
+StandardOutput=journal
+StandardError=journal
