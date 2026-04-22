@@ -67,8 +67,14 @@ dashboard:
   enabled: true
   host: 127.0.0.1
   port: 18790
+  # Basic-Auth is ENABLED by default as a second layer of defense in case the
+  # dashboard is ever exposed beyond localhost (the Fastify app also does CSRF
+  # double-submit checks on mutating routes). The service refuses to start if
+  # `enabled: true` without a `passwordHash`. Use `andybioticlaw init` to
+  # populate the hash interactively, OR set `enabled: false` if you accept the
+  # risk of an unauthenticated dashboard (localhost-only deployments only).
   basicAuth:
-    enabled: false
+    enabled: true
     username: admin
     passwordHash: ''
 

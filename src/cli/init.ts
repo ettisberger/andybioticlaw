@@ -123,29 +123,34 @@ export async function runInitCommand(): Promise<void> {
       timezone = raw?.trim() || systemTz;
     }
 
-    // --- 5. Optional dashboard password ----------------------------------
+    // --- 5. Dashboard password -------------------------------------------
+    // Default-on: config.example.yaml ships with basicAuth.enabled: true,
+    // so the service boots only if we populate the hash OR explicitly
+    // disable auth. Press-Enter path disables auth with a confirmation,
+    // so localhost-only quick-try users aren't forced to pick a password.
     const currentHashLine = readPasswordHash(configPath);
     let dashboardPasswordHash: string | null = null;
-    let enableDashboardAuth = false;
+    let disableDashboardAuth = false;
     if (currentHashLine && currentHashLine.length > 0) {
       stdout.write(
         `\n✓ dashboard.basicAuth.passwordHash already set — reusing\n`,
       );
     } else {
       stdout.write(
-        `\nDashboard lives on 127.0.0.1:18790 by default (localhost only).\n` +
-          `If you will expose it via nginx later, set a password now; otherwise\n` +
-          `leave empty to skip.\n`,
+        `\nDashboard (127.0.0.1:18790) defaults to basic-auth ON. Set a password\n` +
+          `now (recommended, even for localhost-only) OR press Enter to disable\n` +
+          `auth entirely.\n`,
       );
-      const pwd = await askSecret(
-        stdin,
-        stdout,
-        '  ? dashboard password (empty to skip): ',
-      );
+      const pwd = await askSecret(stdin, stdout, '  ? dashboard password: ');
       if (pwd && pwd.length > 0) {
         stdout.write(`  hashing password with argon2id…\n`);
         dashboardPasswordHash = await argon2.hash(pwd, { type: argon2.argon2id });
-        enableDashboardAuth = true;
+      } else {
+        stdout.write(
+          `  (no password entered — disabling basic-auth. You can re-enable it\n` +
+            `   later by running 'andybioticlaw init' again.)\n`,
+        );
+        disableDashboardAuth = true;
       }
     }
 
@@ -172,19 +177,21 @@ export async function runInitCommand(): Promise<void> {
       });
     }
     if (dashboardPasswordHash !== null) {
-      // passwordHash and enabled live under `dashboard.basicAuth`.
+      // passwordHash lives under `dashboard.basicAuth`. We don't need to
+      // flip `enabled: true` — the example ships with it true already; we
+      // only flip to false in the opt-out branch below.
       patches.push({
         desc: 'dashboard.basicAuth.passwordHash',
         regex: /^(\s+passwordHash:\s*).*$/m,
         replacement: `$1'${dashboardPasswordHash}'`,
       });
-      if (enableDashboardAuth) {
-        patches.push({
-          desc: 'dashboard.basicAuth.enabled',
-          regex: /^(\s+)enabled: false\s*$/m,
-          replacement: `$1enabled: true`,
-        });
-      }
+    }
+    if (disableDashboardAuth) {
+      patches.push({
+        desc: 'dashboard.basicAuth.enabled',
+        regex: /^(\s+)enabled: true\s*$/m,
+        replacement: `$1enabled: false`,
+      });
     }
 
     if (patches.length > 0) {

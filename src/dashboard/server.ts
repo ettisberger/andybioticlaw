@@ -1,10 +1,11 @@
 import Fastify from 'fastify';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import fastifyWebsocket from '@fastify/websocket';
 import fastifyBasicAuth from '@fastify/basic-auth';
 import argon2 from 'argon2';
 import { existsSync } from 'node:fs';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import type { Logger } from 'pino';
 import type { SessionsRepo } from '../db/repositories/sessions.js';
 import type { MessagesRepo } from '../db/repositories/messages.js';
@@ -78,10 +79,9 @@ export function createDashboard(deps: DashboardDeps): DashboardService {
     trustProxy: false,
   });
 
-  // /healthz — trivial liveness + DB ping, always reachable (no basic-auth).
-  // Registered BEFORE basic-auth so monitoring tools can poll without
-  // credentials. The onRequest basic-auth hook below short-circuits for
-  // this route explicitly.
+  // /healthz — trivial liveness + DB ping, always reachable (no basic-auth
+  // and no CSRF check). Registered BEFORE both hooks below so monitoring
+  // tools can poll without credentials or tokens.
   app.get('/healthz', async (_req, reply) => {
     if (deps.isShuttingDown()) {
       reply.code(503);
@@ -92,6 +92,71 @@ export function createDashboard(deps: DashboardDeps): DashboardService {
       return { ok: false, reason: 'db_unreachable' };
     }
     return { ok: true };
+  });
+
+  // --- CSRF (double-submit cookie) ---------------------------------------
+  // On any request without one, the `_abl_csrf` cookie is set to 32 random
+  // bytes hex. Mutating requests (POST/PUT/PATCH/DELETE, but NOT /healthz)
+  // must echo that value back as `X-CSRF-Token`. Cookie is SameSite=Strict
+  // + Path=/ + no HttpOnly (so same-origin JS can read it); cross-origin
+  // JS cannot read it (cookies don't leak across origins), so a malicious
+  // cross-origin page can't forge the matching header.
+  //
+  // Skipped for /healthz to keep the liveness probe credentials-free.
+  // Skipped for /api/logs/stream WebSocket upgrade because the initial
+  // GET has to start the ws handshake; CSRF-relevant state-changes over
+  // that socket are non-existent (it's append-only log broadcast).
+  const CSRF_COOKIE = '_abl_csrf';
+  const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+  const EXEMPT_PATHS = new Set(['/healthz']);
+
+  function parseCookies(header: string | undefined): Record<string, string> {
+    if (!header) return {};
+    const out: Record<string, string> = {};
+    for (const part of header.split(';')) {
+      const eq = part.indexOf('=');
+      if (eq < 0) continue;
+      const k = part.slice(0, eq).trim();
+      const v = part.slice(eq + 1).trim();
+      if (k) out[k] = decodeURIComponent(v);
+    }
+    return out;
+  }
+
+  function ensureCsrfCookie(req: FastifyRequest, reply: FastifyReply): string {
+    const cookies = parseCookies(req.headers.cookie);
+    let token = cookies[CSRF_COOKIE];
+    if (!token || !/^[0-9a-f]{64}$/i.test(token)) {
+      token = randomBytes(32).toString('hex');
+      // Not HttpOnly — by design, same-origin JS must read it to echo
+      // back via header. SameSite=Strict is the real protection.
+      reply.header(
+        'set-cookie',
+        `${CSRF_COOKIE}=${token}; Path=/; SameSite=Strict`,
+      );
+    }
+    return token;
+  }
+
+  app.addHook('onRequest', async (req, reply) => {
+    const path = req.url.split('?')[0] ?? req.url;
+    if (EXEMPT_PATHS.has(path)) return;
+    // Always (re)issue the cookie on GET/HEAD so browsers pick it up before
+    // their first mutating request. ensureCsrfCookie is idempotent.
+    ensureCsrfCookie(req, reply);
+    if (!MUTATING.has(req.method)) return;
+    const cookies = parseCookies(req.headers.cookie);
+    const cookieToken = cookies[CSRF_COOKIE];
+    const headerToken = req.headers['x-csrf-token'];
+    if (
+      !cookieToken ||
+      typeof headerToken !== 'string' ||
+      cookieToken.length !== headerToken.length ||
+      !timingSafeEqual(Buffer.from(cookieToken), Buffer.from(headerToken))
+    ) {
+      reply.code(403);
+      return reply.send({ error: 'csrf token missing or mismatched' });
+    }
   });
 
   // Basic auth (optional).

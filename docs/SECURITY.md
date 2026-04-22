@@ -173,19 +173,23 @@ Do NOT:
   interactive shell (e.g. `.bashrc`) or inline before a one-off
   invocation.
 
-### Dashboard is localhost-only by default
+### Dashboard is localhost-only by default, with defense-in-depth
 
-`dashboard.host: 127.0.0.1` is the shipped default. There is no
-CSRF protection on POST endpoints and no rate limiting. These are
-acceptable as long as the port is localhost-only — a same-origin
-malicious webpage cannot reach it.
+`dashboard.host: 127.0.0.1` is the shipped default, and
+`dashboard.basicAuth.enabled: true` is the shipped default too (the
+service refuses to start without a `passwordHash` — populated by
+`andybioticlaw init`). The Fastify app ALSO enforces a double-submit
+CSRF token on mutating requests (POST/PUT/PATCH/DELETE): the
+`_abl_csrf` cookie is set on every GET with `SameSite=Strict`, and
+the `X-CSRF-Token` header on mutating calls must match. `/healthz` is
+exempt so monitoring tools don't need credentials or tokens.
 
 **If you reverse-proxy the dashboard over the internet** (deployment
-doc § 10b), add the following on top of app-layer basic auth:
+doc § 10b):
 
 - TLS termination at nginx (`certbot --nginx`).
 - CORS deny by default at nginx, or a network-level IP allowlist.
-- Consider `fastify-rate-limit` if you expose without basic auth.
+- Consider `fastify-rate-limit` if you want to throttle auth attempts.
 
 The dashboard exposes **full session transcripts** to any
 authenticated viewer. That's expected for a single-principal setup;
