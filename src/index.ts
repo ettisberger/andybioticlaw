@@ -369,6 +369,9 @@ async function main(): Promise<void> {
       }
     : null;
 
+  // Hoisted so the dashboard's /healthz can read it.
+  let shuttingDown = false;
+
   const dashboard = createDashboard({
     currentConfig: () => config,
     logger,
@@ -391,6 +394,15 @@ async function main(): Promise<void> {
     frontendDistDir: resolve(projectRoot(), 'web', 'dist'),
     onSchedulesChanged: () => scheduler?.refresh(),
     rateLimitTracker,
+    dbPing: () => {
+      try {
+        dbHandle.db.prepare('SELECT 1').get();
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    isShuttingDown: () => shuttingDown,
   });
   await dashboard.start();
 
@@ -398,7 +410,6 @@ async function main(): Promise<void> {
   writeFileSync(pidPath, String(process.pid), { mode: 0o600 });
   logger.debug({ pidPath }, 'wrote pidfile');
 
-  let shuttingDown = false;
   const shutdown = async (signal: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
