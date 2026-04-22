@@ -122,6 +122,9 @@ This performs all the one-time setup:
 - Sets `/opt/andybioticlaw` ownership + permissions (data/ is 700).
 - Runs `pnpm install --prod --frozen-lockfile` as the service user so
   `better-sqlite3` and `argon2` compile for the VPS's arch.
+- Symlinks `/opt/andybioticlaw/bin/andybioticlaw` into `/usr/local/bin/`
+  so both the principal's shell and the service-user's non-interactive
+  subprocess env can invoke the CLI by name.
 - Installs + enables the systemd unit, the backup service, and the
   daily backup timer.
 - Installs the logrotate config at `/etc/logrotate.d/andybioticlaw`.
@@ -175,9 +178,16 @@ commented unless/until a skill needs it.
 Validate:
 
 ```bash
-sudo -u andybioticlaw -H bash -lc 'cd /opt/andybioticlaw && node dist/cli/admin.js config validate'
+sudo -u andybioticlaw -H bash -lc 'andybioticlaw config validate'
 # OK — config valid: /opt/andybioticlaw/config/config.yaml
 ```
+
+(`andybioticlaw` resolves to `/usr/local/bin/andybioticlaw`, a symlink
+`install.sh` set up during § 5 pointing at
+`/opt/andybioticlaw/bin/andybioticlaw`. The wrapper is cwd-independent,
+so it works from any directory. If the command is not found, re-run
+`sudo bash /opt/andybioticlaw/scripts/install.sh` — the wrapper-link
+step is idempotent.)
 
 ## 8. Start the service
 

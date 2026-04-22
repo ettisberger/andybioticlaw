@@ -137,7 +137,7 @@ Same hardening on the backup oneshot service.
 
 ## Specific trust notes
 
-### `bash` schedules are shell commands, by design
+### `bash` schedules are shell commands, by design — but gated against agent-created additions
 
 `schedule add --kind bash --payload '{"command": "…"}'` runs the
 command via `/bin/sh -c <command>` as the `andybioticlaw` service user,
@@ -145,11 +145,23 @@ with full filesystem access granted by systemd's `ReadWritePaths=
 /opt/andybioticlaw/data` and the service user's normal shell
 privileges.
 
-This is **shell injection** — but the principal authored the payload,
-so it's not a security boundary. Implication: the config file IS the
-security boundary. On prod, `/opt/andybioticlaw/config/config.yaml`
-must be 0640 owned by `andybioticlaw:andybioticlaw` (install.sh
-handles this).
+This is **shell injection** — acceptable *when the principal authored
+the payload*. Since Emma was given shell access (via Bash tool) and the
+ability to invoke this CLI, a prompt injection (email contents, web
+fetch, skill output, etc.) could otherwise talk her into creating a
+bash schedule that survives restarts. The CLI therefore refuses to
+create any schedule whose `--kind` is not `reminder` **unless the
+environment variable `ANDYBIOTICLAW_AGENT_CAN_BASH=1` is set at
+invocation time**.
+
+- Emma's subprocess env never carries the flag → she can only create
+  `--kind reminder`. Attempts at other kinds exit with code 3 and write
+  a `schedule_kind_gate_blocked` audit row.
+- The principal's interactive shell exports (or inlines) the flag →
+  full functionality restored.
+- Every schedule Emma successfully creates (all reminders) is logged
+  as a `schedule_created_by_agent` audit row so suspicious activity is
+  post-hoc inspectable.
 
 Do NOT:
 
@@ -157,6 +169,11 @@ Do NOT:
   form, an external API).
 - Expose a config-editing endpoint on the dashboard (we don't —
   `/api/config` is read-only and masked).
+- Set `ANDYBIOTICLAW_AGENT_CAN_BASH=1` in the service's systemd unit
+  or in any file the daemon reads at startup — that would defeat the
+  gate for Emma's subprocess env. It belongs only in the principal's
+  interactive shell (e.g. `.bashrc`) or inline before a one-off
+  invocation.
 
 ### Dashboard is localhost-only by default
 

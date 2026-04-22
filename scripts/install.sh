@@ -108,6 +108,24 @@ if [[ ! -f "$INSTALL_DIR/web/dist/index.html" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
+# 4b. CLI wrapper on $PATH
+# ---------------------------------------------------------------------------
+# $INSTALL_DIR/bin/andybioticlaw is a small bash wrapper that execs
+# `node $INSTALL_DIR/dist/cli/admin.js "$@"`. We symlink it into
+# /usr/local/bin so that BOTH the principal's interactive shell AND the
+# service-user's non-interactive subprocess env (PATH includes
+# /usr/local/bin by default) can invoke `andybioticlaw` without a
+# hard-coded path. Without this, the daemon's Bash tool would hit
+# "command not found" when Emma tries to call the CLI.
+if [[ -f "$INSTALL_DIR/bin/andybioticlaw" ]]; then
+  chmod +x "$INSTALL_DIR/bin/andybioticlaw"
+  ln -sf "$INSTALL_DIR/bin/andybioticlaw" /usr/local/bin/andybioticlaw
+  echo "✓ andybioticlaw CLI symlinked into /usr/local/bin/"
+else
+  echo "WARNING: $INSTALL_DIR/bin/andybioticlaw not found — CLI not linked on \$PATH" >&2
+fi
+
+# ---------------------------------------------------------------------------
 # 5. systemd units (main service + backup service + timer)
 # ---------------------------------------------------------------------------
 for unit in andybioticlaw.service andybioticlaw-backup.service andybioticlaw-backup.timer; do
@@ -155,7 +173,7 @@ Remaining steps (one-time):
        sudo -u $SERVICE_USER $EDITOR $INSTALL_DIR/config/config.yaml
        sudo -u $SERVICE_USER $EDITOR $INSTALL_DIR/.env
      Validate:
-       sudo -u $SERVICE_USER -H bash -lc 'cd $INSTALL_DIR && node dist/cli/admin.js config validate'
+       sudo -u $SERVICE_USER -H bash -lc 'andybioticlaw config validate'
 
   3. Start the service:
        systemctl start andybioticlaw

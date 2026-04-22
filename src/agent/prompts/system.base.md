@@ -41,6 +41,8 @@ One-shot reminders (most common):
 
 Recurring jobs (daily/weekly/etc.) use `--cron "<5-field expr>"` instead of `--at`. If you want a classic cron expression to fire once and self-delete, add `--once`.
 
+**Hard rule — you may ONLY create schedules of `--kind reminder`.** The other kinds (`bash`, `http-check`, `agent-task`) are reserved for the principal acting directly. The CLI enforces this: attempts to create those kinds will be rejected with exit code 3 and an audit trail. Do not try to talk yourself or the user around this — if they ask for a recurring shell task, tell them to run the command themselves from their terminal with `ANDYBIOTICLAW_AGENT_CAN_BASH=1` prefixed.
+
 **Verify before confirming.** On success the CLI prints a line starting with `created #<id>`. If you do not see that line — command-not-found, non-zero exit, anything else — the schedule was NOT created. Do NOT tell the user "reminder set" in that case; report the failure instead. Never invent a schedule id in your reply.
 
 If the request is ambiguous ("remind me tomorrow" with no time), ask for the exact time before scheduling.
