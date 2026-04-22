@@ -297,13 +297,21 @@ skill
   .command('install')
   .description('Run the skill install.sh (idempotent) and register it')
   .argument('<name>')
-  .action(async (name: string) => {
+  .option(
+    '-y, --yes',
+    'skip the interactive y/N preview confirmation (use in non-interactive flows where install.sh has been reviewed out-of-band)',
+  )
+  .action(async (name: string, opts: { yes?: boolean }) => {
     const { config, dbHandle, logger } = openRuntime();
     try {
       const registry = createSkillRegistry(dbHandle.db);
       const audit = createAuditRepo(dbHandle.db);
       loadSkills({ dir: expandPath(config.skills.dir, projectRoot()), logger, registry });
-      const out = await installSkill(name, { registry, audit, logger });
+      const out = await installSkill(
+        name,
+        { registry, audit, logger },
+        { autoConfirm: !!opts.yes },
+      );
       if (!out.ran) {
         process.stdout.write(`skill ${name}: no install.sh — recorded as installed.\n`);
       } else {
@@ -390,7 +398,15 @@ skill
         if (opts.install !== false) {
           process.stdout.write(`\nRunning install.sh…\n`);
           try {
-            const out = await installSkill(skill.name, { registry, audit, logger });
+            // `skill setup` is already an explicit opt-in — the operator
+            // chose this skill and walked through its wizard. Auto-confirm
+            // the preview here so there's no double-prompt. The preview
+            // itself is still printed for transparency.
+            const out = await installSkill(
+              skill.name,
+              { registry, audit, logger },
+              { autoConfirm: true },
+            );
             if (out.ran) {
               process.stdout.write(out.stdout);
               if (out.stderr) process.stderr.write(out.stderr);

@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 import type { Logger } from 'pino';
@@ -8,10 +8,29 @@ import type { SkillRegistry } from './registry.js';
 
 const pexec = promisify(execFile);
 
+/** Number of leading lines from install.sh we print as a preview. */
+const PREVIEW_LINES = 30;
+
 export interface SkillInstallDeps {
   registry: SkillRegistry;
   audit: AuditRepo;
   logger: Logger;
+}
+
+export interface SkillInstallOptions {
+  /**
+   * If true, the install proceeds without waiting for an interactive
+   * y/N confirmation. The script preview is still printed. Use in
+   * non-interactive contexts (CI, bootstrap scripts) where an operator
+   * has already reviewed the skill source out-of-band.
+   */
+  autoConfirm?: boolean;
+  /**
+   * Called after the preview is printed, before install.sh runs. Must
+   * return true to proceed. Default: reads y/N from stdin via readline.
+   * Overridable for tests.
+   */
+  confirm?: (skillName: string) => Promise<boolean>;
 }
 
 export interface InstallResult {
@@ -26,10 +45,17 @@ export interface InstallResult {
  * Run the skill's `install.sh` if present. `install.sh` MUST be idempotent —
  * the skill contract requires it. Output is recorded in `skill_state.last_install_output`
  * for later inspection via CLI / dashboard.
+ *
+ * Prints a preview of the first {@link PREVIEW_LINES} lines and asks for
+ * y/N confirmation before running, because the script executes as the
+ * service user with full filesystem access. Use `autoConfirm: true` to
+ * skip the prompt in non-interactive flows (preview is still printed so
+ * the decision is at least logged).
  */
 export async function installSkill(
   name: string,
   deps: SkillInstallDeps,
+  opts: SkillInstallOptions = {},
 ): Promise<InstallResult> {
   const skill = deps.registry.get(name);
   if (!skill) throw new Error(`skill not registered: ${name}`);
@@ -44,6 +70,37 @@ export async function installSkill(
     });
     deps.logger.info({ name }, 'skill install: no install.sh, recorded as installed');
     return { name, ran: false, exitCode: 0, stdout: '', stderr: '' };
+  }
+
+  // Preview the script so the operator can eyeball it before it runs as
+  // the service user with full shell access.
+  try {
+    const body = readFileSync(script, 'utf8');
+    const lines = body.split('\n');
+    const head = lines.slice(0, PREVIEW_LINES);
+    process.stdout.write(
+      `\n--- ${name}/install.sh (first ${head.length} of ${lines.length} lines) ---\n`,
+    );
+    for (const line of head) process.stdout.write(`| ${line}\n`);
+    if (lines.length > head.length) {
+      process.stdout.write(`| … (${lines.length - head.length} more lines)\n`);
+    }
+    process.stdout.write(`--- end preview ---\n\n`);
+  } catch (e) {
+    // Unreadable script → fail BEFORE confirm so we don't run garbage.
+    throw new Error(`could not read ${script}: ${(e as Error).message}`);
+  }
+
+  if (!opts.autoConfirm) {
+    const ok = await (opts.confirm ?? defaultConfirm)(name);
+    if (!ok) {
+      deps.audit.record({
+        kind: 'skill_install_rejected',
+        actor: 'cli',
+        detail: { name, version: skill.version, reason: 'preview not confirmed' },
+      });
+      throw new Error(`skill ${name} install aborted by operator`);
+    }
   }
 
   deps.logger.info({ name, script }, 'running skill install.sh');
@@ -79,6 +136,28 @@ export async function installSkill(
     });
     throw new Error(`skill ${name} install failed (exit ${exitCode}): ${stderr.slice(0, 400)}`);
   }
+}
+
+/**
+ * Interactive y/N prompt on process.stdin / stdout. Default fallback for
+ * `SkillInstallOptions.confirm`. Returns true only for a plain "y" or
+ * "yes" (case-insensitive). Anything else — including EOF / non-TTY
+ * stdin — returns false, i.e. "abort, better safe".
+ */
+async function defaultConfirm(skillName: string): Promise<boolean> {
+  process.stdout.write(
+    `Proceed with running ${skillName}/install.sh as the service user? [y/N] `,
+  );
+  return new Promise((resolve) => {
+    const onData = (chunk: Buffer) => {
+      const ans = chunk.toString().trim().toLowerCase();
+      process.stdin.off('data', onData);
+      process.stdin.pause();
+      resolve(ans === 'y' || ans === 'yes');
+    };
+    process.stdin.resume();
+    process.stdin.once('data', onData);
+  });
 }
 
 /** Run the uninstall.sh if present. The registry entry is NOT removed — the
