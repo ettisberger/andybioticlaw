@@ -105,13 +105,27 @@ export function envSecretsStore(): SecretsStore {
 }
 
 /**
- * Default `SkillPermissions` that reads from a registry Map. Phase 1 uses an
- * empty map since no skills are loaded; Phase 3 wires the real skill registry.
+ * Default `SkillPermissions` that reads from a snapshot Map. Prefer
+ * `liveSkillPermissions()` in production — a snapshot taken at service
+ * startup misses skills added later via SIGHUP skill-rescan.
  */
 export function staticSkillPermissions(
   table: ReadonlyMap<string, ReadonlyArray<string>>,
 ): SkillPermissions {
   return {
     requiredSecrets: (skillName) => table.get(skillName) ?? [],
+  };
+}
+
+/**
+ * `SkillPermissions` backed by a thunk that re-reads the registry on every
+ * call. Use this in the service wiring so SIGHUP-added skills can resolve
+ * their secrets without a restart.
+ */
+export function liveSkillPermissions(
+  getTable: () => ReadonlyMap<string, ReadonlyArray<string>>,
+): SkillPermissions {
+  return {
+    requiredSecrets: (skillName) => getTable().get(skillName) ?? [],
   };
 }

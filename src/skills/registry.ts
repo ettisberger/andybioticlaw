@@ -12,6 +12,8 @@ export interface SkillRecord {
   aptDependencies: readonly string[];
   systemCommands: readonly string[];
   mcpServers: SkillManifest['mcp_servers'];
+  /** Setup-wizard definition (for `andybioticlaw skill setup <name>`), if any. */
+  setupWizard?: SkillManifest['setup_wizard'];
   manifestPath: string;
   skillMdPath: string;
   skillDir: string;

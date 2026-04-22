@@ -18,6 +18,36 @@ const SEMVER_RE = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
 export const SkillScope = z.enum(['dm', 'group']);
 export type SkillScope = z.infer<typeof SkillScope>;
 
+/**
+ * Optional "setup wizard" block declaring the questions the CLI wizard asks
+ * when installing this skill. One question per env-var the skill needs.
+ *
+ * The wizard skips any key that's already non-empty in `.env` (the CLI
+ * prints "already set, reusing" and moves on), writes newly-collected
+ * values, then calls `install.sh`. Secrets are masked while typing.
+ */
+export const WizardQuestion = z.object({
+  /** Env var name — must match one of `required_secrets` to be injectable. */
+  key: z.string().regex(SECRET_NAME_RE, 'wizard key must be UPPER_SNAKE_CASE'),
+  /** Prompt the user sees. */
+  prompt: z.string().min(1).max(300),
+  /** Default value used when the user just presses Enter. */
+  default: z.string().optional(),
+  /** If true: no echo while typing, and the value is shown as "***" in logs. */
+  secret: z.boolean().default(false),
+  /** Crude built-in validators. */
+  validate: z.enum(['nonempty', 'email', 'port', 'url']).optional(),
+  /** Longer explanation shown before the prompt (one line). */
+  help: z.string().max(500).optional(),
+});
+export type WizardQuestion = z.infer<typeof WizardQuestion>;
+
+export const SetupWizard = z.object({
+  description: z.string().min(1).max(500),
+  questions: z.array(WizardQuestion).default([]),
+});
+export type SetupWizard = z.infer<typeof SetupWizard>;
+
 export const SkillManifest = z.object({
   name: z.string().regex(NAME_RE, 'name must be kebab-case, starting with a letter'),
   version: z.string().regex(SEMVER_RE, 'version must be semver'),
@@ -30,6 +60,8 @@ export const SkillManifest = z.object({
   apt_dependencies: z.array(z.string()).default([]),
   system_commands: z.array(z.string()).default([]),
   mcp_servers: z.array(McpServerConfig).default([]),
+  /** Optional CLI wizard triggered by `andybioticlaw skill setup <name>`. */
+  setup_wizard: SetupWizard.optional(),
 });
 export type SkillManifest = z.infer<typeof SkillManifest>;
 

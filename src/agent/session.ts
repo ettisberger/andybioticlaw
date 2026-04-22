@@ -172,10 +172,25 @@ export async function executeSession(
   const mcpPath = mcpConfigPath(sessionDir);
   writeMcpConfig(mcpPath, mcpConfigObject);
 
-  // Per-skill env additions (secrets). We only add a secret here if the skill
-  // declares it; `resolveSkillSecret` should throw otherwise and get audited.
-  const extraEnv: Record<string, string> = {};
+  // Per-skill env additions.
+  //
+  //  - Secrets: only injected if the skill declares them in required_secrets.
+  //    `resolveSkillSecret` throws + audits on scope violations.
+  //  - SKILL_<NAME>_DIR: absolute path to the skill's folder, so skill
+  //    scripts (e.g. himalaya's commit-send wrapper) can locate their
+  //    siblings without hard-coding paths. Name case: underscores instead
+  //    of hyphens, uppercase. `himalaya` → `SKILL_HIMALAYA_DIR`.
+  //  - ANDYBIOTICLAW_SESSION_ID + ANDYBIOTICLAW_DB_PATH + ANDYBIOTICLAW_CHAT_ID:
+  //    used by skill wrappers that write to our SQLite DB with a session
+  //    invariant (e.g. the himalaya HITL send gate).
+  const extraEnv: Record<string, string> = {
+    ANDYBIOTICLAW_SESSION_ID: sessionId,
+    ANDYBIOTICLAW_CHAT_ID: input.chatId,
+    ANDYBIOTICLAW_DB_PATH: input.dbPath,
+  };
   for (const skill of activeSkills) {
+    const envKey = `SKILL_${skill.name.toUpperCase().replace(/-/g, '_')}_DIR`;
+    extraEnv[envKey] = skill.skillDir;
     for (const secretName of skill.requiredSecrets) {
       try {
         const value = deps.resolveSkillSecret(skill.name, secretName);

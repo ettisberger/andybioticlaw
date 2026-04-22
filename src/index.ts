@@ -6,7 +6,7 @@ import { createReloadController } from './config/reload.js';
 import {
   createSecretsManager,
   envSecretsStore,
-  staticSkillPermissions,
+  liveSkillPermissions,
 } from './config/secrets.js';
 import {
   expandPath,
@@ -115,7 +115,7 @@ async function main(): Promise<void> {
   // refreshed each time we re-scan skills (startup + install/uninstall CLI).
   const secrets = createSecretsManager({
     store: envSecretsStore(),
-    skills: staticSkillPermissions(skillRegistry.requiredSecretsTable()),
+    skills: liveSkillPermissions(() => skillRegistry.requiredSecretsTable()),
     audit,
   });
   logSecretsAvailability(logger, secrets);

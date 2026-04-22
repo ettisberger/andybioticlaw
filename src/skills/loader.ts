@@ -72,6 +72,7 @@ export function loadSkills(opts: SkillLoadOptions): SkillLoadResult {
         aptDependencies: manifest.apt_dependencies,
         systemCommands: manifest.system_commands,
         mcpServers: manifest.mcp_servers,
+        setupWizard: manifest.setup_wizard,
         manifestPath,
         skillMdPath,
         skillDir: full,

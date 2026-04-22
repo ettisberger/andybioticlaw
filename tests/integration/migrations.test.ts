@@ -31,6 +31,7 @@ describe('migration runner — fresh boot', () => {
         'memory',
         'memory_proposals',
         'messages',
+        'pending_email_sends',
         'schedule_runs',
         'schedules',
         'schema_version',
@@ -44,7 +45,7 @@ describe('migration runner — fresh boot', () => {
         .prepare<[], { version: number }>('SELECT version FROM schema_version ORDER BY version')
         .all()
         .map((r) => r.version);
-      expect(versions).toEqual([1, 2]);
+      expect(versions).toEqual([1, 2, 3]);
 
       close();
     } finally {
@@ -63,7 +64,7 @@ describe('migration runner — fresh boot', () => {
       const rows = second.db
         .prepare<[], { n: number }>('SELECT COUNT(*) AS n FROM schema_version')
         .all();
-      expect(rows[0]!.n).toBe(2);
+      expect(rows[0]!.n).toBe(3);
       second.close();
     } finally {
       rmSync(dir, { recursive: true, force: true });

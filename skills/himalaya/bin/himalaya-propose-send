@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# himalaya-propose-send — write an outgoing-email draft to
+# pending_email_sends and print the proposal id. Does NOT send.
+#
+# Emma is instructed (via SKILL.md) to draft the email, show it to the
+# principal in Telegram, and call this wrapper. A subsequent TURN (i.e.
+# after the principal replies with confirmation) must call
+# `himalaya-commit-send <id>` to actually transmit the email.
+#
+# The commit wrapper enforces at the DB level that commit_session_id
+# differs from propose_session_id — so a single injected session cannot
+# both draft AND send.
+#
+# Usage:
+#   himalaya-propose-send --to <addr> --subject "…" --body "…" [--cc <a>] [--bcc <a>]
+#
+# Prints:
+#   <proposal-id>
+
+set -euo pipefail
+
+if [[ -z "${ANDYBIOTICLAW_SESSION_ID:-}" || -z "${ANDYBIOTICLAW_DB_PATH:-}" || -z "${ANDYBIOTICLAW_CHAT_ID:-}" ]]; then
+  echo "ERROR: himalaya-propose-send must run inside an andybioticlaw session" >&2
+  echo "  (expected env: ANDYBIOTICLAW_SESSION_ID, ANDYBIOTICLAW_DB_PATH, ANDYBIOTICLAW_CHAT_ID)" >&2
+  exit 64
+fi
+
+TO=""
+SUBJECT=""
+BODY=""
+CC=""
+BCC=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --to)      TO="$2"; shift 2 ;;
+    --subject) SUBJECT="$2"; shift 2 ;;
+    --body)    BODY="$2"; shift 2 ;;
+    --cc)      CC="$2"; shift 2 ;;
+    --bcc)     BCC="$2"; shift 2 ;;
+    *)
+      echo "unknown arg: $1" >&2
+      exit 65
+      ;;
+  esac
+done
+
+if [[ -z "$TO" || -z "$SUBJECT" || -z "$BODY" ]]; then
+  echo "ERROR: --to, --subject, --body are all required" >&2
+  exit 65
+fi
+
+# sqlite3 param binding via .parameter — uses the sqlite3 CLI, which is
+# installed on any box where himalaya was also installed.
+NOW_MS="$(perl -E 'say int(time * 1000)' 2>/dev/null || date +%s000)"
+
+# Escape single quotes for safe SQL-literal embedding. `sqlite3` has no
+# true parameter binding in CLI mode across multiple statements, so we
+# do one invocation with a single transaction. That keeps
+# `last_insert_rowid()` stable across the INSERT and the SELECT.
+esc() { printf '%s' "$1" | sed "s/'/''/g"; }
+
+SID_E=$(esc "$ANDYBIOTICLAW_SESSION_ID")
+CHAT_E=$(esc "$ANDYBIOTICLAW_CHAT_ID")
+TO_E=$(esc "$TO")
+SUBJ_E=$(esc "$SUBJECT")
+BODY_E=$(esc "$BODY")
+CC_E=$(esc "$CC")
+BCC_E=$(esc "$BCC")
+SUBJ_TRUNC_E=$(printf '%s' "$SUBJECT" | head -c 200 | sed "s/'/''/g")
+
+ID=$(sqlite3 "$ANDYBIOTICLAW_DB_PATH" <<SQL
+BEGIN;
+INSERT INTO pending_email_sends
+  (propose_session_id, chat_id, to_addr, subject, body, cc_addr, bcc_addr, status, created_at)
+VALUES
+  ('$SID_E', '$CHAT_E', '$TO_E', '$SUBJ_E', '$BODY_E',
+   NULLIF('$CC_E', ''), NULLIF('$BCC_E', ''),
+   'pending', $NOW_MS);
+SELECT last_insert_rowid();
+INSERT INTO audit (at, kind, actor, detail)
+VALUES ($NOW_MS, 'email_send_proposed',
+        'session:$SID_E',
+        json_object('proposalId', last_insert_rowid(),
+                    'to', '$TO_E',
+                    'subject', '$SUBJ_TRUNC_E'));
+COMMIT;
+SQL
+)
+
+ID=$(printf '%s' "$ID" | head -1 | tr -d '[:space:]')
+if [[ -z "$ID" || "$ID" == "0" ]]; then
+  echo "ERROR: failed to record pending send (got id '$ID')" >&2
+  exit 1
+fi
+
+echo "$ID"

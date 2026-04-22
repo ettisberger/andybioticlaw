@@ -14,6 +14,8 @@ import { createSchedulesRepo } from '../db/repositories/schedules.js';
 import { parsePayload, ScheduleKind } from '../scheduler/payloads.js';
 import cron from 'node-cron';
 import pino from 'pino';
+import { runSetupWizard, WizardAbortedError } from './wizard.js';
+import { defaultEnvPath } from '../config/paths.js';
 
 const program = new Command();
 
@@ -257,6 +259,7 @@ skill
             aptDependencies: rec.aptDependencies,
             systemCommands: rec.systemCommands,
             mcpServers: rec.mcpServers,
+            setupWizard: rec.setupWizard ?? null,
             manifestPath: rec.manifestPath,
             skillMdPath: rec.skillMdPath,
           },
@@ -293,6 +296,119 @@ skill
       dbHandle.close();
     }
   });
+
+skill
+  .command('setup')
+  .description(
+    'Run the skill setup wizard (collects env vars interactively, then runs install.sh).',
+  )
+  .argument('[name]', 'skill name; if omitted, lists skills with a wizard')
+  .option('--no-install', 'collect values only, skip install.sh')
+  .option('--no-sighup', "don't SIGHUP the running daemon after install")
+  .action(
+    async (
+      name: string | undefined,
+      opts: { install?: boolean; sighup?: boolean },
+    ) => {
+      const { config, dataDir, dbHandle, logger } = openRuntime();
+      try {
+        const registry = createSkillRegistry(dbHandle.db);
+        const audit = createAuditRepo(dbHandle.db);
+        loadSkills({
+          dir: expandPath(config.skills.dir, projectRoot()),
+          logger,
+          registry,
+        });
+
+        if (!name) {
+          const withWizard = registry.list().filter((s) => s.setupWizard);
+          if (withWizard.length === 0) {
+            process.stdout.write('(no installed skills declare a setup wizard)\n');
+            return;
+          }
+          process.stdout.write(
+            'Skills with a setup wizard:\n' +
+              withWizard
+                .map(
+                  (s) =>
+                    `  • ${s.name}@${s.version}  — ${s.setupWizard!.description}`,
+                )
+                .join('\n') +
+              '\n\nRun:  andybioticlaw skill setup <name>\n',
+          );
+          return;
+        }
+
+        const skill = registry.get(name);
+        if (!skill) {
+          process.stderr.write(`no skill named ${name}\n`);
+          process.exit(1);
+        }
+        if (!skill.setupWizard) {
+          process.stderr.write(
+            `skill ${name} has no setup_wizard block in its manifest.yaml\n`,
+          );
+          process.exit(2);
+        }
+
+        const envPath = defaultEnvPath(projectRoot());
+
+        try {
+          await runSetupWizard({
+            skillName: skill.name,
+            wizard: skill.setupWizard,
+            envPath,
+          });
+        } catch (e) {
+          if (e instanceof WizardAbortedError) {
+            process.exit(130);
+          }
+          throw e;
+        }
+
+        if (opts.install !== false) {
+          process.stdout.write(`\nRunning install.sh…\n`);
+          try {
+            const out = await installSkill(skill.name, { registry, audit, logger });
+            if (out.ran) {
+              process.stdout.write(out.stdout);
+              if (out.stderr) process.stderr.write(out.stderr);
+            } else {
+              process.stdout.write(`(no install.sh — skill recorded as installed.)\n`);
+            }
+          } catch (e) {
+            process.stderr.write(`install.sh FAILED: ${(e as Error).message}\n`);
+            process.exit(3);
+          }
+        }
+
+        if (opts.sighup !== false) {
+          const pidPath = pidFilePath(dataDir);
+          if (existsSync(pidPath)) {
+            const pid = parseInt(readFileSync(pidPath, 'utf8').trim(), 10);
+            try {
+              process.kill(pid, 'SIGHUP');
+              process.stdout.write(
+                `\n✓ SIGHUP sent to pid ${pid} — skill registry will re-scan.\n`,
+              );
+            } catch (e) {
+              process.stderr.write(
+                `could not SIGHUP daemon (pid ${pid}): ${(e as Error).message}\n`,
+              );
+            }
+          } else {
+            process.stdout.write(
+              `\n(daemon not running — skill will be picked up on next start.)\n`,
+            );
+          }
+        }
+
+        process.stdout.write(`\nSkill "${skill.name}" is ready.\n`);
+      } finally {
+        dbHandle.close();
+      }
+    },
+  );
 
 skill
   .command('uninstall')

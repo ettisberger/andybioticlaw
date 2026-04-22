@@ -1,0 +1,170 @@
+#!/usr/bin/env bash
+# himalaya-commit-send — actually send a previously-proposed email.
+#
+# Hard invariant: the commit must run in a DIFFERENT agent session than
+# the proposal. That guarantees a principal user-turn occurred between
+# draft and send — so a single-session prompt injection from an inbound
+# email cannot both draft AND send, even if Claude's instruction-
+# following is subverted.
+#
+# Usage:
+#   himalaya-commit-send <proposal-id>
+
+set -euo pipefail
+
+if [[ -z "${ANDYBIOTICLAW_SESSION_ID:-}" || -z "${ANDYBIOTICLAW_DB_PATH:-}" ]]; then
+  echo "ERROR: himalaya-commit-send must run inside an andybioticlaw session" >&2
+  exit 64
+fi
+
+if [[ $# -ne 1 ]]; then
+  echo "usage: himalaya-commit-send <proposal-id>" >&2
+  exit 65
+fi
+PROP_ID="$1"
+if ! [[ "$PROP_ID" =~ ^[0-9]+$ ]]; then
+  echo "proposal id must be an integer" >&2
+  exit 65
+fi
+
+NOW_MS="$(perl -E 'say int(time * 1000)' 2>/dev/null || date +%s000)"
+MAX_AGE_MS=600000   # 10 minutes
+
+# Fetch each column individually so multi-line bodies don't break parsing.
+# `sqlite3` with no .mode / .separator prints bare values; each call runs
+# in a fresh session which is fine — we're reading not writing.
+fetch_col() {
+  sqlite3 "$ANDYBIOTICLAW_DB_PATH" \
+    "SELECT COALESCE($1, '') FROM pending_email_sends WHERE id = $PROP_ID;"
+}
+
+STATUS="$(fetch_col 'status')"
+if [[ -z "$STATUS" ]]; then
+  echo "ERROR: no pending email with id $PROP_ID" >&2
+  exit 2
+fi
+
+PROP_SID="$(fetch_col 'propose_session_id')"
+TO="$(fetch_col 'to_addr')"
+SUBJECT="$(fetch_col 'subject')"
+# BODY is special — multi-line — so we dump it via a mode that preserves
+# newlines. `.mode list` with no separator gets us the raw column value
+# followed by a single newline, which is stripped with a final sed.
+BODY="$(sqlite3 "$ANDYBIOTICLAW_DB_PATH" \
+  ".mode list" ".separator \"\\n\"" \
+  "SELECT body FROM pending_email_sends WHERE id = $PROP_ID;")"
+CC="$(fetch_col 'cc_addr')"
+BCC="$(fetch_col 'bcc_addr')"
+CREATED_AT="$(fetch_col 'created_at')"
+
+# --- invariant checks ---------------------------------------------------
+if [[ "$STATUS" != "pending" ]]; then
+  echo "ERROR: proposal $PROP_ID is already $STATUS — cannot commit" >&2
+  exit 3
+fi
+
+if [[ "$PROP_SID" == "$ANDYBIOTICLAW_SESSION_ID" ]]; then
+  echo "ERROR: commit session must differ from propose session." >&2
+  echo "  This would bypass the human-in-the-loop confirmation gate." >&2
+  echo "  Ask the principal to confirm in a SEPARATE Telegram message, then retry." >&2
+  # Mark the proposal cancelled so this injection attempt is auditable.
+  sqlite3 "$ANDYBIOTICLAW_DB_PATH" <<SQL > /dev/null
+UPDATE pending_email_sends
+   SET status = 'cancelled', decided_at = $NOW_MS, commit_error = 'same-session-bypass-attempt'
+ WHERE id = $PROP_ID;
+INSERT INTO audit (at, kind, actor, detail)
+VALUES ($NOW_MS, 'email_send_blocked_same_session',
+        'session:$ANDYBIOTICLAW_SESSION_ID',
+        json_object('proposalId', $PROP_ID, 'reason', 'same session as propose'));
+SQL
+  exit 4
+fi
+
+AGE_MS=$(( NOW_MS - CREATED_AT ))
+if (( AGE_MS > MAX_AGE_MS )); then
+  echo "ERROR: proposal $PROP_ID expired (age ${AGE_MS}ms > ${MAX_AGE_MS}ms)" >&2
+  sqlite3 "$ANDYBIOTICLAW_DB_PATH" \
+    "UPDATE pending_email_sends SET status='expired', decided_at=$NOW_MS WHERE id=$PROP_ID AND status='pending';" \
+    > /dev/null
+  exit 5
+fi
+
+# --- invariants passed — actually send ---------------------------------
+# Preflight: the subprocess must have BOTH SMTP_FROM (for the From header)
+# and SMTP_PASS (resolved by himalaya at runtime via `printenv SMTP_PASS`,
+# used for both IMAP and SMTP auth in the generated config.toml). If either
+# is missing it means the skill-scoped secret injector didn't populate them
+# for this session — fail early with a clear error rather than letting
+# himalaya bail out with a cryptic "password is empty".
+SMTP_FROM_VAL="${SMTP_FROM:-}"
+if [[ -z "$SMTP_FROM_VAL" ]]; then
+  echo "ERROR: SMTP_FROM not in env — skill secret injection missing" >&2
+  exit 6
+fi
+if [[ -z "${SMTP_PASS:-}" ]]; then
+  echo "ERROR: SMTP_PASS not in env — skill secret injection missing" >&2
+  echo "  himalaya needs SMTP_PASS for both IMAP and SMTP auth." >&2
+  echo "  Check that 'himalaya' is in the active skills list and that" >&2
+  echo "  SMTP_PASS is set in .env." >&2
+  exit 6
+fi
+
+# Himalaya 1.2's `message send` takes a raw RFC 5322 message on stdin.
+# Build it: headers, blank line, body. UTF-8 is declared explicitly so
+# non-ASCII bodies (ü, ä, emoji, etc.) survive intact.
+TMP_MSG="$(mktemp -t himalaya-msg.XXXXXX)"
+TMP_ERR="$(mktemp -t himalaya-commit.XXXXXX)"
+trap 'rm -f "$TMP_MSG" "$TMP_ERR"' EXIT
+
+{
+  printf 'From: %s\n' "$SMTP_FROM_VAL"
+  printf 'To: %s\n'   "$TO"
+  [[ -n "$CC"  ]] && printf 'Cc: %s\n'  "$CC"
+  [[ -n "$BCC" ]] && printf 'Bcc: %s\n' "$BCC"
+  printf 'Subject: %s\n' "$SUBJECT"
+  printf 'MIME-Version: 1.0\n'
+  printf 'Content-Type: text/plain; charset=utf-8\n'
+  printf 'Content-Transfer-Encoding: 8bit\n'
+  printf '\n'
+  printf '%s' "$BODY"
+} > "$TMP_MSG"
+
+if himalaya message send -a personal < "$TMP_MSG" 2>"$TMP_ERR"; then
+  sqlite3 "$ANDYBIOTICLAW_DB_PATH" <<SQL > /dev/null
+UPDATE pending_email_sends
+   SET status = 'sent',
+       decided_at = $NOW_MS,
+       commit_session_id = '$ANDYBIOTICLAW_SESSION_ID'
+ WHERE id = $PROP_ID;
+INSERT INTO audit (at, kind, actor, detail)
+VALUES ($NOW_MS, 'email_sent',
+        'session:$ANDYBIOTICLAW_SESSION_ID',
+        json_object('proposalId', $PROP_ID,
+                    'to', '$(printf '%s' "$TO"      | sed "s/'/''/g")',
+                    'subject', '$(printf '%s' "$SUBJECT" | head -c 200 | sed "s/'/''/g")',
+                    'commitSession', '$ANDYBIOTICLAW_SESSION_ID',
+                    'proposeSession', '$(printf '%s' "$PROP_SID" | sed "s/'/''/g")'));
+SQL
+  echo "✓ sent proposal $PROP_ID to $TO"
+  exit 0
+else
+  # Capture the full stderr (up to 2kB) — himalaya prints the top-level
+  # "Error:" on line 1 and the actual cause ("cannot get imap password",
+  # "connection refused", etc.) on subsequent "   N: ..." lines. Stripping
+  # to the first line makes every failure look identical and unfixable.
+  # Also strip ANSI color escapes so the DB stays readable.
+  ERR="$(sed $'s/\x1b\\[[0-9;]*m//g' "$TMP_ERR" 2>/dev/null | head -c 2000)"
+  sqlite3 "$ANDYBIOTICLAW_DB_PATH" <<SQL > /dev/null
+UPDATE pending_email_sends
+   SET commit_error = '$(printf '%s' "$ERR" | sed "s/'/''/g")'
+ WHERE id = $PROP_ID;
+INSERT INTO audit (at, kind, actor, detail)
+VALUES ($NOW_MS, 'email_send_failed',
+        'session:$ANDYBIOTICLAW_SESSION_ID',
+        json_object('proposalId', $PROP_ID,
+                    'error', '$(printf '%s' "$ERR" | sed "s/'/''/g")'));
+SQL
+  echo "ERROR: himalaya send failed:" >&2
+  printf '%s\n' "$ERR" >&2
+  exit 7
+fi
