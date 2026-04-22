@@ -641,9 +641,47 @@ schedule
         process.stderr.write(`payload invalid: ${(e as Error).message}\n`);
         process.exit(2);
       }
+
+      // Agent-bash gate. Emma can shell out to this CLI, so a prompt
+      // injection could otherwise talk her into creating `--kind bash`
+      // schedules that run arbitrary shell commands as the service user.
+      // Gate: only allow kinds other than `reminder` when the caller sets
+      // ANDYBIOTICLAW_AGENT_CAN_BASH=1 — Emma's subprocess env does NOT
+      // carry that, but the principal's interactive shell can export it
+      // (or prefix it inline: `ANDYBIOTICLAW_AGENT_CAN_BASH=1 andybioticlaw
+      // schedule add --kind bash ...`). On rejection we write an audit
+      // row the principal can spot in the dashboard.
+      const agentCanBash = process.env.ANDYBIOTICLAW_AGENT_CAN_BASH === '1';
+      if (!agentCanBash && kindRes.data !== 'reminder') {
+        const { dbHandle } = openRuntime();
+        try {
+          const auditRepo = createAuditRepo(dbHandle.db);
+          auditRepo.record({
+            kind: 'schedule_kind_gate_blocked',
+            actor: 'cli',
+            detail: {
+              attemptedKind: kindRes.data,
+              name: opts.name,
+              cron: cronExpr,
+              reason: 'ANDYBIOTICLAW_AGENT_CAN_BASH not set',
+            },
+          });
+        } finally {
+          dbHandle.close();
+        }
+        process.stderr.write(
+          `refusing to create schedule of kind "${kindRes.data}" — only 'reminder' is permitted\n` +
+            `when ANDYBIOTICLAW_AGENT_CAN_BASH is not set.\n` +
+            `If you (the principal) really want this, prefix the command:\n` +
+            `  ANDYBIOTICLAW_AGENT_CAN_BASH=1 andybioticlaw schedule add ...\n`,
+        );
+        process.exit(3);
+      }
+
       const { dbHandle, dataDir } = openRuntime();
       try {
         const repo = createSchedulesRepo(dbHandle.db);
+        const auditRepo = createAuditRepo(dbHandle.db);
         if (repo.getByName(opts.name)) {
           process.stderr.write(`schedule named "${opts.name}" already exists\n`);
           process.exit(1);
@@ -657,6 +695,23 @@ schedule
           recurring,
           budget_tokens_per_day: opts.budget ? Number(opts.budget) : null,
         });
+        // When the gate flag is unset, this CLI call almost certainly
+        // originated from the agent (the principal's interactive shell
+        // would have it exported). Log that for post-hoc inspection —
+        // even harmless `reminder` creations are worth tracing.
+        if (!agentCanBash) {
+          auditRepo.record({
+            kind: 'schedule_created_by_agent',
+            actor: 'cli',
+            detail: {
+              id: row.id,
+              name: row.name,
+              kind: row.kind,
+              cron: row.cron_expr,
+              recurring,
+            },
+          });
+        }
         const tag = recurring ? '' : '  (one-shot)';
         process.stdout.write(
           `created #${row.id}  ${row.name}  [${row.kind}]  cron='${row.cron_expr}'${tag}${row.enabled ? '' : '  (disabled)'}\n`,
