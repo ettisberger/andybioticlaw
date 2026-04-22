@@ -14,6 +14,7 @@ import { assembleContext } from './context.js';
 import type { ContextAssemblyInput, SkillPromptSnapshot } from './context.js';
 import { runClaude } from './runner.js';
 import type { RunClaudeResult } from './runner.js';
+import type { RateLimitTracker } from './rate-limit-tracker.js';
 import { readFileSync } from 'node:fs';
 
 export interface StreamSink {
@@ -57,6 +58,8 @@ export interface SessionExecuteDeps {
   memoryManager: MemoryManager;
   skills: SkillRegistry;
   logger: Logger;
+  /** Captures the latest `rate_limit_event` payload the CLI emits during sessions. */
+  rateLimitTracker?: RateLimitTracker;
   /**
    * Used to resolve skill-scoped secrets when building the MCP config. Should
    * wrap the scoped secrets manager so a scope violation throws and audits.
@@ -214,6 +217,7 @@ export async function executeSession(
     },
     onRateLimit: (info) => {
       deps.logger.debug({ info }, 'rate-limit event from claude');
+      deps.rateLimitTracker?.record(info);
     },
     onToolUse: (name) => {
       deps.logger.debug({ tool: name }, 'tool use observed');

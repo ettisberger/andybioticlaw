@@ -59,6 +59,8 @@ export interface BotDeps {
   sessionWorkspaceRoot: string;
   /** Resolves a skill's scoped secret. Throws if out of scope (audited). */
   resolveSkillSecret: (skillName: string, secretName: string) => string | undefined;
+  /** Rate-limit tracker — captures CLI `rate_limit_event` payloads for dashboard. */
+  rateLimitTracker?: import('../agent/rate-limit-tracker.js').RateLimitTracker;
 }
 
 export interface TelegramService {
@@ -113,6 +115,7 @@ export function createTelegramService(deps: BotDeps): TelegramService {
             skills: deps.skills,
             resolveSkillSecret: deps.resolveSkillSecret,
             logger: deps.logger,
+            ...(deps.rateLimitTracker ? { rateLimitTracker: deps.rateLimitTracker } : {}),
           });
         },
         onDrop: (req) => {

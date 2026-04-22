@@ -54,6 +54,7 @@ export interface DashboardDeps {
   frontendDistDir: string;
   /** Called when the scheduler should re-read DB state (after API mutations). */
   onSchedulesChanged: () => void;
+  rateLimitTracker: import('../agent/rate-limit-tracker.js').RateLimitTracker;
 }
 
 export interface DashboardService {
@@ -107,6 +108,7 @@ export function createDashboard(deps: DashboardDeps): DashboardService {
       agentName: deps.agentName,
       model: deps.model,
       timezone: deps.timezone,
+      rateLimitTracker: deps.rateLimitTracker,
     }),
   );
 

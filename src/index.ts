@@ -32,6 +32,7 @@ import { runStartupCredentialsCheck } from './agent/credentials.js';
 import { loadSkills } from './skills/loader.js';
 import { createSkillRegistry } from './skills/registry.js';
 import { createBudgetTracker } from './agent/budget.js';
+import { createRateLimitTracker } from './agent/rate-limit-tracker.js';
 import { createAuthChecker } from './telegram/auth.js';
 import { createTelegramService } from './telegram/bot.js';
 import { createSchedulesRepo } from './db/repositories/schedules.js';
@@ -163,6 +164,8 @@ async function main(): Promise<void> {
   });
   memoryTtl.start();
 
+  const rateLimitTracker = createRateLimitTracker();
+
   const budget = createBudgetTracker(sessions, () => ({
     dailyTokenLimit: config.budget.dailyTokenLimit,
     perSessionTokenLimit: config.budget.perSessionTokenLimit,
@@ -239,6 +242,7 @@ async function main(): Promise<void> {
       sessionWorkspaceRoot: dmWorkspace,
       resolveSkillSecret: (skillName, secretName) =>
         secrets.getSecret(secretName, { skill: skillName }),
+      rateLimitTracker,
     });
     telegramQueueDepths = () => telegram!.queue.depths();
 
@@ -365,6 +369,7 @@ async function main(): Promise<void> {
     logPath: resolve(logsDir(dataDir), 'andybioticlaw.log'),
     frontendDistDir: resolve(projectRoot(), 'web', 'dist'),
     onSchedulesChanged: () => scheduler?.refresh(),
+    rateLimitTracker,
   });
   await dashboard.start();
 

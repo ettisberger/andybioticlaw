@@ -61,6 +61,8 @@ export interface SessionsRepo {
   markRunningAsOrphaned(): { count: number; chatIds: string[] };
   list(opts?: { status?: SessionStatus; limit?: number }): SessionRecord[];
   tokensUsedBetween(fromMs: number, toMs: number): number;
+  /** Sum of `tokens_input + tokens_output` for sessions started since `fromMs`. */
+  tokensUsedSince(fromMs: number): number;
 }
 
 export function createSessionsRepo(db: Database): SessionsRepo {
@@ -144,6 +146,10 @@ export function createSessionsRepo(db: Database): SessionsRepo {
     },
     tokensUsedBetween(fromMs, toMs) {
       const row = tokensSum.get({ from: fromMs, to: toMs });
+      return row?.total ?? 0;
+    },
+    tokensUsedSince(fromMs) {
+      const row = tokensSum.get({ from: fromMs, to: Number.MAX_SAFE_INTEGER });
       return row?.total ?? 0;
     },
   };
