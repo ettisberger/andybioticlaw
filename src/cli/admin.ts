@@ -1059,7 +1059,22 @@ async function notifyPrincipalOfBudgetReset(opts: {
   }
 }
 
-program.parseAsync(process.argv).catch((e) => {
+// If invoked without any subcommand (`andybioticlaw` alone), drop into the
+// interactive TUI menu instead of printing Commander's help block. Lets
+// operators run `sudo -iu andybioticlaw` and hit the menu immediately.
+// process.argv[0] is node, [1] is the script path; length === 2 means
+// nothing after that. Any subcommand or flag → fall through to Commander
+// as before.
+async function main(): Promise<void> {
+  if (process.argv.length === 2) {
+    const { runInteractiveMenu } = await import('./menu.js');
+    await runInteractiveMenu();
+    return;
+  }
+  await program.parseAsync(process.argv);
+}
+
+main().catch((e) => {
   process.stderr.write(`CLI error: ${(e as Error).message}\n`);
   process.exit(1);
 });

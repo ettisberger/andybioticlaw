@@ -78,78 +78,79 @@ curl -fsSL https://claude.ai/install.sh | sudo bash
 claude --version
 ```
 
-## 4. Build + rsync the source
+## 4. Clone + build the source
 
-On your **dev machine** (not the VPS):
+On the **VPS** (or on a dev machine if you prefer; see note at end of
+this section):
 
 ```bash
-cd ~/Developer/personal/andybioticlaw
+cd /tmp
+git clone https://github.com/ettisberger/andybioticlaw.git
+cd andybioticlaw
+
 pnpm install --frozen-lockfile
 pnpm build
 pnpm --filter @andybioticlaw/web build
-
-# Sync everything the VPS needs. Exclude node_modules (native modules
-# are arch-specific — we re-install on the VPS) and data/ (runtime state).
-rsync -avz --delete \
-  --exclude='node_modules/' \
-  --exclude='data/' \
-  --exclude='.git/' \
-  --exclude='.claude/' \
-  --exclude='/tmp/' \
-  ./ eta@<vps-ip>:/tmp/andybioticlaw-staging/
 ```
 
-On the **VPS**:
+Leave the tree in `/tmp/andybioticlaw` — the installer will copy it into
+place in the next step. Don't delete it yet (you'll want it for a
+second build if you re-deploy later).
 
-```bash
-# Move the staged tree into /opt
-sudo mkdir -p /opt/andybioticlaw
-sudo rsync -a --delete /tmp/andybioticlaw-staging/ /opt/andybioticlaw/
-rm -rf /tmp/andybioticlaw-staging
-```
+> **Dev-machine variant:** if you prefer not to install build-tools on
+> the VPS, build locally and rsync the result:
+> `rsync -avz --delete --exclude='node_modules/' --exclude='data/' --exclude='.git/' ./ <vps>:/tmp/andybioticlaw/`
+> — then continue with § 5 on the VPS. The installer accepts whatever
+> directory it lives in as its staging source.
 
 ## 5. Run the installer
 
 On the VPS:
 
 ```bash
-sudo bash /opt/andybioticlaw/scripts/install.sh
+sudo bash /tmp/andybioticlaw/scripts/install.sh
 ```
 
 This performs all the one-time setup:
 
-- Creates the `andybioticlaw` system user with a home dir.
-- Sets `/opt/andybioticlaw` ownership + permissions (data/ is 700).
+- Creates the `andybioticlaw` system user with home `/home/andybioticlaw`.
+- Copies the source tree from `/tmp/andybioticlaw` into
+  `/home/andybioticlaw/.andybioticlaw/` (hidden dotdir, mode 0700, owned
+  by the service user).
 - Runs `pnpm install --prod --frozen-lockfile` as the service user so
-  `better-sqlite3` and `argon2` compile for the VPS's arch.
-- Symlinks `/opt/andybioticlaw/bin/andybioticlaw` into `/usr/local/bin/`
-  so both the principal's shell and the service-user's non-interactive
-  subprocess env can invoke the CLI by name.
-- Installs + enables the main systemd unit.
-- Installs the logrotate config at `/etc/logrotate.d/andybioticlaw`.
+  `better-sqlite3` and `argon2` compile natively for the VPS's arch.
+- Symlinks `/usr/local/bin/andybioticlaw` → the wrapper inside the
+  install dir, making the CLI callable by name from any shell.
+- Renders the systemd unit from `systemd/andybioticlaw.service.template`
+  (substituting the actual install path) and installs + enables it.
+- Renders + installs the logrotate config at `/etc/logrotate.d/andybioticlaw`.
 
 Backups are intentionally out of scope — use your VPS provider's
 snapshot feature, or your preferred tool (restic, borg, rsync+cron) to
-back up `/opt/andybioticlaw/data/` off-host. The full on-disk state is
-that directory.
+back up `/home/andybioticlaw/.andybioticlaw/data/` off-host. The full
+on-disk state is that directory.
 
 It **does not** start the service yet — a few manual steps remain.
 
-## 6. Log the service user into Claude
+> **Custom install dir** (rare): pass `ANDYBIOTICLAW_INSTALL_DIR`
+> before the command. Default is `/home/andybioticlaw/.andybioticlaw`.
 
-Subscription credentials live in the service user's home, so we do this
-as `andybioticlaw`:
+## 6. Switch to the service user + log into Claude
+
+Subscription credentials live in the service user's home. Open a shell
+as that user and run `claude login` there:
 
 ```bash
-sudo -u andybioticlaw -H bash -lc 'claude login'
+sudo -iu andybioticlaw
+claude login
 ```
 
 Follow the OAuth flow: the CLI prints a URL you open in your browser on
-any machine (not necessarily the VPS), paste the code back in the SSH
+any machine (not necessarily the VPS), paste the code back in this SSH
 session. Verify:
 
 ```bash
-sudo -u andybioticlaw -H bash -lc 'claude auth status --json'
+claude auth status --json
 # should show: "loggedIn": true, "authMethod": "claude.ai",
 # "apiKeySource": "none", "subscriptionType": "pro" or "max".
 ```
@@ -158,40 +159,29 @@ The service enforces subscription auth at three layers (see README §
 Design Decisions). If `apiKeySource` is anything but `"none"`, the
 service will refuse to start sessions.
 
-## 7. Populate config + secrets
+## 7. Run the setup menu (still as the service user)
 
 ```bash
-sudo -u andybioticlaw $EDITOR /opt/andybioticlaw/config/config.yaml
+andybioticlaw
 ```
 
-Edit at least:
+Arrow keys + Enter. Select **"Run setup wizard"**. The wizard asks:
 
-- `telegram.dm.allowedUserIds: [<your tg user id>]`
-- `service.timezone: <your zone>` (default Europe/Zurich)
-- `dashboard.host`: keep `127.0.0.1` unless you're planning a reverse
-  proxy (see § 10 below).
+- Telegram bot token (from @BotFather)
+- Your Telegram numeric user id (from @userinfobot)
+- Service timezone (default = VPS system timezone)
+- Dashboard password (required when basic-auth is enabled — default;
+  press Enter to explicitly disable basic-auth for a localhost-only
+  setup)
+
+The wizard writes `.env` + patches `config.yaml` and validates the
+result. Re-running is idempotent.
+
+When done, leave the service-user shell:
 
 ```bash
-sudo -u andybioticlaw cp /opt/andybioticlaw/.env.example /opt/andybioticlaw/.env
-sudo -u andybioticlaw $EDITOR /opt/andybioticlaw/.env
+exit
 ```
-
-Set `TELEGRAM_BOT_TOKEN=<your bot token>`. Leave everything else
-commented unless/until a skill needs it.
-
-Validate:
-
-```bash
-sudo -u andybioticlaw -H bash -lc 'andybioticlaw config validate'
-# OK — config valid: /opt/andybioticlaw/config/config.yaml
-```
-
-(`andybioticlaw` resolves to `/usr/local/bin/andybioticlaw`, a symlink
-`install.sh` set up during § 5 pointing at
-`/opt/andybioticlaw/bin/andybioticlaw`. The wrapper is cwd-independent,
-so it works from any directory. If the command is not found, re-run
-`sudo bash /opt/andybioticlaw/scripts/install.sh` — the wrapper-link
-step is idempotent.)
 
 ## 8. Start the service
 
@@ -205,7 +195,7 @@ Expected `active (running)`. Tail logs:
 ```bash
 sudo journalctl -u andybioticlaw -f
 # or
-sudo -u andybioticlaw tail -f /opt/andybioticlaw/data/logs/andybioticlaw.log
+sudo -u andybioticlaw tail -f /home/andybioticlaw/.andybioticlaw/data/logs/andybioticlaw.log
 ```
 
 Send a DM to your bot — you should get a reply.
@@ -219,14 +209,14 @@ increasing order of effort:
   button, get a whole-disk image. Fine for personal-scale, costs a few
   cents per GB per month.
 - **`restic` or `borg` to a different host / S3-compatible bucket** —
-  `restic backup /opt/andybioticlaw/data` on a cron. Encrypts by default,
+  `restic backup /home/andybioticlaw/.andybioticlaw/data` on a cron. Encrypts by default,
   deduplicates, survives VPS loss.
 - **`rsync` to another box / NAS** — simplest, no encryption unless you
   wrap it.
 
-The full on-disk state is `/opt/andybioticlaw/data/` (SQLite DB, logs,
+The full on-disk state is `/home/andybioticlaw/.andybioticlaw/data/` (SQLite DB, logs,
 per-session workspaces). Config + secrets live in
-`/opt/andybioticlaw/config/config.yaml` and `/opt/andybioticlaw/.env`
+`/home/andybioticlaw/.andybioticlaw/config/config.yaml` and `/home/andybioticlaw/.andybioticlaw/.env`
 — back these up separately (they rarely change, but a fresh VPS can't
 reconstruct them).
 
@@ -250,7 +240,7 @@ ssh -L 18790:127.0.0.1:18790 eta@<vps-ip>
 
    ```bash
    sudo -u andybioticlaw -H bash -lc \
-     "cd /opt/andybioticlaw && node -e 'import(\"./dist/dashboard/server.js\").then(async ({hashDashboardPassword}) => console.log(await hashDashboardPassword(\"<your-password>\")))'"
+     "cd /home/andybioticlaw/.andybioticlaw && node -e 'import(\"./dist/dashboard/server.js\").then(async ({hashDashboardPassword}) => console.log(await hashDashboardPassword(\"<your-password>\")))'"
    ```
 
 2. Edit config.yaml:
@@ -309,28 +299,30 @@ WireGuard endpoint only.
 
 ## 11. Future redeploys
 
-To roll a new version:
+The installer is idempotent — re-running it performs an in-place update
+of everything except `data/` (runtime state, preserved). Easiest flow:
 
 ```bash
-# dev machine
+# On the VPS, in your /tmp/andybioticlaw clone:
+cd /tmp/andybioticlaw
 git pull
-pnpm install
+pnpm install --frozen-lockfile
 pnpm build
 pnpm --filter @andybioticlaw/web build
-rsync -avz --delete \
-  --exclude='node_modules/' --exclude='data/' --exclude='.git/' --exclude='.claude/' \
-  ./ eta@<vps-ip>:/tmp/andybioticlaw-staging/
 
-# VPS
-sudo rsync -a --delete /tmp/andybioticlaw-staging/ /opt/andybioticlaw/
-sudo -u andybioticlaw -H bash -lc 'cd /opt/andybioticlaw && pnpm install --prod --frozen-lockfile'
+sudo bash scripts/install.sh     # copies updated source in, re-runs pnpm install --prod,
+                                  # re-renders + re-installs systemd unit. data/ untouched.
 sudo systemctl restart andybioticlaw
 sudo journalctl -u andybioticlaw -n 50 -f
 ```
 
-`restart` performs the graceful shutdown (Phase 2: up to 30s for
-in-flight sessions), then re-boots. The boot-time orphan sweep flips
-anything that didn't finish to `orphaned` and notifies you.
+`restart` performs the graceful shutdown (up to 35s for in-flight
+sessions), then re-boots. The boot-time orphan sweep flips anything
+that didn't finish to `orphaned` and notifies you.
+
+> **Dev-machine variant:** build locally, `rsync` to `/tmp/andybioticlaw/`
+> on the VPS, then run `sudo bash /tmp/andybioticlaw/scripts/install.sh`.
+> Same endpoint.
 
 ## Troubleshooting
 

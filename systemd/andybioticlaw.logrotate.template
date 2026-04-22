@@ -3,8 +3,11 @@
 # Our pino logger opens the log file path (not a long-lived fd) on every
 # append, so logrotate with the `create` directive works without a signal
 # to the service — the next write just lands in the freshly created file.
+#
+# The __INSTALL_DIR__ placeholder below is substituted by scripts/install.sh
+# at deploy time.
 
-/opt/andybioticlaw/data/logs/andybioticlaw.log {
+__INSTALL_DIR__/data/logs/andybioticlaw.log {
     daily
     rotate 14
     compress

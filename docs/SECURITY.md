@@ -109,7 +109,7 @@ silently ignored and tables are intact afterward.
 | `data/andybioticlaw.pid` | 0600 | `writeFileSync(..., { mode: 0o600 })` |
 | Per-session `.mcp.json` | 0600 | `writeMcpConfig()` |
 | `data/` (prod) | 0700 | `install.sh` |
-| `/opt/andybioticlaw` (prod) | 0750 | `install.sh` |
+| `/home/andybioticlaw/.andybioticlaw` (prod) | 0700 | `install.sh` |
 
 ### 6. Log + dashboard redaction
 
@@ -121,7 +121,7 @@ silently ignored and tables are intact afterward.
 
 ### 7. Systemd sandboxing (prod)
 
-The bundled unit (`systemd/andybioticlaw.service`) enables:
+The bundled unit (rendered at install-time from `systemd/andybioticlaw.service.template`) enables:
 
 - `ProtectSystem=strict` (filesystem is read-only except explicit
   `ReadWritePaths`),
@@ -140,7 +140,7 @@ The bundled unit (`systemd/andybioticlaw.service`) enables:
 `schedule add --kind bash --payload '{"command": "…"}'` runs the
 command via `/bin/sh -c <command>` as the `andybioticlaw` service user,
 with full filesystem access granted by systemd's `ReadWritePaths=
-/opt/andybioticlaw/data` and the service user's normal shell
+/home/andybioticlaw/.andybioticlaw/data` and the service user's normal shell
 privileges.
 
 This is **shell injection** — acceptable *when the principal authored

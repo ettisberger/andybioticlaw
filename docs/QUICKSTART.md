@@ -73,30 +73,36 @@ pnpm install --frozen-lockfile
 pnpm build
 pnpm --filter @andybioticlaw/web build
 
-# Move the built tree into /opt and run the production installer.
-mkdir -p /opt/andybioticlaw
-cp -a . /opt/andybioticlaw/
-cd /opt/andybioticlaw
-bash scripts/install.sh
+# Run the production installer. It creates the `andybioticlaw` service
+# user, copies the source into `/home/andybioticlaw/.andybioticlaw/`
+# (mode 0700), re-compiles native deps for the VPS arch, renders + installs
+# the systemd unit + logrotate config, and symlinks `andybioticlaw` into
+# `/usr/local/bin/`.
+sudo bash scripts/install.sh
 ```
 
-`install.sh` creates the `andybioticlaw` service user, sets permissions,
-installs native deps compiled for the VPS arch, symlinks
-`/usr/local/bin/andybioticlaw`, and drops the systemd units. Re-running
-is idempotent.
-
-## 4. Log the service user into Claude (3 min)
+## 4. Switch to the service user (1 min)
 
 ```bash
-sudo -u andybioticlaw -H bash -lc 'claude login'
+sudo -iu andybioticlaw
 ```
 
-This opens an OAuth URL; open it in a browser on any machine (doesn't
-have to be the VPS), paste the confirmation code back in the SSH
-session. Verify:
+You are now in a shell as the `andybioticlaw` service user. Everything
+from here runs with the service's own home + permissions — including the
+Claude OAuth credentials which must land in this user's `~/.claude/`.
+
+## 5. Log into Claude (3 min)
 
 ```bash
-sudo -u andybioticlaw -H bash -lc 'claude auth status --json'
+claude login
+```
+
+OAuth flow: open the URL it prints in a browser on any machine (doesn't
+have to be the VPS), paste the confirmation code back in the SSH session.
+Verify:
+
+```bash
+claude auth status --json
 # expect: "loggedIn": true, "apiKeySource": "none",
 #         "subscriptionType": "pro" or "max".
 ```
@@ -104,25 +110,29 @@ sudo -u andybioticlaw -H bash -lc 'claude auth status --json'
 If `apiKeySource` is anything other than `"none"`, the service will
 refuse to start sessions — see `docs/SECURITY.md` § 1 for why.
 
-## 5. Run the interactive setup wizard (3 min)
+## 6. Run the interactive menu (3 min)
 
 ```bash
-sudo -u andybioticlaw -H bash -lc 'andybioticlaw init'
+andybioticlaw
 ```
 
-The wizard asks four things:
+Arrow keys + Enter. Select **"Run setup wizard"**. The wizard asks four
+things:
 
 1. **Bot token** (from step 1) — stored in `.env` with mode 0600.
 2. **Your numeric Telegram user id** (from step 1) — written into
    `config.yaml` as the only DM-allowed user.
 3. **Timezone** — defaults to the VPS's system timezone.
-4. **Optional dashboard password** — skip by pressing Enter; come
-   back to this when you're ready to expose the dashboard (see
-   `docs/DEPLOYMENT.md` § 10).
+4. **Dashboard password** — required (the service refuses to start with
+   basic-auth enabled but no hash); press Enter to explicitly disable
+   basic-auth for a localhost-only dev setup.
 
 Already-set values are reused, so re-running is safe.
 
-## 6. Start the service (2 min)
+When done, type `exit` to leave the service-user shell and return to
+your admin user.
+
+## 7. Start the service (2 min)
 
 ```bash
 sudo systemctl start andybioticlaw
@@ -146,7 +156,7 @@ ready
 telegram bot polling started
 ```
 
-## 7. Send your first DM (1 min)
+## 8. Send your first DM (1 min)
 
 1. On your phone, open the Telegram chat with the @username bot you
    created in step 1 (search for it, `/start`).
@@ -172,6 +182,6 @@ If it doesn't, check:
   and enforcement layers. Read it before giving the bot access to
   anything sensitive.
 - **Backups:** out of scope — use your VPS provider's snapshots or a
-  tool like `restic` / `borg` to back up `/opt/andybioticlaw/data/`.
+  tool like `restic` / `borg` to back up `/home/andybioticlaw/.andybioticlaw/data/`.
   Config + `.env` live elsewhere and should be backed up separately.
   See `docs/DEPLOYMENT.md` § 9.

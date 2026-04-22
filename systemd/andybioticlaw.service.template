@@ -9,9 +9,11 @@ Type=simple
 User=andybioticlaw
 Group=andybioticlaw
 
-# Absolute path to the deployed install. Adjust if you install elsewhere.
-WorkingDirectory=/opt/andybioticlaw
-ExecStart=/usr/bin/env node /opt/andybioticlaw/dist/index.js
+# Absolute path to the deployed install. Rendered by scripts/install.sh
+# (replaces __INSTALL_DIR__ with the chosen install root before copying
+# the file into /etc/systemd/system/).
+WorkingDirectory=__INSTALL_DIR__
+ExecStart=/usr/bin/env node __INSTALL_DIR__/dist/index.js
 ExecReload=/bin/kill -HUP $MAINPID
 
 # Restart + startup-limit posture per spec.
@@ -32,7 +34,7 @@ Environment=NODE_ENV=production
 # Sandboxing (Linux-only; ignored on development macOS).
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/opt/andybioticlaw/data
+ReadWritePaths=__INSTALL_DIR__/data
 PrivateTmp=yes
 NoNewPrivileges=yes
 # Allow reading the service user's ~/.claude for subscription credentials.
