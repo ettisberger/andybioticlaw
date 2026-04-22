@@ -7,7 +7,7 @@
 #   2. System user + home dir
 #   3. Install-dir ownership + permissions
 #   4. Production dependency install (native modules compiled for THIS arch)
-#   5. systemd unit installation (main service + backup service + timer)
+#   5. systemd unit installation (main service)
 #   6. logrotate config
 #   7. Next-step guidance (claude login, config.yaml, .env, start)
 #
@@ -86,7 +86,7 @@ fi
 chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR"
 chmod 750 "$INSTALL_DIR"
 # data/ should be writable for the service; everything else is read-traversable.
-mkdir -p "$INSTALL_DIR/data" "$INSTALL_DIR/data/logs" "$INSTALL_DIR/data/backups" "$INSTALL_DIR/data/workspaces"
+mkdir -p "$INSTALL_DIR/data" "$INSTALL_DIR/data/logs" "$INSTALL_DIR/data/workspaces"
 chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR/data"
 chmod 700 "$INSTALL_DIR/data"
 echo "✓ ownership + permissions set"
@@ -126,21 +126,19 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 5. systemd units (main service + backup service + timer)
+# 5. systemd unit (main service only — backups are out of scope; we expect
+#     the operator to use VPS-provider snapshots or their own tool of choice)
 # ---------------------------------------------------------------------------
-for unit in andybioticlaw.service andybioticlaw-backup.service andybioticlaw-backup.timer; do
-  src="$INSTALL_DIR/systemd/$unit"
-  if [[ -f "$src" ]]; then
-    install -m 0644 "$src" "$SYSTEMD_DIR/$unit"
-    echo "✓ installed $unit"
-  else
-    echo "skip missing $src" >&2
-  fi
-done
+src="$INSTALL_DIR/systemd/andybioticlaw.service"
+if [[ -f "$src" ]]; then
+  install -m 0644 "$src" "$SYSTEMD_DIR/andybioticlaw.service"
+  echo "✓ installed andybioticlaw.service"
+else
+  echo "skip missing $src" >&2
+fi
 systemctl daemon-reload
-systemctl enable andybioticlaw.service          >/dev/null
-systemctl enable --now andybioticlaw-backup.timer >/dev/null
-echo "✓ systemd units enabled (main service NOT started yet — see next steps)"
+systemctl enable andybioticlaw.service >/dev/null
+echo "✓ systemd unit enabled (main service NOT started yet — see next steps)"
 
 # ---------------------------------------------------------------------------
 # 6. logrotate
@@ -187,7 +185,8 @@ Remaining steps (one-time):
   5. (Optional) Expose the dashboard. Default is 127.0.0.1:18790.
      See docs/DEPLOYMENT.md for reverse-proxy + basic-auth guidance.
 
-Backups run daily at ~03:15 local (andybioticlaw-backup.timer). Verify:
-  systemctl list-timers andybioticlaw-backup.timer
+Backups are NOT handled by this service — use your VPS provider's
+snapshots or your preferred tool (restic, borg, etc.) to back up
+$INSTALL_DIR/data/ (SQLite DB + logs + session workspaces).
 =========================================================================
 EOF

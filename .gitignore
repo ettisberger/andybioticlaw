@@ -6,7 +6,7 @@ node_modules/
 dist/
 *.tsbuildinfo
 
-# --- Runtime data (SQLite DB, logs, backups, per-session workspaces) ------
+# --- Runtime data (SQLite DB, logs, per-session workspaces) ---------------
 # The service creates data/ subdirs at boot via ensureDir(); nothing here
 # should ever be committed.
 data/

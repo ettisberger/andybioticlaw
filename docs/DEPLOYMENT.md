@@ -125,9 +125,13 @@ This performs all the one-time setup:
 - Symlinks `/opt/andybioticlaw/bin/andybioticlaw` into `/usr/local/bin/`
   so both the principal's shell and the service-user's non-interactive
   subprocess env can invoke the CLI by name.
-- Installs + enables the systemd unit, the backup service, and the
-  daily backup timer.
+- Installs + enables the main systemd unit.
 - Installs the logrotate config at `/etc/logrotate.d/andybioticlaw`.
+
+Backups are intentionally out of scope — use your VPS provider's
+snapshot feature, or your preferred tool (restic, borg, rsync+cron) to
+back up `/opt/andybioticlaw/data/` off-host. The full on-disk state is
+that directory.
 
 It **does not** start the service yet — a few manual steps remain.
 
@@ -206,16 +210,25 @@ sudo -u andybioticlaw tail -f /opt/andybioticlaw/data/logs/andybioticlaw.log
 
 Send a DM to your bot — you should get a reply.
 
-## 9. Verify the backup timer
+## 9. Back up `data/` (your responsibility)
 
-```bash
-systemctl list-timers andybioticlaw-backup.timer
-# should list the next 03:15 firing
+The service does not ship a built-in backup mechanism. Options, in
+increasing order of effort:
 
-# Manually trigger a backup right now:
-sudo systemctl start andybioticlaw-backup.service
-sudo -u andybioticlaw ls -la /opt/andybioticlaw/data/backups/
-```
+- **Hetzner Cloud snapshots** (or your provider's equivalent) — click a
+  button, get a whole-disk image. Fine for personal-scale, costs a few
+  cents per GB per month.
+- **`restic` or `borg` to a different host / S3-compatible bucket** —
+  `restic backup /opt/andybioticlaw/data` on a cron. Encrypts by default,
+  deduplicates, survives VPS loss.
+- **`rsync` to another box / NAS** — simplest, no encryption unless you
+  wrap it.
+
+The full on-disk state is `/opt/andybioticlaw/data/` (SQLite DB, logs,
+per-session workspaces). Config + secrets live in
+`/opt/andybioticlaw/config/config.yaml` and `/opt/andybioticlaw/.env`
+— back these up separately (they rarely change, but a fresh VPS can't
+reconstruct them).
 
 ## 10. Expose the dashboard (optional)
 

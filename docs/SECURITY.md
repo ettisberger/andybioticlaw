@@ -133,8 +133,6 @@ The bundled unit (`systemd/andybioticlaw.service`) enables:
   `StartLimitBurst=3` — a service that crashes 3× in 5 min gets
   left down rather than flap-looping.
 
-Same hardening on the backup oneshot service.
-
 ## Specific trust notes
 
 ### `bash` schedules are shell commands, by design — but gated against agent-created additions
@@ -218,8 +216,8 @@ so running two bots with the same token will interleave messages.
   principal, one budget.
 - **No retention limit on messages / sessions** beyond heartbeat (7
   days). Conversation history accumulates forever in SQLite — fine
-  for a personal setup with daily backups and ~100MB/year growth,
-  revisit if scale changes.
+  for a personal setup at ~100MB/year growth; revisit if scale
+  changes.
 - **No integrity check on memory proposals**: if a malicious skill
   ran in-process and had direct DB access (which skills don't — they
   talk via MCP only), it could forge proposals. Current skill model
@@ -235,7 +233,7 @@ If you suspect any of the following, take immediate action:
 | Leaked Claude subscription creds | `claude logout` + `claude login` on the VPS as the service user; restart |
 | `ANTHROPIC_API_KEY` accidentally set in prod env | `systemctl stop andybioticlaw`; unset the var; restart. Verify `apiKeySource: "none"` in boot log |
 | Unknown audit row kind you can't account for | Open `docs/SECURITY.md` + `CHANGELOG.md`, grep the kind name. If it looks agent-originated, consider the current session's conversation log (dashboard `Sessions` page) |
-| Suspected DB tampering | Compare `data/andybioticlaw.db` to the most recent artifact in `data/backups/`; SQLite's `.dump` is textually diffable |
+| Suspected DB tampering | Compare `data/andybioticlaw.db` against the most recent off-host backup you maintain (see `docs/DEPLOYMENT.md` § 9); SQLite's `.dump` is textually diffable |
 
 ## Reporting
 

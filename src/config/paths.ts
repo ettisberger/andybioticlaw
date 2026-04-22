@@ -41,10 +41,6 @@ export function logsDir(dataDir: string): string {
   return resolve(dataDir, 'logs');
 }
 
-export function backupsDir(dataDir: string): string {
-  return resolve(dataDir, 'backups');
-}
-
 export function workspacesDir(dataDir: string): string {
   return resolve(dataDir, 'workspaces');
 }

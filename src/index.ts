@@ -13,7 +13,6 @@ import {
   logsDir,
   sqliteDbPath,
   pidFilePath,
-  backupsDir,
   workspacesDir,
 } from './config/paths.js';
 import { openDatabase } from './db/index.js';
@@ -61,7 +60,6 @@ async function main(): Promise<void> {
 
   ensureDir(dataDir);
   ensureDir(logsDir(dataDir));
-  ensureDir(backupsDir(dataDir));
   ensureDir(workspacesDir(dataDir));
   ensureDir(resolve(workspacesDir(dataDir), 'groups'));
   const dmWorkspace = resolve(workspacesDir(dataDir), 'dm');

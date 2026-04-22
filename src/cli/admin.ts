@@ -43,6 +43,24 @@ function formatTs(ms: number | null): string {
   return new Date(ms).toISOString().replace('T', ' ').slice(0, 19) + 'Z';
 }
 
+// --- init ----------------------------------------------------------------
+program
+  .command('init')
+  .description('Interactive first-time setup: populate .env and config.yaml.')
+  .action(async () => {
+    const { runInitCommand } = await import('./init.js');
+    try {
+      await runInitCommand();
+    } catch (e) {
+      if (e instanceof WizardAbortedError) {
+        process.stderr.write('\ninit aborted.\n');
+        process.exit(130);
+      }
+      process.stderr.write(`\ninit failed: ${(e as Error).message}\n`);
+      process.exit(1);
+    }
+  });
+
 // --- config ---------------------------------------------------------------
 const config = program.command('config').description('Inspect and reload configuration');
 
@@ -877,7 +895,7 @@ stub('status', 'Show service status summary');
 stub('session', 'Session inspection and control');
 stub('secrets', 'List declared secrets (names only)');
 stub('audit', 'Show audit log entries');
-stub('db', 'DB utilities (backup, etc.)');
+stub('db', 'DB utilities');
 
 // --- budget ---------------------------------------------------------------
 // The daily token budget is a SOFT spend-guard — it's our own limit, not

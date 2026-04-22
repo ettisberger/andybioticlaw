@@ -4,7 +4,7 @@ A personal AI agent service with a Telegram frontend and a Claude CLI backend. R
 
 The default agent identity is **Emma**; the service is named **andybioticlaw**. Both are configurable.
 
-> **Status: Phase 6 — all six spec phases complete.** `scripts/install.sh` is idempotent (system user, perms, prod deps, systemd units, logrotate). `scripts/backup.sh` + systemd timer roll SQLite snapshots daily with 7-day rotation. Black-box integration tests spawn the compiled service and assert clean boot + shutdown. `docs/DEPLOYMENT.md` walks through a Hetzner VPS install end-to-end including the subscription `claude login` step. See `CHANGELOG.md` for per-phase detail.
+> **Status: Phase 6 — all six spec phases complete.** `scripts/install.sh` is idempotent (system user, perms, prod deps, systemd unit, logrotate). Black-box integration tests spawn the compiled service and assert clean boot + shutdown. `docs/DEPLOYMENT.md` walks through a Hetzner VPS install end-to-end including the subscription `claude login` step. Backups are the operator's responsibility (VPS snapshots or `restic`/`borg`); see `docs/DEPLOYMENT.md` § 9. See `CHANGELOG.md` for per-phase detail.
 
 ## Requirements
 
@@ -55,9 +55,13 @@ Secrets live in `.env` — see `.env.example`. Never commit `.env`. Only a short
 
 Send `SIGHUP` (or run `andybioticlaw config reload`) to re-read `config/config.yaml` without restarting. Fields that can be hot-reloaded are listed in `config/config.schema.ts` (`HOT_RELOADABLE_PATHS`); everything else logs a warning and is ignored until a full restart.
 
+## Quickstart (30 min)
+
+**`docs/QUICKSTART.md`** — happy-path walkthrough from bare VPS to bot-answering-its-first-DM. No hardening detours, uses `andybioticlaw init` for interactive config.
+
 ## Production deployment
 
-See **`docs/DEPLOYMENT.md`** — end-to-end walkthrough from a bare Hetzner Ubuntu 24.04 VPS to a running, firewalled service with daily backups. Covers `install.sh`, `claude login` as the service user, config + `.env` population, optional dashboard reverse-proxy with TLS + basic-auth.
+See **`docs/DEPLOYMENT.md`** — end-to-end with SSH hardening, UFW, backup guidance, optional dashboard reverse-proxy with TLS + basic-auth. Read this after Quickstart works.
 
 ## Directory tour
 
@@ -79,10 +83,10 @@ andybioticlaw/
 ├── config/               Zod schema + example config
 ├── skills/               user-authored skills + README with the skill contract
 ├── systemd/              unit file for prod
-├── scripts/              install, bootstrap, backup
+├── scripts/              install, bootstrap
 ├── tests/                unit + integration
 ├── web/                  Phase 5 frontend (Vite/React)
-└── data/                 gitignored — SQLite DB, logs, backups, workspaces
+└── data/                 gitignored — SQLite DB, logs, per-session workspaces
 ```
 
 ## Security posture
