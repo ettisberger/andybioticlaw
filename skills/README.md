@@ -28,6 +28,8 @@ scope:                                 # list of scopes this skill applies to
   - dm                                 # direct-message sessions
   # - group                            # PLANNED — rejected in v1
 
+core_required: "0.2.0"                 # (optional) minimum core version
+
 required_secrets:                      # keys from .env this skill may read
   - GOOGLE_OAUTH_CLIENT_ID
   - GOOGLE_OAUTH_CLIENT_SECRET
@@ -41,6 +43,17 @@ mcp_servers:                           # (optional) list of MCP servers this ski
     args: [...]
     env:
       OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID}   # interpolation of required_secrets
+
+setup_wizard:                          # (optional) `andybioticlaw skill setup <name>`
+  description: "IMAP + SMTP credentials"
+  questions:
+    - key: IMAP_HOST
+      prompt: "IMAP server hostname"
+      validate: nonempty
+    - key: SMTP_PASS
+      prompt: "SMTP password (app-specific if your provider requires it)"
+      secret: true
+      validate: nonempty
 ```
 
 Fields:
@@ -52,10 +65,40 @@ Fields:
 | `description` | yes | one-line summary for the CLI/dashboard |
 | `enabled` | yes | hard switch — false means never injected |
 | `scope` | yes | non-empty subset of `[dm, group]`. Group is planned; DM-only in v1 |
+| `core_required` | no | bare semver like `"0.2.0"`; loader rejects the skill if core version is lower |
 | `required_secrets` | no | subset of `.env` keys this skill is permitted to read |
 | `apt_dependencies` | no | OS packages the install.sh assumes to be present |
 | `system_commands` | no | PATH binaries the skill relies on at runtime |
 | `mcp_servers` | no | MCP servers spawned per session when the skill is active |
+| `setup_wizard` | no | questions the terminal wizard asks (see below) |
+
+### Reserved MCP server names
+
+The name `andybioticlaw-memory` is owned by the core service. A skill
+whose `mcp_servers[].name` equals that is rejected at load time
+(`SkillManifestError` + entry in the loader's `failed` list + principal
+DM via the existing error-forwarding). Pick a skill-prefixed name for
+your own servers (e.g. `himalaya-email`, not `email`).
+
+### setup_wizard (optional)
+
+When set, `andybioticlaw skill setup <skill-name>` walks through the
+`questions` list in order, writing collected values to `.env`. Already-
+set keys are shown as `✓ KEY = "***" (already set, reusing)` and
+skipped — re-running is safe.
+
+Per question:
+
+| Field | Required | Purpose |
+| ----- | -------- | ------- |
+| `key` | yes | env var name; must be UPPER_SNAKE_CASE and should match an entry in `required_secrets` |
+| `prompt` | yes | text shown before the input line |
+| `default` | no | used when the user just presses Enter |
+| `secret` | no (default false) | mask input with `*`; stored but never echoed |
+| `validate` | no | one of `nonempty` \| `email` \| `port` \| `url` |
+| `help` | no | one-line description shown above the prompt |
+
+After the env-var collection, the wizard runs `install.sh` if present.
 
 ### Secret scoping
 

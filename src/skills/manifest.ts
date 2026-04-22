@@ -54,6 +54,14 @@ export const SkillManifest = z.object({
   description: z.string().min(1).max(500),
   enabled: z.boolean().default(true),
   scope: z.array(SkillScope).nonempty().default(['dm']),
+  /**
+   * Optional semver. When set, the loader rejects this skill if the core
+   * service's version (from package.json) is lower. Useful when a skill
+   * depends on a core feature added in a specific release. Simple
+   * minimum-version semantic — no range expressions; "0.2.0" means
+   * "this skill needs core ≥ 0.2.0".
+   */
+  core_required: z.string().regex(SEMVER_RE, 'core_required must be a bare semver like "0.2.0"').optional(),
   required_secrets: z
     .array(z.string().regex(SECRET_NAME_RE, 'secret names must be UPPER_SNAKE_CASE'))
     .default([]),

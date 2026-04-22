@@ -3,11 +3,45 @@ import { resolve } from 'node:path';
 import type { Logger } from 'pino';
 import { loadManifest, SkillManifestError } from './manifest.js';
 import type { SkillRegistry, SkillRecord } from './registry.js';
+import { projectRoot } from '../config/load.js';
+
+/** MCP server names the core owns; skills may not register these. */
+const RESERVED_MCP_NAMES = new Set(['andybioticlaw-memory']);
+
+/** Read the core service's semver from the repo's package.json. */
+function readCoreVersion(): string {
+  try {
+    const raw = readFileSync(resolve(projectRoot(), 'package.json'), 'utf8');
+    const parsed = JSON.parse(raw) as { version?: string };
+    return parsed.version ?? '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+
+/** Parse "X.Y.Z[-suffix]" → [X, Y, Z]; pre-release suffix is ignored. */
+function parseSemver(v: string): [number, number, number] | null {
+  const m = v.match(/^(\d+)\.(\d+)\.(\d+)/);
+  if (!m) return null;
+  return [Number(m[1]), Number(m[2]), Number(m[3])];
+}
+
+/** Returns true iff `core` satisfies the skill's `core_required` minimum. */
+function isCoreCompatible(core: string, required: string): boolean {
+  const c = parseSemver(core);
+  const r = parseSemver(required);
+  if (!c || !r) return true; // be permissive on malformed versions
+  if (c[0] !== r[0]) return c[0] > r[0];
+  if (c[1] !== r[1]) return c[1] > r[1];
+  return c[2] >= r[2];
+}
 
 export interface SkillLoadOptions {
   dir: string;
   logger: Logger;
   registry: SkillRegistry;
+  /** Override for tests. Defaults to reading package.json at projectRoot(). */
+  coreVersion?: string;
 }
 
 export interface SkillLoadResult {
@@ -61,6 +95,29 @@ export function loadSkills(opts: SkillLoadOptions): SkillLoadResult {
 
     try {
       const { manifest } = loadManifest(full, entry);
+
+      // Reject manifests that try to hijack core-owned MCP server names.
+      // Checked at load-time (not session-time) so the operator sees the
+      // failure loudly via the existing result.failed → errors.report path.
+      const reservedClash = manifest.mcp_servers.find((srv) =>
+        RESERVED_MCP_NAMES.has(srv.name),
+      );
+      if (reservedClash) {
+        throw new SkillManifestError(manifestPath, [
+          `mcp server name "${reservedClash.name}" is reserved for the core service — rename it in manifest.yaml`,
+        ]);
+      }
+
+      // Reject manifests that declare a core_required minimum we don't meet.
+      if (manifest.core_required) {
+        const core = opts.coreVersion ?? readCoreVersion();
+        if (!isCoreCompatible(core, manifest.core_required)) {
+          throw new SkillManifestError(manifestPath, [
+            `skill requires core ≥ ${manifest.core_required}, but running core is ${core}`,
+          ]);
+        }
+      }
+
       const skillMdContent = readFileSync(skillMdPath, 'utf8');
       const record: SkillRecord = {
         name: manifest.name,
