@@ -59,7 +59,7 @@ export function OverviewPage() {
   }, []);
 
   if (error) return <ErrorBanner>{error}</ErrorBanner>;
-  if (!data) return <div className="text-slate-400">loading…</div>;
+  if (!data) return <div className="text-ink-dim">loading…</div>;
 
   return (
     <div>
@@ -68,16 +68,16 @@ export function OverviewPage() {
       {/* Status strip */}
       <div className="mb-5 grid grid-cols-4 gap-4">
         <Card>
-          <div className="text-xs uppercase text-slate-500">Credentials</div>
+          <div className="text-xs uppercase text-ink-faint">Credentials</div>
           <div className="mt-1 text-lg font-medium">
             {data.credentialsOk ? <Badge tone="success">OK</Badge> : <Badge tone="error">MISSING</Badge>}
           </div>
         </Card>
         <Card>
-          <div className="text-xs uppercase text-slate-500">Queue depth</div>
+          <div className="text-xs uppercase text-ink-faint">Queue depth</div>
           <div className="mt-1 text-lg font-medium">{data.queueTotalDepth}</div>
           {Object.entries(data.queueDepths).length > 0 && (
-            <div className="mt-1 text-xs text-slate-500">
+            <div className="mt-1 text-xs text-ink-faint">
               {Object.entries(data.queueDepths).map(([chat, n]) => (
                 <span key={chat} className="mr-2">
                   chat {chat}: {n}
@@ -87,18 +87,18 @@ export function OverviewPage() {
           )}
         </Card>
         <Card>
-          <div className="text-xs uppercase text-slate-500">Skills</div>
+          <div className="text-xs uppercase text-ink-faint">Skills</div>
           <div className="mt-1 text-lg font-medium">
             {data.skills.enabled} / {data.skills.total}
           </div>
-          <div className="mt-1 text-xs text-slate-500">enabled / installed</div>
+          <div className="mt-1 text-xs text-ink-faint">enabled / installed</div>
         </Card>
         <Card>
-          <div className="text-xs uppercase text-slate-500">Schedules</div>
+          <div className="text-xs uppercase text-ink-faint">Schedules</div>
           <div className="mt-1 text-lg font-medium">
             {data.schedules.enabled} / {data.schedules.total}
           </div>
-          <div className="mt-1 text-xs text-slate-500">enabled / total</div>
+          <div className="mt-1 text-xs text-ink-faint">enabled / total</div>
         </Card>
       </div>
 
@@ -111,35 +111,35 @@ export function OverviewPage() {
       {/* Recent activity */}
       <div className="grid grid-cols-2 gap-4">
         <Card>
-          <div className="mb-2 text-sm font-medium text-slate-300">Recent sessions</div>
+          <div className="mb-2 text-sm font-medium text-ink">Recent sessions</div>
           {data.recentSessions.length === 0 && (
-            <div className="text-sm text-slate-500">(none)</div>
+            <div className="text-sm text-ink-faint">(none)</div>
           )}
           {data.recentSessions.map((s) => (
-            <div key={s.id} className="border-b border-slate-800 py-1.5 last:border-0 text-sm">
+            <div key={s.id} className="border-b border-line py-1.5 last:border-0 text-sm">
               <div className="flex items-center gap-2">
                 <Badge tone={statusTone(s.status)}>{s.status}</Badge>
-                <span className="font-mono text-xs text-slate-500">{s.id.slice(0, 8)}…</span>
-                <span className="text-xs text-slate-500">
+                <span className="font-mono text-xs text-ink-faint">{s.id.slice(0, 8)}…</span>
+                <span className="text-xs text-ink-faint">
                   {s.tokens_input + s.tokens_output} tok
                 </span>
               </div>
-              <div className="mt-0.5 text-xs text-slate-400">
+              <div className="mt-0.5 text-xs text-ink-dim">
                 {formatTs(s.started_at)} — {s.input_preview?.slice(0, 80) ?? ''}
               </div>
             </div>
           ))}
         </Card>
         <Card>
-          <div className="mb-2 text-sm font-medium text-slate-300">Recent failures</div>
+          <div className="mb-2 text-sm font-medium text-ink">Recent failures</div>
           {data.recentFailures.length === 0 && (
-            <div className="text-sm text-slate-500">(none — good)</div>
+            <div className="text-sm text-ink-faint">(none — good)</div>
           )}
           {data.recentFailures.map((s) => (
-            <div key={s.id} className="border-b border-slate-800 py-1.5 last:border-0 text-sm">
-              <div className="font-mono text-xs text-slate-500">{s.id.slice(0, 8)}…</div>
-              <div className="mt-0.5 text-xs text-rose-300">{s.error}</div>
-              <div className="text-xs text-slate-500">{formatTs(s.started_at)}</div>
+            <div key={s.id} className="border-b border-line py-1.5 last:border-0 text-sm">
+              <div className="font-mono text-xs text-ink-faint">{s.id.slice(0, 8)}…</div>
+              <div className="mt-0.5 text-xs text-error-ink">{s.error}</div>
+              <div className="text-xs text-ink-faint">{formatTs(s.started_at)}</div>
             </div>
           ))}
         </Card>
@@ -157,38 +157,38 @@ function LocalBudgetCard({
 }) {
   const pct = budget.limit > 0 ? Math.min(100, (budget.used / budget.limit) * 100) : 0;
   const barTone =
-    pct >= 95 ? 'bg-rose-500' : pct >= 75 ? 'bg-amber-500' : 'bg-emerald-500';
+    pct >= 95 ? 'bg-error' : pct >= 75 ? 'bg-warn' : 'bg-success';
   const msToReset = Math.max(0, budget.nextResetMs - now);
   return (
     <Card className="flex flex-col">
       <div className="mb-3 flex items-start justify-between">
         <div>
-          <div className="text-sm font-semibold text-slate-200">Daily budget</div>
-          <div className="text-xs text-slate-500">local safety cap · set by you in config.yaml</div>
+          <div className="text-sm font-semibold text-ink">Daily budget</div>
+          <div className="text-xs text-ink-faint">local safety cap · set by you in config.yaml</div>
         </div>
         {budget.exhausted && <Badge tone="error">EXHAUSTED</Badge>}
       </div>
 
       <div className="mb-1.5 flex items-baseline justify-between">
         <div>
-          <span className="text-2xl font-semibold text-slate-100">
+          <span className="text-2xl font-semibold text-ink">
             {formatCompact(budget.used)}
           </span>
-          <span className="ml-1.5 text-sm text-slate-500">
+          <span className="ml-1.5 text-sm text-ink-faint">
             / {formatCompact(budget.limit)} tokens
           </span>
         </div>
-        <div className="text-sm font-medium text-slate-300">{pct.toFixed(1)}%</div>
+        <div className="text-sm font-medium text-ink">{pct.toFixed(1)}%</div>
       </div>
 
-      <div className="h-2 overflow-hidden rounded-full bg-slate-900">
+      <div className="h-2 overflow-hidden rounded-full bg-surface-muted">
         <div
           className={`h-full rounded-full ${barTone} transition-all`}
           style={{ width: `${pct}%` }}
         />
       </div>
 
-      <div className="mt-3 flex justify-between text-xs text-slate-400">
+      <div className="mt-3 flex justify-between text-xs text-ink-dim">
         <span>{formatCompact(budget.remaining)} tokens remaining</span>
         <span>resets in {formatDuration(msToReset)}</span>
       </div>
@@ -210,29 +210,29 @@ function SubscriptionWindowCard({
   const observedAgo = latest ? now - latest.observedAt : null;
 
   const statusTone =
-    latest?.status === 'allowed' ? 'emerald' : latest?.status ? 'rose' : 'slate';
+    latest?.status === 'allowed' ? 'success' : latest?.status ? 'error' : 'neutral';
   const dot =
     latest?.status === 'allowed'
-      ? 'bg-emerald-400'
+      ? 'bg-success'
       : latest?.status
-        ? 'bg-rose-400'
-        : 'bg-slate-500';
+        ? 'bg-error'
+        : 'bg-ink-faint';
 
   return (
     <Card className="flex flex-col">
       <div className="mb-3 flex items-start justify-between">
         <div>
-          <div className="text-sm font-semibold text-slate-200">
+          <div className="text-sm font-semibold text-ink">
             Subscription window
           </div>
-          <div className="text-xs text-slate-500">
+          <div className="text-xs text-ink-faint">
             Anthropic · 5h rolling · observed from the CLI
           </div>
         </div>
       </div>
 
       {!hasObservation ? (
-        <div className="flex-1 rounded border border-dashed border-slate-700 bg-slate-900/30 px-3 py-4 text-center text-xs text-slate-500">
+        <div className="flex-1 rounded border border-dashed border-line bg-surface-muted px-3 py-4 text-center text-xs text-ink-faint">
           No CLI rate-limit event observed yet.
           <br />
           Send Emma a message to populate this card.
@@ -242,25 +242,25 @@ function SubscriptionWindowCard({
           <div className="mb-4 flex items-center gap-3">
             <span className={`inline-block h-2.5 w-2.5 rounded-full ${dot}`} />
             <span
-              className={`text-xl font-semibold ${statusTone === 'emerald' ? 'text-emerald-300' : statusTone === 'rose' ? 'text-rose-300' : 'text-slate-200'}`}
+              className={`text-xl font-semibold ${statusTone === 'success' ? 'text-success-ink' : statusTone === 'error' ? 'text-error-ink' : 'text-ink'}`}
             >
               {latest?.status === 'allowed' ? 'Allowed' : (latest?.status ?? '—')}
             </span>
-            <span className="text-slate-500">·</span>
-            <span className="text-sm text-slate-300">
+            <span className="text-ink-faint">·</span>
+            <span className="text-sm text-ink">
               {resetsInMs !== null && resetsInMs > 0 && (
-                <>resets in <span className="font-medium text-slate-100">{formatDuration(resetsInMs)}</span></>
+                <>resets in <span className="font-medium text-ink">{formatDuration(resetsInMs)}</span></>
               )}
               {resetsInMs !== null && resetsInMs <= 0 && (
-                <span className="text-emerald-400">reset due</span>
+                <span className="text-success-ink">reset due</span>
               )}
             </span>
           </div>
 
           <div className="mb-4 grid grid-cols-2 gap-2 text-xs">
-            <div className="rounded bg-slate-900/40 px-2 py-1.5">
-              <div className="text-slate-500">Overage</div>
-              <div className="mt-0.5 text-slate-200">
+            <div className="rounded bg-surface-muted px-2 py-1.5">
+              <div className="text-ink-faint">Overage</div>
+              <div className="mt-0.5 text-ink">
                 {latest?.overageStatus === 'allowed'
                   ? 'on (pay-as-you-go)'
                   : latest?.overageStatus === 'rejected'
@@ -268,14 +268,14 @@ function SubscriptionWindowCard({
                     : (latest?.overageStatus ?? '—')}
               </div>
               {latest?.overageDisabledReason && (
-                <div className="mt-0.5 text-[10px] text-slate-500">
+                <div className="mt-0.5 text-[10px] text-ink-faint">
                   {latest.overageDisabledReason.replace(/_/g, ' ')}
                 </div>
               )}
             </div>
-            <div className="rounded bg-slate-900/40 px-2 py-1.5">
-              <div className="text-slate-500">Using overage</div>
-              <div className="mt-0.5 text-slate-200">
+            <div className="rounded bg-surface-muted px-2 py-1.5">
+              <div className="text-ink-faint">Using overage</div>
+              <div className="mt-0.5 text-ink">
                 {latest?.isUsingOverage === true
                   ? 'yes'
                   : latest?.isUsingOverage === false
@@ -287,11 +287,11 @@ function SubscriptionWindowCard({
         </>
       )}
 
-      <div className="mt-auto border-t border-slate-700 pt-3">
-        <div className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">
+      <div className="mt-auto border-t border-line pt-3">
+        <div className="mb-1 text-[11px] uppercase tracking-wide text-ink-faint">
           Why no % used?
         </div>
-        <div className="text-[11px] leading-relaxed text-slate-400">
+        <div className="text-[11px] leading-relaxed text-ink-dim">
           The Claude CLI's <code>rate_limit_event</code> does not expose a
           usage count — only status + reset time. The "80% used" number in
           your Claude profile UI comes from a separate (undocumented) API
@@ -299,13 +299,13 @@ function SubscriptionWindowCard({
           meter.
         </div>
         <div className="mt-2 flex justify-between text-xs">
-          <span className="text-slate-400">Our 5h rolling (local count)</span>
-          <span className="font-medium text-slate-200">
+          <span className="text-ink-dim">Our 5h rolling (local count)</span>
+          <span className="font-medium text-ink">
             {formatCompact(localEstimate)} tokens
           </span>
         </div>
         {observedAgo !== null && (
-          <div className="mt-1 text-[11px] text-slate-500">
+          <div className="mt-1 text-[11px] text-ink-faint">
             CLI snapshot from {formatDuration(observedAgo)} ago
           </div>
         )}

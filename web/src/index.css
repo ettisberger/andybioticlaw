@@ -1,16 +1,60 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg: #0f172a;
-  --color-surface: #1e293b;
-  --color-surface-2: #334155;
-  --color-border: #334155;
-  --color-text: #e2e8f0;
-  --color-text-dim: #94a3b8;
-  --color-accent: #60a5fa;
-  --color-success: #4ade80;
-  --color-warn: #fbbf24;
-  --color-error: #f87171;
+  /* --- Canvas --------------------------------------------------------- */
+  /* Warm off-white base — reads calmer than pure white, especially next
+     to the pastel accents. Surfaces (cards, nav) are pure white so they
+     lift visibly without needing heavy shadows or borders. */
+  --color-bg: #faf9f6;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f5f3ee;
+  --color-surface-sunken: #efede6;
+
+  /* --- Ink ------------------------------------------------------------ */
+  /* Deep slate instead of pure black — less clinical, easier on the eye
+     against the warm canvas. */
+  --color-ink: #2a2a2e;
+  --color-ink-dim: #606068;
+  --color-ink-faint: #9696a0;
+
+  /* --- Lines ---------------------------------------------------------- */
+  --color-line: #eceae3;
+  --color-line-strong: #d9d6ce;
+
+  /* --- Accent = soft lavender ---------------------------------------- */
+  /* Used for active nav, primary CTAs, links. Muted enough not to shout. */
+  --color-accent: #b4a3dc;
+  --color-accent-ink: #6c5ca5;
+  --color-accent-bg: #f0eafa;
+
+  /* --- Pastel state colors ------------------------------------------- */
+  --color-success: #a4c49a;
+  --color-success-ink: #436d3b;
+  --color-success-bg: #edf3ea;
+
+  --color-warn: #e6c38e;
+  --color-warn-ink: #856028;
+  --color-warn-bg: #faf0df;
+
+  --color-error: #d8a0a9;
+  --color-error-ink: #9c3f55;
+  --color-error-bg: #f8ebef;
+
+  --color-info: #a9c3de;
+  --color-info-ink: #3f6085;
+  --color-info-bg: #ebf0f8;
+
+  /* --- Typography ----------------------------------------------------- */
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
+    Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono',
+    monospace;
+
+  /* --- Radii / shadows ----------------------------------------------- */
+  --radius-sm: 0.375rem;
+  --radius: 0.625rem;
+  --radius-lg: 0.875rem;
+  --radius-xl: 1.125rem;
 }
 
 html, body, #root {
@@ -20,12 +64,48 @@ html, body, #root {
 
 body {
   background: var(--color-bg);
-  color: var(--color-text);
-  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
   font-size: 14px;
+  font-feature-settings: 'cv11', 'ss01';
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 pre, code {
-  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+/* Subtle scrollbars that match the calm aesthetic. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-line-strong);
+  border-radius: 8px;
+  border: 2px solid var(--color-bg);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-ink-faint);
+}
+
+/* Pulse for live indicators. */
+@keyframes softPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.pulse-soft {
+  animation: softPulse 2s ease-in-out infinite;
+}
+
+/* Smooth transitions on interactive elements. */
+button, a {
+  transition-property: background-color, color, border-color, opacity, transform;
+  transition-duration: 150ms;
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
 }

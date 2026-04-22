@@ -28,11 +28,11 @@ function parseLine(raw: string): ParsedLine {
 }
 
 function levelColor(level?: number): string {
-  if (level === undefined) return 'text-slate-300';
-  if (level >= 50) return 'text-rose-300';
-  if (level >= 40) return 'text-amber-300';
-  if (level >= 30) return 'text-slate-200';
-  return 'text-slate-500';
+  if (level === undefined) return 'text-ink';
+  if (level >= 50) return 'text-error-ink';
+  if (level >= 40) return 'text-warn-ink';
+  if (level >= 30) return 'text-ink';
+  return 'text-ink-faint';
 }
 
 function levelLabel(level?: number): string {
@@ -92,20 +92,20 @@ export function LogsPage() {
       <div
         ref={scrollRef}
         onScroll={onScroll}
-        className="flex-1 overflow-auto rounded border border-slate-700 bg-slate-950 p-3 font-mono text-xs leading-5"
+        className="flex-1 overflow-auto rounded-xl border border-line bg-surface-muted p-4 font-mono text-xs leading-5"
       >
         {lines.length === 0 && (
-          <div className="text-slate-500">waiting for log lines…</div>
+          <div className="text-ink-faint">waiting for log lines…</div>
         )}
         {lines.map((l, i) => (
           <div key={i} className={`whitespace-pre-wrap ${levelColor(l.level)}`}>
-            <span className="text-slate-600">
+            <span className="text-ink-faint">
               {l.time?.slice(11, 19) ?? ''}
             </span>{' '}
             <span className="font-medium">{levelLabel(l.level).padEnd(5)}</span>{' '}
             <span>{l.msg ?? l.raw}</span>
             {l.extras && (
-              <span className="text-slate-500">
+              <span className="text-ink-faint">
                 {'  '}
                 {Object.entries(l.extras)
                   .map(([k, v]) => `${k}=${typeof v === 'string' ? v : JSON.stringify(v)}`)

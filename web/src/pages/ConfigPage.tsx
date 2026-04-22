@@ -20,9 +20,9 @@ export function ConfigPage() {
         Config
       </PageTitle>
       {cfg === null ? (
-        <div className="text-slate-400">loading…</div>
+        <div className="text-ink-dim">loading…</div>
       ) : (
-        <pre className="overflow-auto rounded border border-slate-700 bg-slate-950 p-4 font-mono text-xs text-slate-200">
+        <pre className="overflow-auto rounded-xl border border-line bg-surface-muted p-5 font-mono text-xs leading-relaxed text-ink">
           {JSON.stringify(cfg, null, 2)}
         </pre>
       )}

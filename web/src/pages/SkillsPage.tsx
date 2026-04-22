@@ -46,7 +46,7 @@ export function SkillsPage() {
           </thead>
           <tbody>
             {rows.map((s) => (
-              <tr key={s.name} className="hover:bg-slate-800/40">
+              <tr key={s.name} className="hover:bg-surface-muted/50">
                 <Td>
                   <Badge tone={s.enabled ? 'success' : 'neutral'}>
                     {s.enabled ? 'enabled' : 'disabled'}

@@ -74,7 +74,7 @@ export function SessionsPage() {
       </PageTitle>
       {error && <ErrorBanner>{error}</ErrorBanner>}
       {retryMsg && (
-        <div className="mb-3 rounded border border-sky-800 bg-sky-900/40 px-3 py-2 text-sm text-sky-200">
+        <div className="mb-3 rounded border border-info/30 bg-info-bg px-3 py-2 text-sm text-info-ink">
           {retryMsg}
         </div>
       )}
@@ -84,10 +84,10 @@ export function SessionsPage() {
           <button
             key={f.label}
             onClick={() => setFilter(f.status)}
-            className={`rounded px-2.5 py-1 text-xs ${
+            className={`rounded-lg px-3 py-1.5 text-xs font-medium border ${
               filter === f.status
-                ? 'bg-slate-600 text-slate-100'
-                : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                ? 'bg-accent-bg border-accent/30 text-accent-ink'
+                : 'bg-surface border-line text-ink-dim hover:bg-surface-muted hover:text-ink'
             }`}
           >
             {f.label}
@@ -113,20 +113,20 @@ export function SessionsPage() {
             {rows.map((s) => {
               const retriable = ['failed', 'crashed', 'orphaned', 'cancelled'].includes(s.status);
               return (
-                <tr key={s.id} className="hover:bg-slate-800/40">
+                <tr key={s.id} className="hover:bg-surface-muted/50">
                   <Td>
                     <Badge tone={statusTone(s.status)}>{s.status}</Badge>
                   </Td>
                   <Td className="font-mono text-xs">
-                    <Link to={`/sessions/${s.id}`} className="text-sky-300 hover:underline">
+                    <Link to={`/sessions/${s.id}`} className="text-info-ink hover:underline">
                       {s.id.slice(0, 8)}…
                     </Link>
                   </Td>
-                  <Td className="text-xs text-slate-400">{formatTs(s.started_at)}</Td>
+                  <Td className="text-xs text-ink-dim">{formatTs(s.started_at)}</Td>
                   <Td className="text-xs">
                     {s.tokens_input.toLocaleString()}/{s.tokens_output.toLocaleString()}
                   </Td>
-                  <Td className="text-xs text-slate-300">{truncate(s.input_preview, 80)}</Td>
+                  <Td className="text-xs text-ink">{truncate(s.input_preview, 80)}</Td>
                   <Td>
                     {retriable && (
                       <Button variant="ghost" onClick={() => handleRetry(s.id)}>

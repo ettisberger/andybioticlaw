@@ -48,7 +48,7 @@ export function MemoryPage() {
       </PageTitle>
       {error && <ErrorBanner>{error}</ErrorBanner>}
       {msg && (
-        <div className="mb-3 rounded border border-sky-800 bg-sky-900/40 px-3 py-2 text-sm text-sky-200">
+        <div className="mb-3 rounded border border-info/30 bg-info-bg px-3 py-2 text-sm text-info-ink">
           {msg}
         </div>
       )}
@@ -70,14 +70,14 @@ export function MemoryPage() {
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id} className="hover:bg-slate-800/40">
-                <Td className="text-xs text-slate-500">{r.id}</Td>
-                <Td className="font-mono text-xs text-sky-300">{r.scope}</Td>
-                <Td className="text-xs text-slate-400">{r.key ?? '—'}</Td>
+              <tr key={r.id} className="hover:bg-surface-muted/50">
+                <Td className="text-xs text-ink-faint">{r.id}</Td>
+                <Td className="font-mono text-xs text-info-ink">{r.scope}</Td>
+                <Td className="text-xs text-ink-dim">{r.key ?? '—'}</Td>
                 <Td className="text-sm">{truncate(r.value, 150)}</Td>
-                <Td className="text-xs text-slate-400">{r.source}</Td>
-                <Td className="text-xs text-slate-400">{formatTs(r.ttl_at)}</Td>
-                <Td className="text-xs text-slate-400">{formatTs(r.updated_at)}</Td>
+                <Td className="text-xs text-ink-dim">{r.source}</Td>
+                <Td className="text-xs text-ink-dim">{formatTs(r.ttl_at)}</Td>
+                <Td className="text-xs text-ink-dim">{formatTs(r.updated_at)}</Td>
                 <Td>
                   <Button variant="ghost" onClick={() => remove(r.id)}>
                     delete

@@ -34,7 +34,7 @@ export function AuditPage() {
           value={kindFilter}
           onChange={(e) => setKindFilter(e.target.value)}
           placeholder="filter by kind"
-          className="rounded border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-200 placeholder:text-slate-500"
+          className="rounded border border-line bg-surface-muted px-3 py-1.5 text-sm text-ink placeholder:text-ink-faint"
         />
       </div>
       {rows.length === 0 ? (
@@ -51,11 +51,11 @@ export function AuditPage() {
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id} className="hover:bg-slate-800/40 align-top">
-                <Td className="text-xs text-slate-400 whitespace-nowrap">{formatTs(r.at)}</Td>
-                <Td className="text-xs font-mono text-sky-300">{r.kind}</Td>
-                <Td className="text-xs text-slate-400">{r.actor ?? '—'}</Td>
-                <Td className="text-xs text-slate-300">
+              <tr key={r.id} className="hover:bg-surface-muted/50 align-top">
+                <Td className="text-xs text-ink-dim whitespace-nowrap">{formatTs(r.at)}</Td>
+                <Td className="text-xs font-mono text-info-ink">{r.kind}</Td>
+                <Td className="text-xs text-ink-dim">{r.actor ?? '—'}</Td>
+                <Td className="text-xs text-ink">
                   <pre className="max-w-3xl whitespace-pre-wrap break-all">
                     {r.detail ? JSON.stringify(r.detail, null, 2) : ''}
                   </pre>

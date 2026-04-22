@@ -83,7 +83,7 @@ export function SchedulesPage() {
       </PageTitle>
       {error && <ErrorBanner>{error}</ErrorBanner>}
       {msg && (
-        <div className="mb-3 rounded border border-sky-800 bg-sky-900/40 px-3 py-2 text-sm text-sky-200">
+        <div className="mb-3 rounded border border-info/30 bg-info-bg px-3 py-2 text-sm text-info-ink">
           {msg}
         </div>
       )}
@@ -110,8 +110,8 @@ export function SchedulesPage() {
               const oneShot = s.recurring === 0;
               const fireAt = oneShot ? oneShotFireAt(s.cron_expr) : null;
               return (
-                <tr key={s.id} className="hover:bg-slate-800/40">
-                  <Td className="text-xs text-slate-500">{s.id}</Td>
+                <tr key={s.id} className="hover:bg-surface-muted/50">
+                  <Td className="text-xs text-ink-faint">{s.id}</Td>
                   <Td className="font-medium">{s.name}</Td>
                   <Td className="text-xs">{s.kind}</Td>
                   <Td>
@@ -143,7 +143,7 @@ export function SchedulesPage() {
                       '0'
                     )}
                   </Td>
-                  <Td className="text-xs text-slate-400">{formatTs(s.last_run)}</Td>
+                  <Td className="text-xs text-ink-dim">{formatTs(s.last_run)}</Td>
                   <Td>
                     <Button variant="ghost" onClick={() => toggle(s.id, !!s.enabled)}>
                       {s.enabled ? 'disable' : 'enable'}
