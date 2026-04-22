@@ -222,7 +222,8 @@ async function readSecret(
     const cleanup = () => {
       stdin.off('data', onData);
       if (stdin.setRawMode) stdin.setRawMode(false);
-      stdin.pause?.();
+      // Do NOT pause stdin here — the next readline.question expects it
+      // to still be flowing, otherwise the next prompt closes immediately.
     };
 
     if (stdin.setRawMode) stdin.setRawMode(true);

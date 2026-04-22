@@ -104,7 +104,8 @@ async function pickItem(
     function cleanup(): void {
       stdin.off('data', onData);
       if (stdin.setRawMode) stdin.setRawMode(false);
-      stdin.pause?.();
+      // No stdin.pause() — the selected handler (init wizard) needs the
+      // stream still flowing for its own readline prompts.
       showCursor();
     }
 

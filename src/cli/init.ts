@@ -5,6 +5,14 @@ import argon2 from 'argon2';
 import { readEnvFile, writeEnvFileUpdates } from '../config/env-file.js';
 import { loadConfig, projectRoot } from '../config/load.js';
 import { defaultConfigPath, defaultEnvPath } from '../config/paths.js';
+import { bold, cyan, dim, green, lavender, sage, yellow } from './ansi.js';
+
+class InitAbortedError extends Error {
+  constructor() {
+    super('init aborted by operator');
+    this.name = 'InitAbortedError';
+  }
+}
 
 /**
  * `andybioticlaw init` — first-time setup wizard.
@@ -38,9 +46,9 @@ export async function runInitCommand(): Promise<void> {
   };
   const stdout = process.stdout;
 
-  stdout.write(`\nandybioticlaw — first-time setup wizard\n`);
-  stdout.write(`This writes .env and config/config.yaml in ${root}.\n`);
-  stdout.write(`Re-running is safe; already-set values are reused.\n\n`);
+  stdout.write(`\n${bold(lavender('andybioticlaw'))} ${dim('— first-time setup wizard')}\n`);
+  stdout.write(dim(`  writes .env and config/config.yaml in ${root}\n`));
+  stdout.write(dim(`  safe to re-run; already-set values are reused\n\n`));
 
   // --- 1. Ensure example files have been copied into editable ones -------
   if (!existsSync(envPath)) {
@@ -70,37 +78,40 @@ export async function runInitCommand(): Promise<void> {
     const envUpdates: Record<string, string> = {};
 
     // --- 2. Telegram bot token --------------------------------------------
+    section(stdout, '1/4', 'Telegram bot token');
     if (envExisting.values.TELEGRAM_BOT_TOKEN) {
-      stdout.write(`\n✓ TELEGRAM_BOT_TOKEN already set in .env (reusing)\n`);
+      stdout.write(`  ${sage('✓')} ${dim('TELEGRAM_BOT_TOKEN already set in .env — reusing')}\n`);
     } else {
       stdout.write(
-        `\nYour Telegram bot needs a token from @BotFather.\n` +
-          `  1. Open Telegram, search for @BotFather, /start.\n` +
-          `  2. Send /newbot, pick a display name and a @username.\n` +
-          `  3. Copy the token (format: 1234567890:ABC-DEF...).\n`,
+        `  ${dim('Get one from')} ${cyan('@BotFather')} ${dim('on Telegram:')}\n` +
+          `  ${dim('  1. search @BotFather, /start')}\n` +
+          `  ${dim('  2. send /newbot, pick display name + @username')}\n` +
+          `  ${dim('  3. copy the token (format: 1234567890:ABC-DEF…)')}\n\n`,
       );
-      const token = await askSecret(stdin, stdout, '  ? TELEGRAM_BOT_TOKEN: ');
-      if (!token) throw new Error('bot token is required');
+      const token = await askSecret(stdin, stdout, `  ${lavender('?')} bot token: `);
+      if (!token) throw new InitAbortedError();
       envUpdates.TELEGRAM_BOT_TOKEN = token;
     }
 
     // --- 3. Principal user id --------------------------------------------
+    section(stdout, '2/4', 'Principal Telegram user id');
     const currentAllowed = readAllowedUserIds(configPath);
     let principalUserId: number | null = null;
     if (currentAllowed.length > 0) {
       stdout.write(
-        `\n✓ telegram.dm.allowedUserIds already set in config.yaml (${JSON.stringify(currentAllowed)}) — reusing\n`,
+        `  ${sage('✓')} ${dim(`telegram.dm.allowedUserIds already set (${JSON.stringify(currentAllowed)}) — reusing`)}\n`,
       );
     } else {
       stdout.write(
-        `\nWho is allowed to DM this bot? Message @userinfobot on Telegram\n` +
-          `to see your own numeric id. Enter only yours for now.\n`,
+        `  ${dim('DM')} ${cyan('@userinfobot')} ${dim('on Telegram to see your numeric id.')}\n` +
+          `  ${dim('Only this user will be allowed to talk to your bot.')}\n\n`,
       );
       while (principalUserId === null) {
-        const raw = await askLine(rl, '  ? principal Telegram user id: ');
-        const n = Number(raw?.trim());
+        const raw = await askLine(rl, `  ${lavender('?')} user id: `);
+        if (raw === null) throw new InitAbortedError();
+        const n = Number(raw.trim());
         if (!Number.isInteger(n) || n <= 0) {
-          stdout.write(`  ! must be a positive integer. Try again.\n`);
+          stdout.write(`  ${yellow('!')} ${dim('must be a positive integer — try again')}\n`);
           continue;
         }
         principalUserId = n;
@@ -108,6 +119,7 @@ export async function runInitCommand(): Promise<void> {
     }
 
     // --- 4. Service timezone ---------------------------------------------
+    section(stdout, '3/4', 'Service timezone');
     const systemTz =
       Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Zurich';
     const currentTz = readTimezone(configPath);
@@ -115,12 +127,15 @@ export async function runInitCommand(): Promise<void> {
     const currentMatchesExample = currentTz === 'Europe/Zurich';
     if (currentTz && !currentMatchesExample) {
       stdout.write(
-        `\n✓ service.timezone already customised (${currentTz}) — reusing\n`,
+        `  ${sage('✓')} ${dim(`service.timezone already customised (${currentTz}) — reusing`)}\n`,
       );
     } else {
-      const prompt = `\n  ? service timezone [${systemTz}]: `;
-      const raw = await askLine(rl, prompt);
-      timezone = raw?.trim() || systemTz;
+      const raw = await askLine(
+        rl,
+        `  ${lavender('?')} timezone ${dim(`[default: ${systemTz}]`)}: `,
+      );
+      if (raw === null) throw new InitAbortedError();
+      timezone = raw.trim() || systemTz;
     }
 
     // --- 5. Dashboard password -------------------------------------------
@@ -128,27 +143,26 @@ export async function runInitCommand(): Promise<void> {
     // so the service boots only if we populate the hash OR explicitly
     // disable auth. Press-Enter path disables auth with a confirmation,
     // so localhost-only quick-try users aren't forced to pick a password.
+    section(stdout, '4/4', 'Dashboard basic-auth password');
     const currentHashLine = readPasswordHash(configPath);
     let dashboardPasswordHash: string | null = null;
     let disableDashboardAuth = false;
     if (currentHashLine && currentHashLine.length > 0) {
       stdout.write(
-        `\n✓ dashboard.basicAuth.passwordHash already set — reusing\n`,
+        `  ${sage('✓')} ${dim('dashboard.basicAuth.passwordHash already set — reusing')}\n`,
       );
     } else {
       stdout.write(
-        `\nDashboard (127.0.0.1:18790) defaults to basic-auth ON. Set a password\n` +
-          `now (recommended, even for localhost-only) OR press Enter to disable\n` +
-          `auth entirely.\n`,
+        `  ${dim('Dashboard listens on 127.0.0.1:18790 (localhost only). Basic-auth')}\n` +
+          `  ${dim('defaults to ON; set a password now, OR press Enter to disable it.')}\n\n`,
       );
-      const pwd = await askSecret(stdin, stdout, '  ? dashboard password: ');
+      const pwd = await askSecret(stdin, stdout, `  ${lavender('?')} dashboard password: `);
       if (pwd && pwd.length > 0) {
-        stdout.write(`  hashing password with argon2id…\n`);
+        stdout.write(`  ${dim('hashing with argon2id…')}\n`);
         dashboardPasswordHash = await argon2.hash(pwd, { type: argon2.argon2id });
       } else {
         stdout.write(
-          `  (no password entered — disabling basic-auth. You can re-enable it\n` +
-            `   later by running 'andybioticlaw init' again.)\n`,
+          `  ${yellow('!')} ${dim('no password → disabling basic-auth. Re-run init to re-enable.')}\n`,
         );
         disableDashboardAuth = true;
       }
@@ -157,7 +171,9 @@ export async function runInitCommand(): Promise<void> {
     // --- 6. Write env updates --------------------------------------------
     if (Object.keys(envUpdates).length > 0) {
       writeEnvFileUpdates(envPath, envUpdates);
-      stdout.write(`✓ wrote ${Object.keys(envUpdates).length} secret(s) to ${envPath}\n`);
+      stdout.write(
+        `\n  ${sage('✓')} ${dim(`wrote ${Object.keys(envUpdates).length} secret(s) to ${envPath}`)}\n`,
+      );
     }
 
     // --- 7. Patch config.yaml (line-oriented, preserves comments) --------
@@ -201,10 +217,10 @@ export async function runInitCommand(): Promise<void> {
         body = body.replace(p.regex, p.replacement);
         if (body === before) {
           stdout.write(
-            `  ! could not patch ${p.desc} — no matching line in config.yaml. Edit manually.\n`,
+            `  ${yellow('!')} ${dim(`could not patch ${p.desc} — no matching line, edit manually`)}\n`,
           );
         } else {
-          stdout.write(`✓ patched ${p.desc} in config.yaml\n`);
+          stdout.write(`  ${sage('✓')} ${dim(`patched ${p.desc} in config.yaml`)}\n`);
         }
       }
       writeFileSync(configPath, body);
@@ -214,31 +230,37 @@ export async function runInitCommand(): Promise<void> {
   }
 
   // --- 8. Validate the result ------------------------------------------
+  stdout.write('\n');
   try {
     const result = loadConfig();
-    stdout.write(`\n✓ config valid: ${result.configPath}\n`);
+    stdout.write(`  ${sage('✓')} ${green('config valid:')} ${dim(result.configPath)}\n`);
     stdout.write(
-      `  agent=${result.config.agent.name} model=${result.config.agent.model} tz=${result.config.service.timezone}\n`,
+      `    ${dim(`agent=${result.config.agent.name}  model=${result.config.agent.model}  tz=${result.config.service.timezone}`)}\n`,
     );
   } catch (e) {
-    stdout.write(`\n⚠️  config validation failed: ${(e as Error).message}\n`);
+    stdout.write(`  ${yellow('⚠')} config validation failed: ${(e as Error).message}\n`);
     stdout.write(
-      `  Edit ${configPath} manually and re-run 'andybioticlaw config validate'.\n`,
+      `    ${dim(`edit ${configPath} manually and re-run 'andybioticlaw config validate'`)}\n`,
     );
   }
 
   // --- 9. Next steps ---------------------------------------------------
   stdout.write(
-    `\nNext steps\n` +
-      `  1. Log the service user (or yourself, in dev) into Claude:\n` +
-      `       claude login\n` +
-      `     Follow the OAuth flow; verify with 'claude auth status --json'.\n` +
-      `  2. Start the service:\n` +
-      `     - systemd (prod): sudo systemctl start andybioticlaw\n` +
-      `     - local dev:       pnpm dev\n` +
-      `  3. DM your bot on Telegram to confirm it answers.\n` +
-      `  4. Arrange backups for 'data/' yourself — see docs/DEPLOYMENT.md § 9.\n\n`,
+    `\n${bold('Next steps')}\n` +
+      `  ${lavender('1.')} Log into Claude (if you haven't):  ${cyan('claude login')}\n` +
+      `     ${dim('Verify with:  claude auth status --json')}\n` +
+      `  ${lavender('2.')} Start the service:\n` +
+      `     ${dim('- systemd (prod):')}  ${cyan('sudo systemctl start andybioticlaw')}\n` +
+      `     ${dim('- local dev:')}       ${cyan('pnpm dev')}\n` +
+      `  ${lavender('3.')} DM your bot on Telegram to confirm it answers.\n` +
+      `  ${lavender('4.')} Back up data/ yourself — see docs/DEPLOYMENT.md § 9.\n\n` +
+      `${dim('made by')} ${green('cognitek.dev')}\n\n`,
   );
+}
+
+/** Prints a section header like `── 2/4 · Principal user id ──`. */
+function section(stdout: NodeJS.WritableStream, step: string, title: string): void {
+  stdout.write(`\n${dim('──')} ${lavender(step)} ${dim('·')} ${bold(title)} ${dim('──')}\n\n`);
 }
 
 // --- config.yaml line readers -----------------------------------------
@@ -317,7 +339,10 @@ async function askSecret(
     const cleanup = () => {
       stdin.off('data', onData);
       if (stdin.setRawMode) stdin.setRawMode(false);
-      stdin.pause?.();
+      // NB: we deliberately don't `stdin.pause()` here — the next readline
+      // question (for principal-id, timezone, etc.) expects the stream to
+      // be flowing, and pausing after a secret read left readline unable
+      // to receive the next Enter keystroke, closing immediately.
     };
     if (stdin.setRawMode) stdin.setRawMode(true);
     (stdin as unknown as { resume?: () => void }).resume?.();

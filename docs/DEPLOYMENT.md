@@ -80,11 +80,11 @@ claude --version
 
 ## 4. Clone + build the source
 
-On the **VPS** (or on a dev machine if you prefer; see note at end of
-this section):
+Clone into your admin user's home (**not `/tmp`** — you want this
+persistent so future redeploys are a simple `git pull` + rebuild):
 
 ```bash
-cd /tmp
+cd ~
 git clone https://github.com/ettisberger/andybioticlaw.git
 cd andybioticlaw
 
@@ -93,22 +93,22 @@ pnpm build
 pnpm --filter @andybioticlaw/web build
 ```
 
-Leave the tree in `/tmp/andybioticlaw` — the installer will copy it into
-place in the next step. Don't delete it yet (you'll want it for a
-second build if you re-deploy later).
+`~/andybioticlaw/` is now your staging tree. The installer in the next
+step copies the built artifacts out of here into the service user's
+home dotdir; your staging clone remains intact for future updates.
 
 > **Dev-machine variant:** if you prefer not to install build-tools on
-> the VPS, build locally and rsync the result:
-> `rsync -avz --delete --exclude='node_modules/' --exclude='data/' --exclude='.git/' ./ <vps>:/tmp/andybioticlaw/`
+> the VPS, build locally and rsync:
+> `rsync -avz --delete --exclude='node_modules/' --exclude='data/' --exclude='.git/' ./ <vps>:~/andybioticlaw/`
 > — then continue with § 5 on the VPS. The installer accepts whatever
-> directory it lives in as its staging source.
+> directory it's invoked from as its staging source.
 
 ## 5. Run the installer
 
 On the VPS:
 
 ```bash
-sudo bash /tmp/andybioticlaw/scripts/install.sh
+sudo bash ~/andybioticlaw/scripts/install.sh
 ```
 
 This performs all the one-time setup:
@@ -300,17 +300,17 @@ WireGuard endpoint only.
 ## 11. Future redeploys
 
 The installer is idempotent — re-running it performs an in-place update
-of everything except `data/` (runtime state, preserved). Easiest flow:
+of everything except `data/` (runtime state, preserved):
 
 ```bash
-# On the VPS, in your /tmp/andybioticlaw clone:
-cd /tmp/andybioticlaw
+# On the VPS, in your ~/andybioticlaw clone (from § 4):
+cd ~/andybioticlaw
 git pull
 pnpm install --frozen-lockfile
 pnpm build
 pnpm --filter @andybioticlaw/web build
 
-sudo bash scripts/install.sh     # copies updated source in, re-runs pnpm install --prod,
+sudo bash scripts/install.sh     # re-copies source, re-runs pnpm install --prod,
                                   # re-renders + re-installs systemd unit. data/ untouched.
 sudo systemctl restart andybioticlaw
 sudo journalctl -u andybioticlaw -n 50 -f
@@ -320,8 +320,8 @@ sudo journalctl -u andybioticlaw -n 50 -f
 sessions), then re-boots. The boot-time orphan sweep flips anything
 that didn't finish to `orphaned` and notifies you.
 
-> **Dev-machine variant:** build locally, `rsync` to `/tmp/andybioticlaw/`
-> on the VPS, then run `sudo bash /tmp/andybioticlaw/scripts/install.sh`.
+> **Dev-machine variant:** build locally, `rsync` to `~/andybioticlaw/`
+> on the VPS, then run `sudo bash ~/andybioticlaw/scripts/install.sh`.
 > Same endpoint.
 
 ## Troubleshooting

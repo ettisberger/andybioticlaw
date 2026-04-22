@@ -64,8 +64,11 @@ claude --version
 
 ## 3. Clone, build, install (5 min)
 
+Clone into **your admin user's home** (not `/tmp` — that gets wiped
+eventually, and you want the source persistent for future redeploys):
+
 ```bash
-cd /tmp
+cd ~
 git clone https://github.com/<your-fork-or-upstream>/andybioticlaw.git
 cd andybioticlaw
 
@@ -80,6 +83,9 @@ pnpm --filter @andybioticlaw/web build
 # `/usr/local/bin/`.
 sudo bash scripts/install.sh
 ```
+
+`~/andybioticlaw/` stays around; re-deploys are just `git pull &&
+pnpm build && sudo bash scripts/install.sh` from that directory.
 
 ## 4. Switch to the service user (1 min)
 
