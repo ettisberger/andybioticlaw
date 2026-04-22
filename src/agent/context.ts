@@ -32,6 +32,15 @@ export interface ContextAssemblyInput {
    * tool. Phase 3+: always true when running through the real session stack.
    */
   memoryToolDescribed?: boolean;
+  /** Override epoch ms for the "Current time" footer. Tests only — prod reads Date.now(). */
+  nowMs?: number;
+  /**
+   * Bucket size (ms) for rounding `Current time` down to a stable value so
+   * quick-succession turns share a cache-friendly prefix. Default 15min
+   * (900_000 ms). Lower means more precision in the prompt but more cache
+   * misses. Higher is more cache-friendly but less precise for Emma.
+   */
+  timeBucketMs?: number;
 }
 
 export interface AssembledContext {
@@ -40,20 +49,31 @@ export interface AssembledContext {
 }
 
 const DEFAULT_HISTORY_BUDGET = 40_000;
+const DEFAULT_TIME_BUCKET_MS = 15 * 60 * 1000;
 
 /**
  * Assemble the full system prompt for a new session.
  *
- * Layer order (per spec):
- *   1. Base prompt from src/agent/prompts/system.base.md with {{agent.name}} substituted.
- *   2. Active memory entries (bullet list).
- *   3. SKILL.md contents for each active skill.
- *   4. Meta info (current time, model, principal, timezone).
- *   5. Conversation history transcript (trimmed oldest-first if too long).
+ * Layout is deliberately ordered cache-stable → cache-volatile so
+ * Anthropic prompt caching can re-use the maximum possible prefix
+ * across turns in the same chat:
  *
- * We embed conversation history in the system prompt rather than streaming
- * it as real user/assistant turns via `--input-format stream-json`. See
- * README § Design Decisions for the rationale.
+ *   ┌─────────────────────────────────────────────────────────┐
+ *   │ STABLE PREFIX (hit the prompt cache across turns)       │
+ *   │  1. Base prompt (file; {{agent.name}} substituted)      │
+ *   │  2. Active memory (bullet list)                         │
+ *   │  3. Installed skills (SKILL.md blocks)                  │
+ *   │  4. Memory tool instructions                            │
+ *   │  5. Stable runtime meta (agent/model/timezone/principal)│
+ *   ├─────────────────────────────────────────────────────────┤
+ *   │ VOLATILE SUFFIX (differs every turn → no cache hit)     │
+ *   │  6. Conversation history (new turns appended each time) │
+ *   │  7. Current time (rounded to 15-min bucket)             │
+ *   └─────────────────────────────────────────────────────────┘
+ *
+ * We embed conversation history in the system prompt rather than
+ * streaming it as real user/assistant turns via
+ * `--input-format stream-json` — see README § Design Decisions.
  */
 export function assembleContext(input: ContextAssemblyInput): AssembledContext {
   const base = loadBasePrompt(input.basePromptPathOverride).replaceAll(
@@ -63,6 +83,7 @@ export function assembleContext(input: ContextAssemblyInput): AssembledContext {
 
   const sections: string[] = [base.trimEnd()];
 
+  // --- STABLE PREFIX ----------------------------------------------------
   if (input.activeMemory.length > 0) {
     const bullets = input.activeMemory
       .map((m) => {
@@ -86,8 +107,9 @@ export function assembleContext(input: ContextAssemblyInput): AssembledContext {
     sections.push(memoryToolSection());
   }
 
-  sections.push(assembleMeta(input));
+  sections.push(assembleStableMeta(input));
 
+  // --- VOLATILE SUFFIX --------------------------------------------------
   const { transcript, trimmed } = renderHistory(
     input.conversationHistory,
     input.historyBudgetChars ?? DEFAULT_HISTORY_BUDGET,
@@ -104,6 +126,8 @@ export function assembleContext(input: ContextAssemblyInput): AssembledContext {
       ].join('\n'),
     );
   }
+
+  sections.push(renderCurrentTimeFooter(input));
 
   return {
     systemPrompt: sections.join('\n\n'),
@@ -129,11 +153,11 @@ function memoryToolSection(): string {
   ].join('\n');
 }
 
-function assembleMeta(input: ContextAssemblyInput): string {
-  const now = new Date().toLocaleString('en-GB', {
-    timeZone: input.timezone,
-    hour12: false,
-  });
+/**
+ * Stable runtime meta — fields that do NOT change turn-to-turn for a given
+ * config / principal. Kept in the cache-friendly prefix.
+ */
+function assembleStableMeta(input: ContextAssemblyInput): string {
   return [
     '## Runtime context',
     '',
@@ -141,7 +165,32 @@ function assembleMeta(input: ContextAssemblyInput): string {
     `- Model: ${input.model}`,
     `- Timezone: ${input.timezone}`,
     `- Principal: ${input.principalLabel}`,
-    `- Current time: ${now} (${input.timezone})`,
+  ].join('\n');
+}
+
+/**
+ * Volatile "Current time" block — rendered last so everything above it
+ * stays cache-eligible across turns. Rounded DOWN to a 15-minute bucket
+ * (configurable) so bursts of quick-succession messages share one prefix.
+ *
+ * Tradeoff: the time the agent sees is accurate to ±15 min. For tasks
+ * needing the exact second, Emma should use the Bash tool (`date`) or
+ * look at the last user-message timestamp in conversation history.
+ */
+function renderCurrentTimeFooter(input: ContextAssemblyInput): string {
+  const bucketMs = input.timeBucketMs ?? DEFAULT_TIME_BUCKET_MS;
+  const rawNow = input.nowMs ?? Date.now();
+  const bucketed = Math.floor(rawNow / bucketMs) * bucketMs;
+  const formatted = new Date(bucketed).toLocaleString('en-GB', {
+    timeZone: input.timezone,
+    hour12: false,
+  });
+  const bucketMinutes = Math.round(bucketMs / 60_000);
+  return [
+    '## Current time',
+    '',
+    `${formatted} (${input.timezone})`,
+    `_Rounded down to the nearest ${bucketMinutes}-minute bucket to keep the prompt prefix cache-friendly. If you need exact time, run \`date -u\` or consult the most recent user message's implied timestamp._`,
   ].join('\n');
 }
 

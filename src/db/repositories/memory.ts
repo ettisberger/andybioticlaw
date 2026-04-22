@@ -64,6 +64,10 @@ export interface MemoryRepo {
   proposalMarkExpired(olderThanMs: number): number;
 }
 
+/** Allowlist of columns accepted by `MemoryRepo.update()` — interpolated
+ *  into SQL, so must be checked at runtime. */
+const ALLOWED_MEMORY_UPDATE_KEYS = ['value', 'key', 'ttl_at'] as const;
+
 export function createMemoryRepo(db: Database): MemoryRepo {
   const insertMemory = db.prepare(
     `INSERT INTO memory (scope, key, value, source, ttl_at, created_at, updated_at)
@@ -138,7 +142,12 @@ export function createMemoryRepo(db: Database): MemoryRepo {
       return row;
     },
     update(id, patch) {
-      const keys = Object.keys(patch) as (keyof typeof patch)[];
+      // Allowlist-guarded key set. Patch values go through parameter
+      // binding, but keys are interpolated into SQL — so we filter them
+      // against an explicit column set first.
+      const keys = (Object.keys(patch) as string[]).filter((k) =>
+        (ALLOWED_MEMORY_UPDATE_KEYS as readonly string[]).includes(k),
+      );
       if (keys.length === 0) return;
       const sets = keys.map((k) => `${k} = @${k}`).join(', ');
       db.prepare(`UPDATE memory SET ${sets}, updated_at = @updated_at WHERE id = @id`).run({

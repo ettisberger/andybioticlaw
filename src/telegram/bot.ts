@@ -1,4 +1,5 @@
 import { Bot } from 'grammy';
+import type { Api } from 'grammy';
 import type { Logger } from 'pino';
 import type { AuditRepo } from '../db/repositories/audit.js';
 import type { SessionsRepo } from '../db/repositories/sessions.js';
@@ -65,6 +66,8 @@ export interface TelegramService {
   stop(): Promise<void>;
   notifyPrincipal(text: string): Promise<void>;
   queue: QueueManager<SessionExecuteInput, SessionExecuteResult>;
+  /** Exposed so scheduler + other internals can send arbitrary messages. */
+  api: Api;
 }
 
 export function createTelegramService(deps: BotDeps): TelegramService {
@@ -237,5 +240,6 @@ export function createTelegramService(deps: BotDeps): TelegramService {
       }
     },
     queue,
+    api: bot.api,
   };
 }

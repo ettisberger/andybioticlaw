@@ -1,22 +1,21 @@
-import { randomUUID } from 'node:crypto';
 import type { Bot, Context } from 'grammy';
-import type { Logger } from 'pino';
 import type { Api } from 'grammy';
+import type { Logger } from 'pino';
+import type { AuditRepo } from '../../db/repositories/audit.js';
 import type { SessionsRepo } from '../../db/repositories/sessions.js';
 import type { MessagesRepo } from '../../db/repositories/messages.js';
-import type { AuditRepo } from '../../db/repositories/audit.js';
 import type { MemoryRepo } from '../../db/repositories/memory.js';
 import type { MemoryManager } from '../../memory/manager.js';
+import type { BudgetTracker } from '../../agent/budget.js';
+import type { AuthChecker } from '../auth.js';
+import type { ErrorReporter } from '../../observability/errors.js';
 import type { QueueManager } from '../../agent/queue.js';
-import { QueueCancelledError } from '../../agent/queue.js';
 import type {
   SessionExecuteInput,
   SessionExecuteResult,
 } from '../../agent/session.js';
-import { createTelegramStreamSink } from '../streaming.js';
-import type { BudgetTracker } from '../../agent/budget.js';
-import type { AuthChecker } from '../auth.js';
-import type { ErrorReporter } from '../../observability/errors.js';
+import { dispatchUserPrompt } from '../../agent/dispatch.js';
+import type { DispatchDeps } from '../../agent/dispatch.js';
 
 export type TelegramDmSubmit = (ctx: Context, userText: string) => Promise<void>;
 export type TelegramCancel = (
@@ -53,141 +52,105 @@ export interface DmHandlerDeps {
   memoryProposalServer: { command: string; args: string[] };
 }
 
+function dispatchDepsFromHandler(deps: DmHandlerDeps): DispatchDeps {
+  return {
+    api: deps.api,
+    logger: deps.logger,
+    audit: deps.audit,
+    sessions: deps.sessions,
+    messages: deps.messages,
+    memoryRepo: deps.memoryRepo,
+    memoryManager: deps.memoryManager,
+    budget: deps.budget,
+    errors: deps.errors,
+    queue: deps.queue,
+    cwd: deps.cwd,
+    agentName: deps.agentName,
+    model: deps.model,
+    timezone: deps.timezone,
+    memoryAutoAccept: deps.memoryAutoAccept,
+    streamIdleTimeoutMs: deps.streamIdleTimeoutMs,
+    streamEditIntervalMs: deps.streamEditIntervalMs,
+    longTaskNotifyAfterMs: deps.longTaskNotifyAfterMs,
+    conversationHistoryLimit: deps.conversationHistoryLimit,
+    allowedTools: deps.allowedTools,
+    credentialsReady: deps.credentialsReady,
+    dbPath: deps.dbPath,
+    sessionWorkspaceRoot: deps.sessionWorkspaceRoot,
+    memoryProposalServer: deps.memoryProposalServer,
+  };
+}
+
 export function registerDmHandler(deps: DmHandlerDeps): TelegramDmSubmit {
+  const dispatchDeps = dispatchDepsFromHandler(deps);
+
   const submit: TelegramDmSubmit = async (ctx, userText) => {
     if (!ctx.chat || ctx.chat.type !== 'private') return;
 
-    const chatIdNum = ctx.chat.id;
-    const chatIdStr = String(chatIdNum);
-
-    if (!deps.credentialsReady()) {
-      await ctx.reply(
-        '⚠️ Agent not ready: Claude credentials are missing. Check the service logs and run `claude login`, then restart the service.',
-      );
-      return;
-    }
-
-    const budgetStatus = deps.budget.status();
-    if (budgetStatus.exhausted) {
-      await ctx.reply(deps.budget.exhaustedMessage(budgetStatus));
-      deps.audit.record({
-        kind: 'budget_exceeded',
-        actor: chatIdStr,
-        detail: { used: budgetStatus.used, limit: budgetStatus.dailyLimit },
-      });
-      return;
-    }
-
-    const sessionId = randomUUID();
-    const depthBeforeSubmit = deps.queue.depth(chatIdStr);
-    const startsImmediately = depthBeforeSubmit === 0;
-
-    const openingText = startsImmediately
-      ? '…'
-      : `… (queued, #${depthBeforeSubmit + 1})`;
-
-    let openingMessageId: number;
-    try {
-      const opening = await ctx.reply(openingText);
-      openingMessageId = opening.message_id;
-    } catch (e) {
-      deps.errors.report({
-        kind: 'telegram_send_failed',
-        message: `failed to send opening message: ${(e as Error).message}`,
-        context: { chatId: chatIdStr },
-      });
-      return;
-    }
-
-    const sink = createTelegramStreamSink(
+    const outcome = await dispatchUserPrompt(
       {
-        api: deps.api,
-        chatId: chatIdNum,
-        sessionId,
-        logger: deps.logger,
-        editIntervalMs: deps.streamEditIntervalMs(),
-        longTaskNotifyAfterMs: deps.longTaskNotifyAfterMs(),
-        proposalProcessor: {
-          memoryRepo: deps.memoryRepo,
-          audit: deps.audit,
-          manager: deps.memoryManager,
-          autoAccept: deps.memoryAutoAccept,
-        },
+        chatId: ctx.chat.id,
+        userText,
+        fromUserId: ctx.from?.id ?? null,
+        origin: 'telegram-dm',
       },
-      openingMessageId,
+      dispatchDeps,
+      deps.principalUserId,
     );
 
-    const placeholderController = new AbortController();
-
-    const req: SessionExecuteInput = {
-      chatId: chatIdStr,
-      source: 'dm',
-      userMessage: userText,
-      principalUserId: ctx.from?.id ?? deps.principalUserId,
-      principalLabel: `Telegram user ${ctx.from?.id ?? '?'}`,
-      model: deps.model,
-      timezone: deps.timezone,
-      agentName: deps.agentName,
-      allowedTools: deps.allowedTools(),
-      streamIdleTimeoutMs: deps.streamIdleTimeoutMs(),
-      cwd: deps.cwd,
-      sessionWorkspaceRoot: deps.sessionWorkspaceRoot,
-      conversationHistoryLimit: deps.conversationHistoryLimit(),
-      sessionIdOverride: sessionId,
-      signal: placeholderController.signal,
-      sink,
-      dbPath: deps.dbPath,
-      memoryProposalServer: deps.memoryProposalServer,
-    };
-
-    const onStart = () => {
-      if (!startsImmediately) {
-        deps.api
-          .editMessageText(chatIdNum, openingMessageId, '…')
-          .catch((e: unknown) =>
-            deps.logger.debug(
-              { err: (e as Error).message },
-              'queued→working edit failed',
-            ),
-          );
-      }
-    };
-
-    try {
-      await deps.queue.submit(chatIdStr, req, onStart);
-    } catch (e) {
-      if (e instanceof QueueCancelledError) {
-        deps.sessions.update(sessionId, {
-          status: 'cancelled',
-          ended_at: Date.now(),
-          error: 'cancelled before start',
-        });
-        return;
-      }
-      deps.errors.report({
-        kind: 'dm_submit_error',
-        message: `unexpected DM submit error: ${(e as Error).message}`,
-        context: { chatId: chatIdStr, sessionId },
-      });
+    if (outcome.kind === 'refused') {
       try {
-        await ctx.reply(`⚠️ Internal error: ${(e as Error).message}`);
+        await ctx.reply(outcome.userMessage);
       } catch {
         /* ignore */
       }
     }
   };
 
-  deps.bot.on('message:text', async (ctx) => {
-    if (ctx.chat?.type !== 'private') return;
+  // grammY middleware: handlers fire in registration order and each must
+  // call `next()` to forward, otherwise the chain stops. This DM catch-all
+  // is registered BEFORE the `bot.command('start')` handlers, so anything
+  // we don't handle here MUST be forwarded via `next()` or commands get
+  // silently swallowed. (This exact bug landed during the dispatch-refactor
+  // and survived until Station 4 of the end-to-end verification.)
+  deps.bot.on('message:text', async (ctx, next) => {
+    if (ctx.chat?.type !== 'private') {
+      // Not a DM — let other middleware (group reject) take it.
+      await next();
+      return;
+    }
     const text = (ctx.message?.text ?? '').trim();
-    if (!text) return;
-    if (text.startsWith('/')) return;
+    if (!text) {
+      await next();
+      return;
+    }
+    if (text.startsWith('/')) {
+      // Slash command — hand off to the command handlers (/start, /help,
+      // /status, /cancel, /retry, /remember, /memory, /forget).
+      await next();
+      return;
+    }
     await submit(ctx, text);
   });
 
-  deps.bot.on('message', async (ctx) => {
-    if (ctx.chat?.type !== 'private') return;
-    if (ctx.message?.text !== undefined) return;
+  deps.bot.on('message', async (ctx, next) => {
+    if (ctx.chat?.type !== 'private') {
+      // Non-private non-text → let group reject handle it.
+      await next();
+      return;
+    }
+    if (ctx.message?.text !== undefined) {
+      // Text messages are the message:text handler's business AND the
+      // bot.command(...) handlers' business — forward so the command
+      // middlewares (/start, /help, …) still get their turn. Forgetting
+      // `next()` here caused a regression where slash commands got
+      // silently swallowed.
+      await next();
+      return;
+    }
+    // Non-text (photo, sticker, voice, …) in a DM → tell the user we
+    // don't handle it. Nothing downstream cares about this kind of
+    // update, so we don't need to forward.
     await ctx.reply('I can only handle text messages for now.');
   });
 

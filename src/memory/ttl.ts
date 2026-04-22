@@ -3,10 +3,13 @@ import type { ScheduledTask } from 'node-cron';
 import type { Logger } from 'pino';
 import type { MemoryManager } from './manager.js';
 import type { MemoryRepo } from '../db/repositories/memory.js';
+import type { SessionsRepo } from '../db/repositories/sessions.js';
+import { sweepSessionWorkspaces } from '../observability/workspace-cleanup.js';
 
 export interface MemoryTtlCronDeps {
   manager: MemoryManager;
   repo: MemoryRepo;
+  sessionsRepo: SessionsRepo;
   logger: Logger;
   /** Cron expression, e.g. "0 3 * * *". Read from config.memory.ttlCleanupCron. */
   cronExpr: () => string;
@@ -14,12 +17,18 @@ export interface MemoryTtlCronDeps {
   timezone: string;
   /** ms after which a still-pending proposal is marked expired. Default 7d. */
   proposalMaxAgeMs?: number;
+  /** Root of per-session workspace dirs (one per session UUID). */
+  sessionWorkspaceRoot: string;
 }
 
 export interface MemoryTtlCron {
   start(): void;
   stop(): void;
-  runNow(): { memoryRemoved: number; proposalsExpired: number };
+  runNow(): {
+    memoryRemoved: number;
+    proposalsExpired: number;
+    workspacesRemoved: number;
+  };
 }
 
 const DEFAULT_PROPOSAL_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -31,13 +40,19 @@ export function createMemoryTtlCron(deps: MemoryTtlCronDeps): MemoryTtlCron {
     const memoryRemoved = deps.manager.runTtlCleanup();
     const cutoff = Date.now() - (deps.proposalMaxAgeMs ?? DEFAULT_PROPOSAL_MAX_AGE_MS);
     const proposalsExpired = deps.repo.proposalMarkExpired(cutoff);
-    if (memoryRemoved > 0 || proposalsExpired > 0) {
+    const workspaceSweep = sweepSessionWorkspaces({
+      logger: deps.logger,
+      sessionsRepo: deps.sessionsRepo,
+      workspaceRoot: deps.sessionWorkspaceRoot,
+    });
+    const workspacesRemoved = workspaceSweep.removed;
+    if (memoryRemoved > 0 || proposalsExpired > 0 || workspacesRemoved > 0) {
       deps.logger.info(
-        { memoryRemoved, proposalsExpired },
-        'memory TTL cleanup ran',
+        { memoryRemoved, proposalsExpired, workspacesRemoved },
+        'nightly cleanup ran',
       );
     }
-    return { memoryRemoved, proposalsExpired };
+    return { memoryRemoved, proposalsExpired, workspacesRemoved };
   }
 
   return {

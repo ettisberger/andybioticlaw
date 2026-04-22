@@ -34,6 +34,10 @@ import { createSkillRegistry } from './skills/registry.js';
 import { createBudgetTracker } from './agent/budget.js';
 import { createAuthChecker } from './telegram/auth.js';
 import { createTelegramService } from './telegram/bot.js';
+import { createSchedulesRepo } from './db/repositories/schedules.js';
+import { createSchedulerEngine } from './scheduler/engine.js';
+import { createDashboard } from './dashboard/server.js';
+import type { DispatchDeps } from './agent/dispatch.js';
 import type { Logger } from 'pino';
 import { dirname } from 'node:path';
 
@@ -88,6 +92,7 @@ async function main(): Promise<void> {
   const sessions = createSessionsRepo(dbHandle.db);
   const messages = createMessagesRepo(dbHandle.db);
   const memoryRepo = createMemoryRepo(dbHandle.db);
+  const schedulesRepo = createSchedulesRepo(dbHandle.db);
 
   const orphanResult = sessions.markRunningAsOrphaned();
   if (orphanResult.count > 0) {
@@ -150,9 +155,11 @@ async function main(): Promise<void> {
   const memoryTtl = createMemoryTtlCron({
     manager: memoryManager,
     repo: memoryRepo,
+    sessionsRepo: sessions,
     logger,
     cronExpr: () => config.memory.ttlCleanupCron,
     timezone: config.service.timezone,
+    sessionWorkspaceRoot: dmWorkspace,
   });
   memoryTtl.start();
 
@@ -191,6 +198,7 @@ async function main(): Promise<void> {
   const memoryProposalServer = resolveMemoryServerSpawn();
 
   let telegram: ReturnType<typeof createTelegramService> | null = null;
+  let scheduler: ReturnType<typeof createSchedulerEngine> | null = null;
   if (!botToken) {
     logger.warn(
       'TELEGRAM_BOT_TOKEN is unset — bot disabled. Dashboard, CLI, and scheduled jobs still work.',
@@ -242,6 +250,54 @@ async function main(): Promise<void> {
       );
     }
 
+    // Scheduler engine. Requires the telegram api + queue; shares the
+    // per-chat queue with interactive DMs so schedule-fired agent sessions
+    // serialize behind live user conversations.
+    scheduler = createSchedulerEngine({
+      logger,
+      telegramApi: telegram.api,
+      schedulesRepo,
+      sessionsRepo: sessions,
+      audit,
+      queue: telegram.queue,
+      budget,
+      principalChatId: principalUserId,
+      timezone: config.service.timezone,
+      notifyPrincipal: (text) => telegram!.notifyPrincipal(text),
+      buildSchedulerSessionInput: ({ sessionId, chatId, userMessage, scheduleName, modelOverride, signal }) => ({
+        chatId,
+        source: 'schedule',
+        userMessage,
+        principalUserId,
+        principalLabel: `scheduler:${scheduleName}`,
+        model: modelOverride ?? config.agent.model,
+        timezone: config.service.timezone,
+        agentName: config.agent.name,
+        allowedTools: config.agent.allowedTools,
+        streamIdleTimeoutMs: config.agent.streamIdleTimeoutSec * 1000,
+        cwd: dmWorkspace,
+        sessionWorkspaceRoot: dmWorkspace,
+        conversationHistoryLimit: config.telegram.conversationHistoryLimit,
+        sessionIdOverride: sessionId,
+        signal,
+        // Placeholder sink — the real one (createSchedulerTelegramSink)
+        // is attached by the engine before calling queue.submit.
+        sink: { onDelta: () => {}, onEnd: async () => {} },
+        dbPath,
+        memoryProposalServer,
+      }),
+    });
+    scheduler.refresh();
+
+    // Two SIGHUP triggers for the scheduler:
+    //   1. config hot-reloaded → refresh (if a relevant field changed).
+    //   2. CLI `schedule add/enable/disable/remove` sends SIGHUP to pick up
+    //      DB changes — but the reloader only fires onReload listeners when
+    //      CONFIG fields changed. A separate SIGHUP handler covers the
+    //      DB-only case (reload.ts doesn't know about DB changes).
+    reloader.onReload(() => scheduler?.refresh());
+    process.on('SIGHUP', () => scheduler?.refresh());
+
     bus.on('error:reported', (payload) => {
       if (!config.observability.errorsToTelegram) return;
       const chatId = config.observability.errorChatIdOverride ?? principalUserId;
@@ -256,6 +312,61 @@ async function main(): Promise<void> {
         );
     });
   }
+
+  // Dashboard — always available (even with the bot disabled), only gated
+  // on `dashboard.enabled`.
+  const dispatchDeps: DispatchDeps | null = telegram
+    ? {
+        api: telegram.api,
+        logger,
+        audit,
+        sessions,
+        messages,
+        memoryRepo,
+        memoryManager,
+        budget,
+        errors,
+        queue: telegram.queue,
+        cwd: dmWorkspace,
+        agentName: config.agent.name,
+        model: config.agent.model,
+        timezone: config.service.timezone,
+        memoryAutoAccept: () => config.memory.autoAccept,
+        streamIdleTimeoutMs: () => config.agent.streamIdleTimeoutSec * 1000,
+        streamEditIntervalMs: () => config.telegram.streamEditIntervalMs,
+        longTaskNotifyAfterMs: () => config.telegram.longTaskNotifyAfterMs,
+        conversationHistoryLimit: () => config.telegram.conversationHistoryLimit,
+        allowedTools: () => config.agent.allowedTools,
+        credentialsReady: () => credentialsOk,
+        dbPath,
+        sessionWorkspaceRoot: dmWorkspace,
+        memoryProposalServer,
+      }
+    : null;
+
+  const dashboard = createDashboard({
+    currentConfig: () => config,
+    logger,
+    sessions,
+    messages,
+    memoryManager,
+    skills: skillRegistry,
+    schedules: schedulesRepo,
+    heartbeats,
+    audit,
+    budget,
+    queue: telegram?.queue ?? null,
+    dispatch: dispatchDeps,
+    principalUserId,
+    agentName: config.agent.name,
+    model: config.agent.model,
+    timezone: config.service.timezone,
+    credentialsOk: () => credentialsOk,
+    logPath: resolve(logsDir(dataDir), 'andybioticlaw.log'),
+    frontendDistDir: resolve(projectRoot(), 'web', 'dist'),
+    onSchedulesChanged: () => scheduler?.refresh(),
+  });
+  await dashboard.start();
 
   const pidPath = pidFilePath(dataDir);
   writeFileSync(pidPath, String(process.pid), { mode: 0o600 });
@@ -288,6 +399,12 @@ async function main(): Promise<void> {
 
     memoryTtl.stop();
     heartbeat.stop();
+    if (scheduler) scheduler.stop();
+    try {
+      await dashboard.stop();
+    } catch (e) {
+      logger.warn({ err: (e as Error).message }, 'dashboard stop failed');
+    }
     try {
       dbHandle.close();
     } catch (e) {

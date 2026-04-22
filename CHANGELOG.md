@@ -7,6 +7,208 @@ This project uses semantic-ish versioning during pre-1.0 development.
 
 ## [Unreleased]
 
+### Added — Post-audit hardening (2026-04-22)
+
+After the end-of-spec code review, three must-fix items were addressed:
+
+- **Session-workspace sweep** (`src/observability/workspace-cleanup.ts`).
+  Per-session `data/workspaces/dm/<session-id>/` dirs were never
+  cleaned up. Added a nightly sweeper folded into the existing memory
+  TTL cron — removes any workspace dir older than 24h whose session is
+  in a terminal state or whose session row has been pruned. Leaves
+  running/queued session dirs alone. 5 new unit tests.
+- **SQL key allowlist in dynamic `update()` methods**
+  (`src/db/repositories/{sessions,memory,schedules}.ts`). Defense-in-depth
+  against a future untyped caller. Keys interpolated into SET clauses
+  are filtered against explicit per-repo allowlists at runtime;
+  unknown keys are silently ignored. 3 regression tests that inject
+  keys like `"tokens_input = 0; DROP TABLE sessions; --"` and assert
+  they don't reach SQL.
+- **`docs/SECURITY.md`** — explicit trust-boundary document. Covers
+  subscription-only enforcement layers, secret scoping, SQL defense,
+  file permissions, systemd sandboxing, and the
+  "bash-schedules-are-shell-by-design" posture. README now links to
+  it and includes a security-posture section at the top.
+
+### Changed — System-prompt cache optimization (2026-04-22)
+
+Two tweaks to the system-prompt assembly that drop input-token cost
+on quick-succession chats without changing Emma's behavior meaningfully:
+
+- **Section order is now cache-stable → cache-volatile.** Base prompt,
+  active memory, installed skills, memory-tool block, and the static
+  runtime meta live in the prefix; conversation history and current
+  time live in the suffix. The first four layers no longer change
+  unless the operator changes them, which lets Anthropic's prompt
+  cache re-use everything before `## Conversation history` across
+  turns in the same chat.
+- **Current time is rounded to 15-minute buckets** (configurable via
+  `timeBucketMs` on `ContextAssemblyInput`, default `900_000 ms`). A
+  burst of DMs inside the same 15-min window produces byte-identical
+  prompt prefixes → full cache hit. The time footer explicitly
+  documents the bucketing so Emma can run `date -u` for exact time
+  when she needs it.
+- 5 new regression tests in `tests/unit/context.test.ts` lock in the
+  ordering, verify the stable meta no longer contains a timestamp,
+  confirm 15-min bucketing, and prove two turns in the same bucket
+  produce byte-identical prefixes up to the history block.
+
+### Added — Phase 6 (Production readiness)
+
+- **`scripts/install.sh` complete + idempotent.** Pre-flight (root,
+  systemd, node ≥ 20, sqlite3, logrotate, corepack/pnpm), creates
+  `andybioticlaw` system user with home dir, sets `/opt/andybioticlaw`
+  ownership (750 on the tree, 700 on `data/`), runs `pnpm install
+  --prod --frozen-lockfile` as the service user so native deps
+  (`better-sqlite3`, `argon2`) compile for the target arch, installs
+  + enables three systemd units (main service + backup service +
+  backup timer), installs and validates the logrotate config. Prints
+  a clear next-steps block covering `claude login`, config.yaml,
+  `.env`, and `systemctl start`.
+- **Backup script with rotation** (`scripts/backup.sh`). Online
+  SQLite `.backup` (WAL-safe while the writer is live), integrity
+  check on the new artifact, `ANDYBIOTICLAW_BACKUP_RETENTION_DAYS`
+  (default 7)–driven prune via `find -mtime +N -delete`.
+- **systemd timer** for daily backups at ~03:15 local with a 15-min
+  jitter + `Persistent=true` so we recover a missed run after downtime
+  (`systemd/andybioticlaw-backup.{service,timer}`).
+- **logrotate config** (`systemd/andybioticlaw.logrotate`). Daily
+  rotation, 14-day retention, compressed, `create 0600`. Zero
+  service-side coordination needed — the pino logger opens the file
+  path (not a long-lived fd) on each append, so the next write after
+  rotation lands in the freshly-created file.
+- **Integration tests** (`tests/integration/`):
+  - `boot-and-shutdown.test.ts` — spawns `node dist/index.js` in a
+    scratch data+config dir, polls `/api/overview` until it responds,
+    SIGTERMs, asserts exit code 0 and pidfile removal. Real black-box
+    coverage of the full boot → listen → clean-shutdown path.
+  - `migrations.test.ts` — fresh DB gets every migration (both 0001
+    + 0002); re-opening the same DB is idempotent (no duplicate
+    schema_version rows).
+  - `orphan-recovery.test.ts` — preloads sessions in `running` +
+    `queued`, calls `markRunningAsOrphaned()`, asserts the flip plus
+    distinct chat-id reporting that feeds the startup aggregated DM.
+- **Hetzner deployment guide** (`docs/DEPLOYMENT.md`). Step-by-step
+  for a bare Ubuntu 24.04 VPS: harden base image, install prereqs,
+  build + rsync from dev machine, run `install.sh`, `claude login`
+  as the service user, populate config + `.env`, start the service,
+  verify backup timer. Plus optional nginx + certbot reverse proxy
+  with app-layer basic auth for exposing the dashboard over HTTPS.
+
+### Added — Phase 5 (Dashboard)
+
+- Full HTTP API + WebSocket log stream on `localhost:18790` (default) via
+  Fastify 5. Optional HTTP Basic Auth (argon2) when
+  `dashboard.basicAuth.enabled: true`.
+- New deps: `fastify`, `@fastify/static`, `@fastify/websocket`,
+  `@fastify/basic-auth`, `argon2`.
+- pnpm workspace: root (`andybioticlaw`) + `web/` (`@andybioticlaw/web`).
+- **API routes** (all namespaced under `/api/`):
+  - `GET /api/overview` — summary card data.
+  - `GET /api/sessions[?status=...&limit=N]`; `GET /api/sessions/:id`;
+    `POST /api/sessions/:id/retry` — **Phase 5 done-criterion Retry
+    button.** Dispatches a new session with the prior input via the
+    same per-chat queue as Telegram.
+  - `GET /api/schedules`, `GET /api/schedules/:id`,
+    `POST /api/schedules/:id/enable|disable` (mutations refresh the engine).
+  - `GET /api/memory[?scope=&limit=]`, `GET /api/memory/active`,
+    `DELETE /api/memory/:id`.
+  - `GET /api/skills`.
+  - `GET /api/config` — full config with `dashboard.basicAuth.passwordHash`
+    redacted to `[REDACTED]`.
+  - `GET /api/audit[?kind=&limit=]`.
+  - `GET /api/logs/stream` (WebSocket) — JSON-lines appended to
+    `data/logs/andybioticlaw.log` forwarded live.
+- **Dashboard composition** (`src/dashboard/server.ts`): conditional basic-auth,
+  websocket plugin, all routes, static-serve for `web/dist/` with SPA
+  fallback (non-`/api/` 404 → `index.html`).
+- **Shared dispatch** (`src/agent/dispatch.ts`): extracted from the
+  Telegram DM handler so the dashboard retry endpoint can submit prompts
+  without a grammy Context. Telegram handler now delegates to it.
+- **Frontend** (`web/`): React 19 + Vite 6 + Tailwind v4 (via
+  `@tailwindcss/vite`), react-router-dom v7, minimal in-house UI kit
+  (Card/Button/Badge/Table — no shadcn CLI needed). 8 routes total:
+  Overview / Sessions (+ detail) / Schedules / Memory / Skills / Logs /
+  Config / Audit. Live log page uses browser-native WebSocket, parses
+  pino JSON lines, colors by level, auto-follows unless the user scrolls
+  up.
+- **Live verified**: all 8 endpoints → 200, SPA deep-link → `index.html`,
+  `/api/config` → passwordHash `""` (empty default) served as-is, 3
+  consecutive `received SIGHUP` log lines forwarded live via WebSocket.
+- **Dev workflow**: `pnpm --filter @andybioticlaw/web dev` runs Vite on
+  :5173 with a `/api` proxy to :18790. `pnpm --filter @andybioticlaw/web
+  build` produces `web/dist/` which the backend serves in prod.
+
+### Deferred (Phase 5 → Phase 6)
+
+- Create-a-schedule UI (CLI-only).
+- Add-a-memory-entry UI (CLI or ask Emma).
+- Session cancel from the dashboard (Telegram `/cancel` still works).
+- Frontend tests (backend endpoints are the contract).
+
+### Added — Phase 4 (Scheduler)
+
+- `node-cron` (already a Phase 3 dep) drives four schedule kinds from the
+  `schedules` table.
+- **`bash` kind** (`src/scheduler/handlers/bash.ts`): runs a shell command,
+  captures stdout/stderr. If stdout is a JSON `TriggerEnvelope`
+  (`{"trigger": true, "prompt": "..."}`), fires a chained agent session
+  with that prompt — tokens billed against this schedule's budget. Plain
+  stdout is logged and does not consume tokens.
+- **`http-check` kind** (`src/scheduler/handlers/http-check.ts`): issues an
+  HTTP request, validates status against `expectedStatus`, and chains into
+  an agent session on a trigger envelope in the body.
+- **`agent-task` kind** (`src/scheduler/handlers/agent-task.ts`): fires a
+  Claude session with the configured prompt. Submitted through the same
+  per-chat queue as DMs so it serializes behind any active user
+  conversation.
+- **`reminder` kind** (`src/scheduler/handlers/reminder.ts`): sends a plain
+  Telegram message. Free (no Claude roundtrip).
+- **Scheduler engine** (`src/scheduler/engine.ts`): dynamic `node-cron`
+  task registry — `refresh()` diffs DB schedules against live cron tasks
+  and adds/updates/removes as needed. Handles per-firing:
+  - Per-schedule budget reset at service-timezone midnight.
+  - Per-schedule token budget gate (skip if `budget_used_today >= budget_tokens_per_day`).
+  - Global daily budget gate (skip if exhausted) for kinds that spend.
+  - Loop protection: auto-disable on 3 consecutive fails OR `>5` runs in 5
+    minutes. `schedule_auto_disabled` audit row + principal-DM alert.
+  - Budget-exhaustion alert: principal-DM when a run newly busts the
+    per-schedule cap, `schedule_budget_exhausted` audit.
+  - `consecutive_fails` counter reset on first success.
+- **Zod payload schemas** (`src/scheduler/payloads.ts`) — one per kind,
+  with `parsePayload(kind, json)` guarding every DB read.
+- **Scheduler Telegram sink** (`src/scheduler/telegram-output.ts`): unlike
+  the interactive DM sink, this collects all deltas and sends one or more
+  complete messages at the end prefixed with `📅 <schedule-name>` so the
+  principal can tell schedule output from interactive replies. Handles
+  chunking for >3900-char responses.
+- **CLI commands** — full `schedule list`, `schedule show <id>`,
+  `schedule add --name --cron --kind --payload [--budget] [--disabled]`,
+  `schedule enable <id>`, `schedule disable <id>`, `schedule remove <id>`.
+  Each mutating command sends SIGHUP to the daemon; a dedicated SIGHUP
+  handler in `src/index.ts` calls `scheduler.refresh()` so DB changes
+  take effect without restart. Runs the config reloader as before, but
+  the scheduler refresh is now decoupled from config hot-reload since
+  schedule changes don't touch config.
+- **Live E2E verified**: service boots with 0 schedules, CLI adds a
+  reminder with cron `* * * * *`, SIGHUP triggers refresh, cron fires at
+  the next minute boundary, Telegram message delivered, `schedule_runs`
+  row written with `status=success`.
+- **Tests** — 14 payload-validation cases + 4 engine cases (budget
+  pre-consumption, counter tracking, recent-run window counting, audit
+  kind reachability). Full suite: 78 unit tests + 3 skipped E2E.
+
+### Deferred (Phase 4 → later)
+
+- `schedule run <id>` is documented as a dev convenience only; true
+  out-of-band immediate firing from the CLI requires an RPC path to the
+  running daemon. Workaround: set `cron_expr` to `* * * * *` for one
+  minute, then restore.
+- No YAML-based declarative schedule config — schedules are defined via
+  CLI only (or raw SQL). A `config/schedules.yaml` loader could be
+  added later without changing the engine.
+- No cron-expression editing via CLI — to change a cron, `remove` + `add`.
+
 ### Added — Phase 3 (Memory + Skill Infrastructure)
 
 - `@modelcontextprotocol/sdk` (^1.29.0) and `node-cron` (^4.2.1) — justified:

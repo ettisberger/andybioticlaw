@@ -44,6 +44,16 @@ export interface UpdateSessionInput {
   ended_at?: number;
 }
 
+/** Allowlist of columns accepted by `SessionsRepo.update()`. Interpolated
+ *  directly into SQL — must be kept in sync with `UpdateSessionInput`. */
+const ALLOWED_SESSION_UPDATE_KEYS: readonly (keyof UpdateSessionInput)[] = [
+  'status',
+  'tokens_input',
+  'tokens_output',
+  'error',
+  'ended_at',
+];
+
 export interface SessionsRepo {
   create(input: CreateSessionInput): void;
   update(id: string, patch: UpdateSessionInput): void;
@@ -100,7 +110,13 @@ export function createSessionsRepo(db: Database): SessionsRepo {
       });
     },
     update(id, patch) {
-      const keys = Object.keys(patch) as (keyof UpdateSessionInput)[];
+      // Defense-in-depth: TypeScript enforces the key set at compile time,
+      // but a future untyped caller passing an arbitrary object would inject
+      // whatever key they want as a column name. Allowlist the keys
+      // explicitly against the DB column set before splicing them into SQL.
+      const keys = (Object.keys(patch) as string[]).filter((k) =>
+        (ALLOWED_SESSION_UPDATE_KEYS as readonly string[]).includes(k),
+      );
       if (keys.length === 0) return;
       const sets = keys.map((k) => `${k} = @${k}`).join(', ');
       const stmt = db.prepare(`UPDATE sessions SET ${sets} WHERE id = @id`);

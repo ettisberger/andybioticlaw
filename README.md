@@ -4,7 +4,7 @@ A personal AI agent service with a Telegram frontend and a Claude CLI backend. R
 
 The default agent identity is **Emma**; the service is named **andybioticlaw**. Both are configurable.
 
-> **Status: Phase 3 — memory + skill infrastructure.** On top of Phase 2: active memory is injected per session (scope-aware), the agent can propose new memory via a real MCP tool (the user accepts or dismisses with an inline button), skills are loaded from manifests, and a per-session `.mcp.json` composes our memory-proposal server with any active skill's MCP servers. Scoped skill secrets are injected into the Claude subprocess. Scheduler and dashboard land in later phases (see `CHANGELOG.md`).
+> **Status: Phase 6 — all six spec phases complete.** `scripts/install.sh` is idempotent (system user, perms, prod deps, systemd units, logrotate). `scripts/backup.sh` + systemd timer roll SQLite snapshots daily with 7-day rotation. Black-box integration tests spawn the compiled service and assert clean boot + shutdown. `docs/DEPLOYMENT.md` walks through a Hetzner VPS install end-to-end including the subscription `claude login` step. See `CHANGELOG.md` for per-phase detail.
 
 ## Requirements
 
@@ -96,7 +96,32 @@ andybioticlaw/
 └── data/                 gitignored — SQLite DB, logs, backups, workspaces
 ```
 
+## Security posture
+
+See **`docs/SECURITY.md`** for the full posture document. Headline items:
+
+- The **config file + `.env` + skills dir are the security boundary**. Whoever can edit them can run shell as the service user. This service is a personal single-principal agent; hardening is against *accidents* (e.g., a leaked `ANTHROPIC_API_KEY` silently switching billing), not against a malicious principal.
+- `bash` schedule payloads run under `/bin/sh -c <command>` as the `andybioticlaw` service user. This is by design: the scheduler author IS the principal. Never populate `payload.command` from an untrusted source (a web form, external webhook, agent-generated content).
+- Subscription-only Claude auth enforced at three layers (see § Design Decisions below).
+- Dashboard defaults to `127.0.0.1:18790` with no CSRF/rate-limit. If you reverse-proxy it publicly, add TLS + network-level restrictions per `docs/DEPLOYMENT.md` § 10b.
+
 ## Design decisions
+
+### Scheduler shares the per-chat queue, doesn't bypass it (Phase 4)
+
+A schedule-fired agent session goes through the same `QueueManager` as a DM. If you're actively chatting with Emma when a scheduled `agent-task` or chained-bash fires on the same chat, the scheduled task queues behind your message — it doesn't preempt or run in parallel. Tradeoff: one scheduled session can't run while a DM is active, so slow DMs delay schedules. Benefit: no message interleaving, no cross-talk on shared conversation state.
+
+### Scheduler has two SIGHUP handlers, one for config, one for DB (Phase 4)
+
+`createReloadController.onReload` only fires when *config* fields change. CLI commands like `schedule add` modify the DB, not config, so the reload controller wouldn't notice. A dedicated `process.on('SIGHUP', () => scheduler.refresh())` covers the DB-change case. Both handlers fire on one SIGHUP signal — Node dispatches to all registered listeners.
+
+### Loop protection is twofold: consecutive-fails AND rate-window (Phase 4)
+
+`consecutive_fails >= 3` → auto-disable + audit + principal DM. Independently, `>5 runs in 5 minutes` → same auto-disable path. The rate-window catches schedules that succeed quickly but re-fire themselves in a tight loop (bug in a `bash` command that writes `{"trigger": true}` unconditionally). Re-enable via `andybioticlaw schedule enable <id>` once the underlying bug is fixed — `enable` also clears `consecutive_fails`.
+
+### `bash` and `http-check` chain via a trigger envelope, not side effects (Phase 4)
+
+To fire an agent-task from a bash schedule, the command's stdout must be JSON matching `{"trigger": true, "prompt": "..."}`. Anything else — including stdout containing the word "trigger" as prose — does NOT spend tokens. This keeps the "free polling, expensive decision-making" split clean: poll-heavy checks (daily backup, disk usage, mailbox count) run thousands of times before ever firing Claude.
 
 ### Memory proposals flow through a real MCP tool, not a text marker (Phase 3)
 
@@ -127,6 +152,20 @@ The service is designed to run on a Claude subscription (Pro/Max), never on pay-
 3. **Runtime assertion**: the CLI's `system/init` event reports `apiKeySource`. If it's anything but `"none"` on a live session, we SIGKILL immediately and fail the session with an `api_key_billing_blocked` audit row.
 
 The E2E test proves the chain: with `ANTHROPIC_API_KEY=sk-ant-BOGUS` set in the test process, the spawned `claude` still reports `apiKeySource: "none"` and runs on the subscription.
+
+### System prompt ordered cache-stable → cache-volatile (post-audit tweak)
+
+`assembleContext()` lays out sections so Anthropic's prompt cache can re-use the maximum possible prefix across turns in the same chat:
+
+1. **Stable prefix** (cache-friendly): base prompt → active memory → installed skills → memory-tool block → stable runtime meta (agent / model / timezone / principal).
+2. **Volatile suffix** (busts cache every turn): conversation history → current time.
+
+Two decisions worth calling out:
+
+- **Stable meta has no timestamp.** The `## Runtime context` block used to end with `Current time: YYYY-MM-DD HH:MM:SS`, which busted the cache at that byte boundary on every turn. Current time now lives in its own `## Current time` block at the very end of the prompt — after the (already cache-breaking) conversation history, so moving it costs nothing and moves the cache boundary way forward.
+- **Current time is floored to a 15-minute bucket** (`timeBucketMs` default 900 000 ms). A burst of rapid DMs inside the same 15-min window renders byte-identical prompts up to and including the `## Conversation history` block. The time footer notes that the value is bucketed and instructs Emma to run `date -u` (via Bash) when she needs precision. Regression-tested in `tests/unit/context.test.ts`.
+
+Pick a smaller `timeBucketMs` (e.g., `60_000` for 1-min buckets) if Emma needs higher time precision at the cost of more cache misses; larger (e.g., `3_600_000` for hourly) if you want maximum cache hits and you're fine with Emma reaching for Bash whenever she needs seconds.
 
 ### Conversation history is embedded in the system prompt, not streamed as multi-turn messages (Phase 2)
 
