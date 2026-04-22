@@ -122,18 +122,34 @@ export async function runInitCommand(): Promise<void> {
     const currentTz = readTimezone(configPath);
     let timezone: string | null = null;
     const currentMatchesExample = currentTz === 'Europe/Zurich';
-    if (currentTz && !currentMatchesExample) {
+    if (currentTz && !currentMatchesExample && isValidTimezone(currentTz)) {
       stdout.write(
         `  ${sage('✓')} ${dim(`service.timezone already customised (${currentTz}) — reusing`)}\n`,
       );
     } else {
-      const raw = await askLine(
-        stdin,
-        stdout,
-        `  ${lavender('?')} timezone ${dim(`[default: ${systemTz}]`)}: `,
+      stdout.write(
+        `  ${dim('Must be a full IANA timezone, e.g.')} ${cyan('Europe/Zurich')}${dim(',')} ${cyan('America/New_York')}${dim('.')}\n` +
+          `  ${dim('Press Enter to accept the default detected from this host.')}\n\n`,
       );
-      if (raw === null) throw new InitAbortedError();
-      timezone = raw.trim() || systemTz;
+      // Loop until the operator gives us a valid IANA zone. An invalid
+      // entry (e.g. "zurich" without the "Europe/" prefix) would silently
+      // land in config.yaml and crash the service on boot later.
+      while (timezone === null) {
+        const raw = await askLine(
+          stdin,
+          stdout,
+          `  ${lavender('?')} timezone ${dim(`[default: ${systemTz}]`)}: `,
+        );
+        if (raw === null) throw new InitAbortedError();
+        const candidate = raw.trim() || systemTz;
+        if (!isValidTimezone(candidate)) {
+          stdout.write(
+            `  ${yellow('!')} ${dim(`"${candidate}" is not a valid IANA timezone (need format like Europe/Zurich). Try again.`)}\n`,
+          );
+          continue;
+        }
+        timezone = candidate;
+      }
     }
 
     // --- 5. Dashboard password -------------------------------------------
@@ -249,14 +265,33 @@ export async function runInitCommand(): Promise<void> {
   }
 
   // --- 9. Next steps ---------------------------------------------------
+  // Detect whether we're running as the dedicated service user. On the
+  // production install (user `andybioticlaw` via `sudo -iu …`) → surface
+  // systemctl. On a dev machine (most likely `eta`/`root`/anything else)
+  // → surface `pnpm dev`. This keeps the message unambiguous instead of
+  // showing both options and confusing the operator.
+  const isServiceUser = process.env.USER === 'andybioticlaw';
   stdout.write(
     `\n${bold('Next steps')}\n` +
       `  ${lavender('1.')} Log into Claude (if you haven't):  ${cyan('claude login')}\n` +
-      `     ${dim('Verify with:  claude auth status --json')}\n` +
-      `  ${lavender('2.')} Start the service:\n` +
-      `     ${dim('- systemd (prod):')}  ${cyan('sudo systemctl start andybioticlaw')}\n` +
-      `     ${dim('- local dev:')}       ${cyan('pnpm dev')}\n` +
-      `  ${lavender('3.')} DM your bot on Telegram to confirm it answers.\n` +
+      `     ${dim('Verify with:  claude auth status --json')}\n`,
+  );
+  if (isServiceUser) {
+    stdout.write(
+      `  ${lavender('2.')} Exit this shell, then start the service:\n` +
+        `     ${cyan('exit')}\n` +
+        `     ${cyan('sudo systemctl start andybioticlaw')}\n` +
+        `     ${cyan('sudo journalctl -u andybioticlaw -f')}\n`,
+    );
+  } else {
+    stdout.write(
+      `  ${lavender('2.')} Start the service (from the project root):\n` +
+        `     ${dim('# dev (watch mode):')}  ${cyan('pnpm dev')}\n` +
+        `     ${dim('# prod (systemd):')}   ${cyan('sudo systemctl start andybioticlaw')}\n`,
+    );
+  }
+  stdout.write(
+    `  ${lavender('3.')} DM your bot on Telegram to confirm it answers.\n` +
       `  ${lavender('4.')} Back up data/ yourself — see docs/DEPLOYMENT.md § 9.\n\n` +
       `${dim('made by')} ${green('cognitek.dev')}\n\n`,
   );
@@ -291,6 +326,22 @@ function readPasswordHash(configPath: string): string {
   const body = readFileSync(configPath, 'utf8');
   const m = body.match(/^\s+passwordHash:\s*['"]?([^'"\s]*)['"]?\s*$/m);
   return m && m[1] !== undefined ? m[1] : '';
+}
+
+/**
+ * Validate that `tz` is an IANA timezone the ICU can actually parse.
+ * node-cron + our scheduler use `new Intl.DateTimeFormat(locale, { timeZone })`
+ * at runtime — a bad value there crashes the service on boot, so we
+ * reject early and make the operator re-enter.
+ */
+function isValidTimezone(tz: string): boolean {
+  if (!tz) return false;
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // --- prompt helpers ---------------------------------------------------
