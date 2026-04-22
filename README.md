@@ -55,20 +55,9 @@ Secrets live in `.env` — see `.env.example`. Never commit `.env`. Only a short
 
 Send `SIGHUP` (or run `andybioticlaw config reload`) to re-read `config/config.yaml` without restarting. Fields that can be hot-reloaded are listed in `config/config.schema.ts` (`HOT_RELOADABLE_PATHS`); everything else logs a warning and is ignored until a full restart.
 
-## Hetzner deployment (Phase 6 — placeholder)
+## Production deployment
 
-The production story is not yet complete. Rough shape for now:
-
-1. Fresh Ubuntu 24.04 VPS.
-2. Install Node.js 20 LTS, SQLite, `claude` CLI.
-3. Create a system user `andybioticlaw` with a real home dir.
-4. Log in as that user once: `sudo -u andybioticlaw -H bash -lc 'claude login'`.
-5. Rsync a built release into `/opt/andybioticlaw` (`dist/`, `node_modules/`, `config/`, `skills/`, `systemd/`).
-6. `sudo bash /opt/andybioticlaw/scripts/install.sh` installs the systemd unit.
-7. Populate `/opt/andybioticlaw/config/config.yaml` and `/opt/andybioticlaw/.env`.
-8. `sudo systemctl enable --now andybioticlaw`.
-
-A full, battle-tested `install.sh` (with logrotate, backups, health checks) lands in Phase 6.
+See **`docs/DEPLOYMENT.md`** — end-to-end walkthrough from a bare Hetzner Ubuntu 24.04 VPS to a running, firewalled service with daily backups. Covers `install.sh`, `claude login` as the service user, config + `.env` population, optional dashboard reverse-proxy with TLS + basic-auth.
 
 ## Directory tour
 
