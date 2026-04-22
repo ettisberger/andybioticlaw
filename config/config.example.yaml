@@ -32,7 +32,11 @@ agent:
 
 telegram:
   dm:
-    allowedUserIds: [18998064]
+    # Your Telegram numeric user id(s). Only these IDs can DM the bot;
+    # every other user is rejected with an `unauthorized_access` audit
+    # row. Find your id by messaging @userinfobot on Telegram. Leaving
+    # this empty disables the bot (with a startup warning).
+    allowedUserIds: []
     runMode: host
   group:
     # PLANNED — group chats are rejected with an audit-log entry in v1.
