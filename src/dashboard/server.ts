@@ -56,6 +56,14 @@ export interface DashboardDeps {
   /** Called when the scheduler should re-read DB state (after API mutations). */
   onSchedulesChanged: () => void;
   rateLimitTracker: RateLimitTracker;
+  /**
+   * Returns true iff a trivial DB round-trip succeeds. Used by /healthz.
+   * Kept as a callback rather than a repo method so the implementation can
+   * catch write-lock / corrupt-schema errors uniformly.
+   */
+  dbPing: () => boolean;
+  /** Returns true once SIGTERM/SIGINT has been received; /healthz flips to 503. */
+  isShuttingDown: () => boolean;
 }
 
 export interface DashboardService {
@@ -68,6 +76,22 @@ export function createDashboard(deps: DashboardDeps): DashboardService {
   const app: FastifyInstance = Fastify({
     logger: false, // we use pino ourselves; avoid double-logging
     trustProxy: false,
+  });
+
+  // /healthz — trivial liveness + DB ping, always reachable (no basic-auth).
+  // Registered BEFORE basic-auth so monitoring tools can poll without
+  // credentials. The onRequest basic-auth hook below short-circuits for
+  // this route explicitly.
+  app.get('/healthz', async (_req, reply) => {
+    if (deps.isShuttingDown()) {
+      reply.code(503);
+      return { ok: false, reason: 'shutting_down' };
+    }
+    if (!deps.dbPing()) {
+      reply.code(503);
+      return { ok: false, reason: 'db_unreachable' };
+    }
+    return { ok: true };
   });
 
   // Basic auth (optional).
@@ -90,7 +114,14 @@ export function createDashboard(deps: DashboardDeps): DashboardService {
       authenticate: { realm: 'andybioticlaw' },
     });
     app.after(() => {
-      app.addHook('onRequest', app.basicAuth);
+      // Wrap app.basicAuth so /healthz stays open — monitoring tooling
+      // shouldn't need to carry the dashboard password.
+      app.addHook('onRequest', (req, reply, done) => {
+        if (req.url === '/healthz' || req.url.startsWith('/healthz?')) {
+          return done();
+        }
+        return app.basicAuth(req, reply, done);
+      });
     });
   }
 
