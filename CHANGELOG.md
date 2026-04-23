@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.2.0](https://github.com/ettisberger/andybioticlaw/compare/v0.1.0...v0.2.0) (2026-04-23)
+
+
+### Features
+
+* agent hero card + release-aware update ([76ad0a0](https://github.com/ettisberger/andybioticlaw/commit/76ad0a069681349c457ac1e4e11d6f91cf505536))
+
 ## [Unreleased]
 
 ### Added — Post-audit hardening (2026-04-22)
