@@ -64,10 +64,24 @@ export interface BotDeps {
   rateLimitTracker?: RateLimitTracker;
 }
 
+export interface BotProfile {
+  /** Telegram user id of the bot itself. */
+  id: number;
+  username: string | null;
+  firstName: string;
+  /** Bot avatar image bytes + MIME, or `null` if the bot has no profile photo
+   *  (or the fetch failed — failure logs a warning, doesn't crash). */
+  avatar: { data: Buffer; contentType: string } | null;
+}
+
 export interface TelegramService {
   start(): Promise<void>;
   stop(): Promise<void>;
   notifyPrincipal(text: string): Promise<void>;
+  /** Returns the bot's Telegram profile (username, first-name, avatar), or
+   *  `null` until the background fetch completes (typically ~1s after start).
+   *  Lazily refetched if the cached value is `null`. */
+  profile(): BotProfile | null;
   queue: QueueManager<SessionExecuteInput, SessionExecuteResult>;
   /** Exposed so scheduler + other internals can send arbitrary messages. */
   api: Api;
@@ -206,6 +220,65 @@ export function createTelegramService(deps: BotDeps): TelegramService {
   });
 
   let running = false;
+  let cachedProfile: BotProfile | null = null;
+  let profileFetchInFlight: Promise<void> | null = null;
+
+  const fetchProfile = async (): Promise<void> => {
+    try {
+      const me = await bot.api.getMe();
+      let avatar: BotProfile['avatar'] = null;
+      try {
+        const photos = await bot.api.getUserProfilePhotos(me.id, { limit: 1 });
+        const sizes = photos.photos[0];
+        if (sizes && sizes.length > 0) {
+          // PhotoSize[] is sorted smallest → largest; last entry is highest
+          // resolution. We cache a single copy; ~50 KB on typical bots.
+          const largest = sizes[sizes.length - 1]!;
+          const fileInfo = await bot.api.getFile(largest.file_id);
+          if (fileInfo.file_path) {
+            const url = `https://api.telegram.org/file/bot${deps.config.botToken}/${fileInfo.file_path}`;
+            const res = await fetch(url);
+            if (res.ok) {
+              const data = Buffer.from(await res.arrayBuffer());
+              const contentType =
+                res.headers.get('content-type') ?? 'image/jpeg';
+              avatar = { data, contentType };
+            } else {
+              deps.logger.warn(
+                { status: res.status },
+                'bot avatar download failed (non-fatal)',
+              );
+            }
+          }
+        }
+      } catch (e) {
+        deps.logger.warn(
+          { err: (e as Error).message },
+          'bot avatar fetch failed (non-fatal, rendering fallback)',
+        );
+      }
+      cachedProfile = {
+        id: me.id,
+        username: me.username ?? null,
+        firstName: me.first_name,
+        avatar,
+      };
+      deps.logger.info(
+        {
+          username: cachedProfile.username,
+          hasAvatar: avatar !== null,
+        },
+        'bot profile cached',
+      );
+    } catch (e) {
+      deps.logger.warn(
+        { err: (e as Error).message },
+        'bot profile fetch failed (non-fatal)',
+      );
+    } finally {
+      profileFetchInFlight = null;
+    }
+  };
 
   return {
     async start() {
@@ -223,6 +296,10 @@ export function createTelegramService(deps: BotDeps): TelegramService {
             message: `bot polling error: ${(e as Error).message}`,
           });
         });
+      // Background fetch — bot.start() never resolves (long-poll), so we
+      // kick this off in parallel. Not awaited: dashboard renders a
+      // fallback icon until the profile is ready (~1 s typically).
+      profileFetchInFlight = fetchProfile();
     },
     async stop() {
       if (!running) return;
@@ -242,6 +319,15 @@ export function createTelegramService(deps: BotDeps): TelegramService {
           'notifyPrincipal: sendMessage failed',
         );
       }
+    },
+    profile() {
+      // Opportunistic re-fetch if we never successfully cached (e.g. the
+      // first attempt hit a transient network error). No-op when a fetch
+      // is already pending.
+      if (cachedProfile === null && profileFetchInFlight === null && running) {
+        profileFetchInFlight = fetchProfile();
+      }
+      return cachedProfile;
     },
     queue,
     api: bot.api,

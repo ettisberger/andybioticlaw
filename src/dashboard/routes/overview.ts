@@ -10,6 +10,7 @@ import type {
   SessionExecuteResult,
 } from '../../agent/session.js';
 import type { RateLimitTracker } from '../../agent/rate-limit-tracker.js';
+import type { BotProfile } from '../../telegram/bot.js';
 
 export interface OverviewDeps {
   sessions: SessionsRepo;
@@ -23,6 +24,8 @@ export interface OverviewDeps {
   model: string;
   timezone: string;
   rateLimitTracker: RateLimitTracker;
+  principalUserId: number | null;
+  botProfile: () => BotProfile | null;
 }
 
 const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
@@ -46,10 +49,17 @@ export const overviewRoutes =
         Date.now() - FIVE_HOURS_MS,
       );
 
+      const bp = deps.botProfile();
       return {
         agentName: deps.agentName,
         model: deps.model,
         timezone: deps.timezone,
+        principalUserId: deps.principalUserId,
+        bot: {
+          username: bp?.username ?? null,
+          firstName: bp?.firstName ?? null,
+          hasAvatar: bp?.avatar != null,
+        },
         credentialsOk: deps.credentialsOk(),
         budget: {
           used: budgetStatus.used,

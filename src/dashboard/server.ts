@@ -31,7 +31,9 @@ import { skillsRoutes } from './routes/skills.js';
 import { configRoutes } from './routes/config.js';
 import { auditRoutes } from './routes/audit.js';
 import { logsRoutes } from './routes/logs.js';
+import { agentRoutes } from './routes/agent.js';
 import { createLogBroadcaster } from './log-broadcaster.js';
+import type { BotProfile } from '../telegram/bot.js';
 
 export interface DashboardDeps {
   currentConfig: () => Config;
@@ -57,6 +59,10 @@ export interface DashboardDeps {
   /** Called when the scheduler should re-read DB state (after API mutations). */
   onSchedulesChanged: () => void;
   rateLimitTracker: RateLimitTracker;
+  /** Returns the cached Telegram bot profile (username, avatar bytes), or
+   *  `null` if the bot isn't running / the profile hasn't been fetched yet.
+   *  Populated at telegram.start() + on-demand. */
+  botProfile: () => BotProfile | null;
   /**
    * Returns true iff a trivial DB round-trip succeeds. Used by /healthz.
    * Kept as a callback rather than a repo method so the implementation can
@@ -206,8 +212,12 @@ export function createDashboard(deps: DashboardDeps): DashboardService {
       model: deps.model,
       timezone: deps.timezone,
       rateLimitTracker: deps.rateLimitTracker,
+      principalUserId: deps.principalUserId,
+      botProfile: deps.botProfile,
     }),
   );
+
+  app.register(agentRoutes({ botProfile: deps.botProfile }));
 
   app.register(
     sessionsRoutes({

@@ -396,6 +396,7 @@ async function main(): Promise<void> {
     frontendDistDir: resolve(projectRoot(), 'web', 'dist'),
     onSchedulesChanged: () => scheduler?.refresh(),
     rateLimitTracker,
+    botProfile: () => telegram?.profile() ?? null,
     dbPing: () => {
       try {
         dbHandle.db.prepare('SELECT 1').get();

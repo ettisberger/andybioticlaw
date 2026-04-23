@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
+import { Bot } from 'lucide-react';
 import { apiGet, formatTs } from '../lib/api';
-import { Badge, Card, ErrorBanner, PageTitle } from '../components/ui';
+import { Badge, Card, ErrorBanner } from '../components/ui';
 
 interface RateLimitSnapshot {
   observedAt: number;
@@ -17,6 +19,12 @@ interface OverviewData {
   agentName: string;
   model: string;
   timezone: string;
+  principalUserId: number | null;
+  bot: {
+    username: string | null;
+    firstName: string | null;
+    hasAvatar: boolean;
+  };
   credentialsOk: boolean;
   budget: { used: number; limit: number; remaining: number; exhausted: boolean; nextResetMs: number };
   rateLimit: {
@@ -63,7 +71,7 @@ export function OverviewPage() {
 
   return (
     <div>
-      <PageTitle subtitle={`${data.agentName} · ${data.model} · ${data.timezone}`}>Overview</PageTitle>
+      <AgentHeroCard data={data} />
 
       {/* Status strip */}
       <div className="mb-5 grid grid-cols-4 gap-4">
@@ -311,6 +319,102 @@ function SubscriptionWindowCard({
         )}
       </div>
     </Card>
+  );
+}
+
+/**
+ * Header card at the top of the Overview. Shows the bot's Telegram avatar
+ * (or a Bot-icon fallback), the agent name as a heading, and runtime
+ * context chips below. Used in place of the old PageTitle.
+ */
+function AgentHeroCard({ data }: { data: OverviewData }) {
+  const [avatarFailed, setAvatarFailed] = useState(false);
+  const showAvatar = data.bot.hasAvatar && !avatarFailed;
+
+  return (
+    <div className="mb-6 overflow-hidden rounded-2xl border border-line bg-surface">
+      <div className="flex items-center gap-5 px-6 py-5">
+        {/* Avatar */}
+        <div className="shrink-0">
+          {showAvatar ? (
+            <img
+              src="/api/agent/avatar"
+              alt={data.agentName}
+              onError={() => setAvatarFailed(true)}
+              className="h-20 w-20 rounded-full object-cover ring-2 ring-accent-bg"
+            />
+          ) : (
+            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-accent-bg text-accent-ink ring-2 ring-accent-bg/60">
+              <Bot size={40} strokeWidth={1.75} aria-label={data.agentName} />
+            </div>
+          )}
+        </div>
+
+        {/* Identity + meta */}
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          <div className="flex items-baseline gap-2">
+            <h1 className="text-2xl font-semibold tracking-tight text-ink">
+              {data.agentName}
+            </h1>
+            {data.bot.username && (
+              <span className="text-sm text-ink-dim">
+                @{data.bot.username}
+              </span>
+            )}
+          </div>
+
+          <p className="text-sm text-ink-dim">
+            your personal AI agent — running on{' '}
+            <code className="rounded bg-surface-muted px-1.5 py-0.5 text-[12px] text-ink">
+              {data.model}
+            </code>{' '}
+            · {data.timezone}
+          </p>
+
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+            <HeroChip>
+              <span
+                className={`inline-block h-2 w-2 rounded-full ${
+                  data.credentialsOk ? 'bg-success' : 'bg-error'
+                }`}
+              />
+              credentials {data.credentialsOk ? 'OK' : 'missing'}
+            </HeroChip>
+            {data.principalUserId !== null && (
+              <HeroChip>
+                principal id{' '}
+                <span className="font-mono text-ink">
+                  {data.principalUserId}
+                </span>
+              </HeroChip>
+            )}
+            <HeroChip>
+              queue <span className="font-mono text-ink">{data.queueTotalDepth}</span>
+            </HeroChip>
+            <HeroChip>
+              skills{' '}
+              <span className="font-mono text-ink">
+                {data.skills.enabled}/{data.skills.total}
+              </span>
+            </HeroChip>
+            <HeroChip>
+              schedules{' '}
+              <span className="font-mono text-ink">
+                {data.schedules.enabled}/{data.schedules.total}
+              </span>
+            </HeroChip>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HeroChip({ children }: { children: ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface-muted px-2.5 py-1 text-ink-dim">
+      {children}
+    </span>
   );
 }
 
