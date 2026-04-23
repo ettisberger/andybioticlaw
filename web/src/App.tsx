@@ -1,4 +1,5 @@
 import { Outlet, NavLink } from 'react-router-dom';
+import { Bot } from 'lucide-react';
 
 const NAV_ITEMS = [
   { to: '/overview', label: 'Overview' },
@@ -17,8 +18,12 @@ export function App() {
       <aside className="flex w-60 shrink-0 flex-col border-r border-line bg-surface px-4 py-6">
         <div className="mb-8 px-2">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-bg text-sm font-semibold text-accent-ink">
-              ab
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent-bg text-accent-ink">
+              <Bot
+                size={24}
+                strokeWidth={2}
+                aria-label="andybioticlaw"
+              />
             </div>
             <div>
               <div className="text-[11px] font-medium uppercase tracking-wider text-ink-faint">
