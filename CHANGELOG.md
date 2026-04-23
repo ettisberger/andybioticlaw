@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.3.2](https://github.com/ettisberger/andybioticlaw/compare/v0.3.1...v0.3.2) (2026-04-23)
+
+
+### Bug Fixes
+
+* **credentials:** accept CLAUDE_CODE_OAUTH_TOKEN auth path ([7de6a24](https://github.com/ettisberger/andybioticlaw/commit/7de6a24a3dd3ce1fda49ba8d95320a376ad706fc))
+
 ## [0.3.1](https://github.com/ettisberger/andybioticlaw/compare/v0.3.0...v0.3.1) (2026-04-23)
 
 
