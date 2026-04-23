@@ -286,12 +286,43 @@ export function runClaude(input: RunClaudeInput): Promise<RunClaudeResult> {
           if (typeof obj.api_error_status === 'number') {
             transientApiError = [503, 529].includes(obj.api_error_status);
           }
+          // Log the FULL result-event payload so we can see what claude
+          // actually said. The previous fallback "result event marked as
+          // error" hid the cause; now we capture it.
+          log?.warn(
+            {
+              subtype: obj.subtype,
+              api_error_status: obj.api_error_status,
+              num_turns: obj.num_turns,
+              duration_ms: obj.duration_ms,
+              permission_denials: obj.permission_denials,
+              result_field: obj.result,
+              error_field: obj.error,
+              recent_stderr: stderr ? stderr.trim().slice(-1500) : '',
+            },
+            'claude result event has is_error=true',
+          );
+          // Compose the most informative message we can from whatever
+          // fields are present, plus stderr tail.
+          const parts: string[] = [];
+          if (typeof obj.subtype === 'string' && obj.subtype !== 'success') {
+            parts.push(`subtype=${obj.subtype}`);
+          }
+          if (typeof obj.result === 'string' && obj.result.trim()) {
+            parts.push(obj.result.trim().slice(0, 300));
+          } else if (typeof obj.error === 'string' && obj.error.trim()) {
+            parts.push(obj.error.trim().slice(0, 300));
+          }
+          if (typeof obj.api_error_status === 'number') {
+            parts.push(`api_status=${obj.api_error_status}`);
+          }
+          if (stderr.trim()) {
+            parts.push(`stderr=${stderr.trim().slice(-300)}`);
+          }
           resultError =
-            typeof obj.result === 'string'
-              ? obj.result
-              : typeof obj.error === 'string'
-                ? obj.error
-                : 'result event marked as error';
+            parts.length > 0
+              ? parts.join(' | ')
+              : 'result event marked as error (no detail in payload)';
         }
         return;
       }
