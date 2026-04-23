@@ -1,5 +1,8 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { API_BILLING_ENV_VARS } from '../../src/agent/credentials.js';
+import {
+  API_BILLING_ENV_VARS,
+  API_KEY_SOURCE_REJECT,
+} from '../../src/agent/credentials.js';
 import { buildClaudeEnv } from '../../src/agent/runner.js';
 
 describe('API-billing env var filtering', () => {
@@ -54,5 +57,32 @@ describe('API-billing env var filtering', () => {
     expect(out['FOO']).toBe('bar');
     expect(out['ANTHROPIC_API_KEY']).toBeUndefined();
     expect(out['ANTHROPIC_BASE_URL']).toBeUndefined();
+  });
+
+  // Regression: CLAUDE_CODE_OAUTH_TOKEN is subscription-bound (same billing
+  // path as a keyring session), must NOT be stripped, otherwise token-mode
+  // auth wouldn't work at all.
+  it('CLAUDE_CODE_OAUTH_TOKEN is NOT in the strip list', () => {
+    expect(API_BILLING_ENV_VARS).not.toContain('CLAUDE_CODE_OAUTH_TOKEN');
+  });
+
+  it('buildClaudeEnv preserves CLAUDE_CODE_OAUTH_TOKEN', () => {
+    const out = buildClaudeEnv({
+      CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat-subscription-token',
+      ANTHROPIC_API_KEY: 'nope-stripped',
+    });
+    expect(out['CLAUDE_CODE_OAUTH_TOKEN']).toBe('sk-ant-oat-subscription-token');
+    expect(out['ANTHROPIC_API_KEY']).toBeUndefined();
+  });
+
+  // Regression: the reject-list gating runtime + startup enforcement covers
+  // the known pay-as-you-go API-key sources. Shrinking this would silently
+  // accept API-billing traffic.
+  it('API_KEY_SOURCE_REJECT covers the known API-billing sources', () => {
+    expect(API_KEY_SOURCE_REJECT.has('ANTHROPIC_API_KEY')).toBe(true);
+    expect(API_KEY_SOURCE_REJECT.has('ANTHROPIC_AUTH_TOKEN')).toBe(true);
+    // Subscription-bound values MUST NOT be in the reject list.
+    expect(API_KEY_SOURCE_REJECT.has('none')).toBe(false);
+    expect(API_KEY_SOURCE_REJECT.has('CLAUDE_CODE_OAUTH_TOKEN')).toBe(false);
   });
 });

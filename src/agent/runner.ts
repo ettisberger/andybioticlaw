@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import type { ChildProcessByStdio } from 'node:child_process';
 import type { Readable } from 'node:stream';
 import type { Logger } from 'pino';
-import { API_BILLING_ENV_VARS } from './credentials.js';
+import { API_BILLING_ENV_VARS, API_KEY_SOURCE_REJECT } from './credentials.js';
 
 export interface RunClaudeInput {
   userMessage: string;
@@ -214,11 +214,13 @@ export function runClaude(input: RunClaudeInput): Promise<RunClaudeResult> {
           observedApiKeySource = src;
           input.onInit?.({ cliSessionId, apiKeySource: src });
 
-          // HARD GUARD: subscription-only. If the CLI is running under an
-          // API key (anything other than "none"), kill immediately and fail
-          // the session. Allow an explicit override hook so tests can
-          // exercise the path without actually billing.
-          if (src !== 'none') {
+          // HARD GUARD: if the CLI reports one of the known API-key billing
+          // sources (pay-as-you-go ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN),
+          // kill immediately and fail the session. A subscription-bound
+          // `CLAUDE_CODE_OAUTH_TOKEN` or a keyring session (`'none'`) is
+          // fine — see API_KEY_SOURCE_REJECT in credentials.ts. An explicit
+          // override hook lets tests exercise the path without billing.
+          if (API_KEY_SOURCE_REJECT.has(src)) {
             const allow = input.onApiKeyBilling?.(src) === true;
             if (!allow) {
               killedByApiKeyGuard = true;

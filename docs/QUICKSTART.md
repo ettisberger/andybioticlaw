@@ -107,7 +107,24 @@ You are now in a shell as the `andybioticlaw` service user. Everything
 from here runs with the service's own home + permissions — including the
 Claude OAuth credentials which must land in this user's `~/.claude/`.
 
-## 5. Log into Claude (3 min)
+## 5. Authenticate the Claude CLI (3 min)
+
+Two ways, both subscription-billed (NOT pay-as-you-go API credits). Pick one:
+
+### 5a. Long-lived OAuth token (recommended for unattended servers)
+
+```bash
+claude setup-token
+```
+
+Follow the OAuth flow; the command prints a token starting with
+`sk-ant-oat-...` that lasts **1 year**. Copy it. You'll paste it into
+the wizard in step 6 (which writes it to `.env` as
+`CLAUDE_CODE_OAUTH_TOKEN`). No periodic re-login required.
+
+Requires a Claude Pro / Max / Team / Enterprise subscription.
+
+### 5b. Interactive OAuth session
 
 ```bash
 claude login
@@ -115,16 +132,27 @@ claude login
 
 OAuth flow: open the URL it prints in a browser on any machine (doesn't
 have to be the VPS), paste the confirmation code back in the SSH session.
-Verify:
+Session credentials land in `~/.claude/.credentials.json` and
+auto-refresh on expiry. Every few months the refresh token may rotate
+and you'll need to re-run `claude login` — fine for interactive use,
+less great for truly unattended deployments.
+
+Either way, verify:
 
 ```bash
 claude auth status --json
-# expect: "loggedIn": true, "apiKeySource": "none",
-#         "subscriptionType": "pro" or "max".
+# expect: "loggedIn": true,
+#         "subscriptionType": "pro" | "max" | "team" | "enterprise".
+# apiKeySource will be "none" (session) or a CLAUDE_CODE_OAUTH_TOKEN marker.
+# Must NOT be "ANTHROPIC_API_KEY" — that's pay-as-you-go billing and
+# the service will refuse to boot on it.
 ```
 
-If `apiKeySource` is anything other than `"none"`, the service will
-refuse to start sessions — see `docs/SECURITY.md` § 1 for why.
+See `docs/SECURITY.md` § 1 for the subscription-enforcement details.
+
+> **April 2026 heads-up**: Anthropic enforces against third-party 24/7
+> agent harnesses using subscription credentials. Both paths above
+> still work, but always-on self-hosted operation is at your own risk.
 
 ## 6. Run the interactive menu (3 min)
 
@@ -132,7 +160,7 @@ refuse to start sessions — see `docs/SECURITY.md` § 1 for why.
 andybioticlaw
 ```
 
-Arrow keys + Enter. Select **"Run setup wizard"**. The wizard asks four
+Arrow keys + Enter. Select **"Run setup wizard"**. The wizard asks five
 things:
 
 1. **Bot token** (from step 1) — stored in `.env` with mode 0600.
@@ -142,6 +170,9 @@ things:
 4. **Dashboard password** — required (the service refuses to start with
    basic-auth enabled but no hash); press Enter to explicitly disable
    basic-auth for a localhost-only dev setup.
+5. **Claude auth** — pick "Paste a long-lived OAuth token" and paste
+   the `sk-ant-oat-...` you got in step 5a, OR pick "Skip" if you ran
+   `claude login` in step 5b.
 
 Already-set values are reused, so re-running is safe.
 

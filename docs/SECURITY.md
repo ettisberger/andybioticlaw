@@ -40,24 +40,46 @@ IS the user.
 
 The `claude` CLI happily switches to pay-as-you-go API-key billing if
 `ANTHROPIC_API_KEY` is set in its environment — silently, with no
-user-visible signal. We enforce subscription-only access at three
-independent points:
+user-visible signal. We accept two subscription-bound auth paths —
+keyring session (`claude login`) and long-lived OAuth token
+(`claude setup-token` → `CLAUDE_CODE_OAUTH_TOKEN`) — and block the
+pay-as-you-go API-key path at three independent points:
 
 - **Startup**: `checkClaudeCredentials()` parses `claude auth status
-  --json` and refuses unless `apiKeySource === "none"` AND
-  `subscriptionType` is truthy (Pro / Max).
+  --json` and refuses on a **reject-list** (`API_KEY_SOURCE_REJECT` =
+  `{'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'}`) + missing
+  `subscriptionType`. The auth method (`session` / `token` / `unknown`)
+  is derived and surfaced on the dashboard. Unknown-but-not-rejected
+  `apiKeySource` values are logged at WARN + audited as
+  `unknown_api_key_source` so future CLI changes are observable.
 - **Subprocess env filter**: `buildClaudeEnv()` strips
   `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`,
   `ANTHROPIC_API_URL`, `CLAUDE_CODE_USE_BEDROCK`,
   `CLAUDE_CODE_USE_VERTEX` from every `claude` subprocess we spawn.
+  `CLAUDE_CODE_OAUTH_TOKEN` is deliberately not on this list — it's
+  subscription-bound, same billing path as a session.
 - **Runtime assertion**: every session inspects the `apiKeySource`
-  field on the CLI's `system/init` event. Anything other than
-  `"none"` → SIGKILL the subprocess + audit
+  field on the CLI's `system/init` event. If the observed value is in
+  `API_KEY_SOURCE_REJECT` → SIGKILL the subprocess + audit
   `api_key_billing_blocked` + session fails.
+
+Why a reject-list instead of a one-value accept-list (`'none'` only):
+the exact `apiKeySource` reported when the CLI is using
+`CLAUDE_CODE_OAUTH_TOKEN` isn't publicly documented, and a one-value
+accept-list would boot-lock on a future CLI version change. Rejecting
+only the known API-key sources is conservative on billing without being
+fragile on implementation details.
 
 Live-verified in `tests/integration/runner.e2e.test.ts`: with
 `ANTHROPIC_API_KEY=sk-ant-BOGUS` set in the test process, the
-subprocess still runs against the subscription (`apiKeySource: "none"`).
+subprocess's reported `apiKeySource` is never in the reject-list.
+
+**April 2026 caveat.** Anthropic enforced against third-party 24/7
+agent harnesses (openclaw precedent) on subscription credentials.
+`setup-token` remains supported and both auth paths still work
+technically; enforcement is heuristic (abuse classifier) rather than
+documented policy. Always-on self-hosted operation on subscription
+auth carries residual risk of throttling or brief suspension.
 
 ### 2. Scoped secrets (skill-level isolation)
 
@@ -233,8 +255,9 @@ If you suspect any of the following, take immediate action:
 | Suspected event | Action |
 |---|---|
 | Leaked Telegram bot token | `/revoke` via @BotFather, rotate in `.env`, `systemctl restart andybioticlaw` |
-| Leaked Claude subscription creds | `claude logout` + `claude login` on the VPS as the service user; restart |
-| `ANTHROPIC_API_KEY` accidentally set in prod env | `systemctl stop andybioticlaw`; unset the var; restart. Verify `apiKeySource: "none"` in boot log |
+| Leaked Claude subscription creds (session) | `claude logout` + `claude login` on the VPS as the service user; restart |
+| Leaked CLAUDE_CODE_OAUTH_TOKEN | revoke via `claude setup-token --revoke` (or the Anthropic web console), generate a fresh one via `claude setup-token`, update `.env` on the VPS, `systemctl restart andybioticlaw` |
+| `ANTHROPIC_API_KEY` accidentally set in prod env | `systemctl stop andybioticlaw`; unset the var; restart. Verify boot log shows `apiKeySource` NOT in the reject-list (`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`) |
 | Unknown audit row kind you can't account for | Open `docs/SECURITY.md` + `CHANGELOG.md`, grep the kind name. If it looks agent-originated, consider the current session's conversation log (dashboard `Sessions` page) |
 | Suspected DB tampering | Compare `data/andybioticlaw.db` against the most recent off-host backup you maintain (see `docs/DEPLOYMENT.md` § 9); SQLite's `.dump` is textually diffable |
 

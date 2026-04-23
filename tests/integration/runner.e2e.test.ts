@@ -54,7 +54,15 @@ d('executeSession against real claude CLI', () => {
         expect(initApiKeySource).toBe('none');
         expect(result.status).toBe('completed');
         expect(result.killedByApiKeyGuard).toBeUndefined();
-        expect(result.apiKeySource).toBe('none');
+        // apiKeySource must NOT be in the reject-list. Accepts keyring
+        // session ('none') OR CLAUDE_CODE_OAUTH_TOKEN paths; rejects
+        // ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN (pay-as-you-go).
+        expect(result.apiKeySource).toBeDefined();
+        expect(
+          ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'].includes(
+            result.apiKeySource!,
+          ),
+        ).toBe(false);
         expect(result.tokensInput).toBeGreaterThan(0);
         expect(result.tokensOutput).toBeGreaterThan(0);
       } finally {

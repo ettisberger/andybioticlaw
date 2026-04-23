@@ -192,13 +192,20 @@ The runner merges two env sets: `buildClaudeEnv(process.env)` (the API-billing-f
 
 ### Subscription auth is enforced at three layers, never API-key billing
 
-The service is designed to run on a Claude subscription (Pro/Max), never on pay-as-you-go API-key billing. The `claude` CLI, however, will silently prefer `ANTHROPIC_API_KEY` over its stored subscription credential if the env var is present. To make accidental-API-billing impossible:
+The service runs on a Claude subscription (Pro/Max/Team/Enterprise), never on pay-as-you-go API-key billing. Two subscription paths are supported:
 
-1. **Startup check** (`src/agent/credentials.ts`): we parse `apiKeySource` and `subscriptionType` from `claude auth status --json`. Anything other than `apiKeySource: "none"` with a truthy `subscriptionType` is rejected — the service boots but refuses to handle messages.
-2. **Subprocess env filter** (`buildClaudeEnv()` in `src/agent/runner.ts`): every time we spawn `claude`, we strip `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_API_URL`, `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX` from the inherited environment — even if they somehow got set in our parent process, the subprocess never sees them.
-3. **Runtime assertion**: the CLI's `system/init` event reports `apiKeySource`. If it's anything but `"none"` on a live session, we SIGKILL immediately and fail the session with an `api_key_billing_blocked` audit row.
+- **Keyring session** — what `claude login` produces. Stored on Linux in `~/.claude/.credentials.json` (access-token ~1h, refresh-token months+, auto-refreshes on 401). What you get if you just follow the install wizard and let the service user run `claude login`.
+- **Long-lived OAuth token** — what `claude setup-token` produces: a `sk-ant-oat-*` token consumed via the `CLAUDE_CODE_OAUTH_TOKEN` env var, 1-year lifetime, subscription-billed (not API credits). Better for unattended servers because there's no periodic re-login.
 
-The E2E test proves the chain: with `ANTHROPIC_API_KEY=sk-ant-BOGUS` set in the test process, the spawned `claude` still reports `apiKeySource: "none"` and runs on the subscription.
+Both paths route to the same subscription billing. The thing we actively block is pay-as-you-go API-key billing, because the `claude` CLI will silently prefer `ANTHROPIC_API_KEY` over stored subscription credentials if the env var is present and that would quietly drain the account's credits. To make that impossible:
+
+1. **Startup check** (`src/agent/credentials.ts`): we parse `apiKeySource` and `subscriptionType` from `claude auth status --json`. A **reject-list** (`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN` — see `API_KEY_SOURCE_REJECT`) + missing `subscriptionType` triggers a boot failure. Any other `apiKeySource` value paired with a truthy `subscriptionType` is accepted. We use a reject-list rather than a one-value accept-list (`'none'`) because the exact `apiKeySource` reported by `CLAUDE_CODE_OAUTH_TOKEN` auth is not publicly documented, and a one-value accept-list would boot-lock on future CLI changes. Unrecognised-but-not-rejected values are logged at WARN + audited as `unknown_api_key_source` for observability.
+2. **Subprocess env filter** (`buildClaudeEnv()` in `src/agent/runner.ts`): every time we spawn `claude`, we strip `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_API_URL`, `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX` from the inherited environment. `CLAUDE_CODE_OAUTH_TOKEN` is NOT on the strip list — it's subscription-bound, same billing path as a keyring session, and the CLI needs to see it.
+3. **Runtime assertion**: the CLI's `system/init` event reports `apiKeySource`. If it's in the reject-list on a live session, we SIGKILL immediately and fail the session with an `api_key_billing_blocked` audit row.
+
+The E2E test proves the chain: with `ANTHROPIC_API_KEY=sk-ant-BOGUS` set in the test process, the spawned `claude` reports an `apiKeySource` that's **not** in the reject-list (either `'none'` for keyring or the `CLAUDE_CODE_OAUTH_TOKEN` marker) and runs on the subscription.
+
+**April 2026 caveat.** Anthropic enforced against third-party 24/7 agent harnesses (openclaw precedent) running on subscription credentials, arguing subscriptions are for interactive use. `setup-token` is not deprecated and both auth paths still work technically, but operating an always-on self-hosted service on either subscription-auth path is at your own risk — the abuse classifier can throttle or briefly suspend accounts. There's no formal written policy.
 
 ### System prompt ordered cache-stable → cache-volatile (post-audit tweak)
 

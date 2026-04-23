@@ -33,6 +33,11 @@ export interface CredentialsCheckDeps {
  * billing, or to a different provider. The runner filters them from every
  * subprocess env; the startup credentials check warns if the parent service
  * has any of them set.
+ *
+ * Note: `CLAUDE_CODE_OAUTH_TOKEN` is DELIBERATELY NOT on this list — it's a
+ * subscription-bound long-lived OAuth token (`claude setup-token`), the same
+ * billing path as a keyring session, not pay-as-you-go. We want it to pass
+ * through to the subprocess.
  */
 export const API_BILLING_ENV_VARS = [
   'ANTHROPIC_API_KEY',
@@ -42,6 +47,34 @@ export const API_BILLING_ENV_VARS = [
   'CLAUDE_CODE_USE_BEDROCK',
   'CLAUDE_CODE_USE_VERTEX',
 ] as const;
+
+/**
+ * `apiKeySource` values reported by `claude auth status --json` that indicate
+ * pay-as-you-go API-key billing (NOT subscription). The runner SIGKILLs any
+ * session whose init event reports one of these, and the startup check
+ * refuses to boot. Everything else — `'none'` (keyring session) OR
+ * unrecognized values paired with a truthy `subscriptionType` (e.g.
+ * `CLAUDE_CODE_OAUTH_TOKEN` mode) — is accepted.
+ *
+ * Inverted from the original "accept only `'none'`" because the exact
+ * `apiKeySource` value for `CLAUDE_CODE_OAUTH_TOKEN` auth isn't publicly
+ * documented; a one-value accept-list risks boot-locking on future CLI
+ * changes.
+ */
+export const API_KEY_SOURCE_REJECT = new Set<string>([
+  'ANTHROPIC_API_KEY',
+  'ANTHROPIC_AUTH_TOKEN',
+]);
+
+/**
+ * Which subscription-bound auth path the service is using.
+ *   - `'session'`: keyring credentials from `claude login`.
+ *   - `'token'`: long-lived OAuth token via `CLAUDE_CODE_OAUTH_TOKEN`
+ *                env var (from `claude setup-token`).
+ *   - `'unknown'`: credentials appear valid (logged in + subscription)
+ *                but the classification heuristic couldn't decide.
+ */
+export type AuthMethod = 'session' | 'token' | 'unknown';
 
 /**
  * Check `claude auth status --json`, and interpret the result narrowly:
@@ -93,9 +126,9 @@ export async function checkClaudeCredentials(
       };
     }
 
-    // Strict subscription check.
+    // Reject-list check: anything on the known API-billing list fails.
     const apiKeySource = parsed.apiKeySource ?? 'none';
-    if (apiKeySource !== 'none') {
+    if (API_KEY_SOURCE_REJECT.has(apiKeySource)) {
       return {
         ok: false,
         reason: `claude is configured for API-key billing (apiKeySource=${apiKeySource}); this service requires subscription auth only`,
@@ -105,7 +138,7 @@ export async function checkClaudeCredentials(
           apiKeySource,
           subscriptionType: parsed.subscriptionType,
           leakedEnv,
-          hint: `unset ${leakedEnv.join(', ') || 'ANTHROPIC_* env vars'} in the service environment, or they will override the subscription and silently switch billing to pay-as-you-go`,
+          hint: `unset ${leakedEnv.join(', ') || 'ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN'} in the service environment, or they will override the subscription and silently switch billing to pay-as-you-go`,
         },
       };
     }
@@ -124,17 +157,37 @@ export async function checkClaudeCredentials(
       };
     }
 
+    // Classify which auth path is active. A non-empty CLAUDE_CODE_OAUTH_TOKEN
+    // env var means the CLI is using the long-lived token. Otherwise
+    // `apiKeySource === 'none'` means keyring session. Anything else is
+    // accepted (we're past the reject-list) but flagged as 'unknown' so the
+    // observed value shows up in audit logs for future investigation.
+    const tokenEnv = process.env.CLAUDE_CODE_OAUTH_TOKEN;
+    const hasTokenEnv = typeof tokenEnv === 'string' && tokenEnv.trim() !== '';
+    let authMethod: AuthMethod;
+    if (hasTokenEnv) {
+      authMethod = 'token';
+    } else if (apiKeySource === 'none') {
+      authMethod = 'session';
+    } else {
+      authMethod = 'unknown';
+    }
+
     const details: Record<string, unknown> = {
       method: 'claude-auth-status',
       credentialsDir: expandedDir,
       credentialsDirExists: dirExists,
-      authMethod: parsed.authMethod,
+      authMethod,
+      claudeAuthMethod: parsed.authMethod,
       subscriptionType: parsed.subscriptionType,
       apiKeySource,
     };
     if (parsed.email) details.email = parsed.email;
     if (parsed.apiProvider) details.apiProvider = parsed.apiProvider;
     if (leakedEnv.length > 0) details.leakedEnvWarning = leakedEnv;
+    if (authMethod === 'unknown') {
+      details.unknownApiKeySourceWarning = apiKeySource;
+    }
     return { ok: true, details };
   } catch (e) {
     const errMsg = e instanceof Error ? e.message : String(e);
@@ -173,8 +226,9 @@ export async function runStartupCredentialsCheck(
         method: result.details?.method,
         credentialsDir: result.details?.credentialsDir,
         subscriptionType: result.details?.subscriptionType,
+        authMethod: result.details?.authMethod,
       },
-      `claude credentials OK (subscription: ${String(result.details?.subscriptionType)})`,
+      `claude credentials OK (subscription: ${String(result.details?.subscriptionType)}, auth: ${String(result.details?.authMethod)})`,
     );
     if (hasLeakedEnv) {
       deps.logger.warn(
@@ -185,6 +239,18 @@ export async function runStartupCredentialsCheck(
         kind: 'api_billing_env_warning',
         actor: 'startup',
         detail: { leakedEnv: leaked },
+      });
+    }
+    const unknownSrc = result.details?.['unknownApiKeySourceWarning'];
+    if (typeof unknownSrc === 'string') {
+      deps.logger.warn(
+        { apiKeySource: unknownSrc },
+        'claude reports an unrecognised apiKeySource (paired with a valid subscription tier); accepting but check the CLI version + docs if this is unexpected',
+      );
+      deps.audit.record({
+        kind: 'unknown_api_key_source',
+        actor: 'startup',
+        detail: { apiKeySource: unknownSrc },
       });
     }
   } else {

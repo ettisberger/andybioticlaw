@@ -5,7 +5,7 @@ import { readEnvFile, writeEnvFileUpdates } from '../config/env-file.js';
 import { loadConfig, projectRoot } from '../config/load.js';
 import { defaultConfigPath, defaultEnvPath } from '../config/paths.js';
 import { bold, cyan, dim, green, lavender, sage, yellow } from './ansi.js';
-import { askLine, askSecret, releaseStdin } from './prompt-helpers.js';
+import { askEnum, askLine, askSecret, releaseStdin } from './prompt-helpers.js';
 
 class InitAbortedError extends Error {
   constructor() {
@@ -87,7 +87,7 @@ async function runInitCommandInner(): Promise<void> {
     const envUpdates: Record<string, string> = {};
 
     // --- 2. Telegram bot token --------------------------------------------
-    section(stdout, '1/4', 'Telegram bot token');
+    section(stdout, '1/5', 'Telegram bot token');
     if (envExisting.values.TELEGRAM_BOT_TOKEN) {
       stdout.write(`  ${sage('✓')} ${dim('TELEGRAM_BOT_TOKEN already set in .env — reusing')}\n`);
     } else {
@@ -103,7 +103,7 @@ async function runInitCommandInner(): Promise<void> {
     }
 
     // --- 3. Principal user id --------------------------------------------
-    section(stdout, '2/4', 'Principal Telegram user id');
+    section(stdout, '2/5', 'Principal Telegram user id');
     const currentAllowed = readAllowedUserIds(configPath);
     let principalUserId: number | null = null;
     if (currentAllowed.length > 0) {
@@ -128,7 +128,7 @@ async function runInitCommandInner(): Promise<void> {
     }
 
     // --- 4. Service timezone ---------------------------------------------
-    section(stdout, '3/4', 'Service timezone');
+    section(stdout, '3/5', 'Service timezone');
     const systemTz =
       Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Zurich';
     const currentTz = readTimezone(configPath);
@@ -169,7 +169,7 @@ async function runInitCommandInner(): Promise<void> {
     // so the service boots only if we populate the hash OR explicitly
     // disable auth. Press-Enter path disables auth with a confirmation,
     // so localhost-only quick-try users aren't forced to pick a password.
-    section(stdout, '4/4', 'Dashboard basic-auth password');
+    section(stdout, '4/5', 'Dashboard basic-auth password');
     const currentHashLine = readPasswordHash(configPath);
     let dashboardPasswordHash: string | null = null;
     let disableDashboardAuth = false;
@@ -195,6 +195,67 @@ async function runInitCommandInner(): Promise<void> {
           `  ${yellow('!')} ${dim('no password → disabling basic-auth. Re-run init to re-enable.')}\n`,
         );
         disableDashboardAuth = true;
+      }
+    }
+
+    // --- 5. Claude authentication ----------------------------------------
+    // Two paths, both subscription-billed (never API credits):
+    //   - CLAUDE_CODE_OAUTH_TOKEN: long-lived (1yr) token from
+    //     `claude setup-token`, stored in .env. No re-login chore.
+    //   - (skip): rely on the keyring session from an interactive
+    //     `claude login` the operator runs after setup.
+    // The service refuses to boot on ANTHROPIC_API_KEY-style auth, so
+    // there's no "cheap" path that bypasses the subscription.
+    section(stdout, '5/5', 'Claude authentication');
+    if (envExisting.values.CLAUDE_CODE_OAUTH_TOKEN) {
+      stdout.write(
+        `  ${sage('✓')} ${dim('CLAUDE_CODE_OAUTH_TOKEN already set in .env — reusing')}\n`,
+      );
+    } else {
+      stdout.write(
+        `  ${dim('Heads-up: Anthropic enforces against third-party 24/7 agents on')}\n` +
+          `  ${dim('subscription credentials (April 2026 openclaw precedent). `setup-token`')}\n` +
+          `  ${dim('is not deprecated, but use of subscription auth for always-on services')}\n` +
+          `  ${dim('is at your own risk. See README § Subscription auth.')}\n\n`,
+      );
+      const choice = await askEnum(
+        stdin,
+        stdout,
+        `  ${lavender('?')} how do you want to authenticate: `,
+        [
+          { value: 'token', label: 'Paste a long-lived OAuth token (recommended for unattended servers)' },
+          { value: 'skip', label: 'Skip — I\'ll run `claude login` later' },
+        ],
+        { default: 'skip' },
+      );
+      if (choice === null) throw new InitAbortedError();
+      if (choice === 'token') {
+        stdout.write(
+          `  ${dim('Generate a token by running:')} ${cyan('claude setup-token')}\n` +
+            `  ${dim('(requires a Claude Pro / Max / Team / Enterprise subscription).')}\n` +
+            `  ${dim('Paste the full token here. Format:')} ${cyan('sk-ant-oat-...')}\n\n`,
+        );
+        const tok = await askSecret(stdin, stdout, `  ${lavender('?')} token: `);
+        if (tok && tok.trim().length > 0) {
+          const trimmed = tok.trim();
+          if (!trimmed.startsWith('sk-ant-oat-')) {
+            stdout.write(
+              `  ${yellow('!')} ${dim("token doesn't start with `sk-ant-oat-` — saving anyway, but double-check it's the right one")}\n`,
+            );
+          }
+          envUpdates.CLAUDE_CODE_OAUTH_TOKEN = trimmed;
+          stdout.write(
+            `  ${sage('✓')} ${dim('will write CLAUDE_CODE_OAUTH_TOKEN to .env')}\n`,
+          );
+        } else {
+          stdout.write(
+            `  ${yellow('!')} ${dim('no token provided → falling back to `claude login` path')}\n`,
+          );
+        }
+      } else {
+        stdout.write(
+          `  ${dim('OK — will skip. Remember to run')} ${cyan('claude login')} ${dim('after setup.')}\n`,
+        );
       }
     }
 
@@ -283,28 +344,43 @@ async function runInitCommandInner(): Promise<void> {
   // → surface `pnpm dev`. This keeps the message unambiguous instead of
   // showing both options and confusing the operator.
   const isServiceUser = process.env.USER === 'andybioticlaw';
-  stdout.write(
-    `\n${bold('Next steps')}\n` +
-      `  ${lavender('1.')} Log into Claude (if you haven't):  ${cyan('claude login')}\n` +
-      `     ${dim('Verify with:  claude auth status --json')}\n`,
-  );
+  // Check .env post-write — either pre-existing OR just written by this run.
+  const finalEnv = readEnvFile(envPath);
+  const hasTokenAuth =
+    typeof finalEnv.values.CLAUDE_CODE_OAUTH_TOKEN === 'string' &&
+    finalEnv.values.CLAUDE_CODE_OAUTH_TOKEN.trim() !== '';
+
+  stdout.write(`\n${bold('Next steps')}\n`);
+  let nextStepNum = 1;
+  if (!hasTokenAuth) {
+    stdout.write(
+      `  ${lavender(`${nextStepNum}.`)} Log into Claude:  ${cyan('claude login')}\n` +
+        `     ${dim('Verify with:  claude auth status --json')}\n`,
+    );
+    nextStepNum++;
+  } else {
+    stdout.write(
+      `  ${dim('(Claude auth already handled — CLAUDE_CODE_OAUTH_TOKEN is in .env)')}\n`,
+    );
+  }
   if (isServiceUser) {
     stdout.write(
-      `  ${lavender('2.')} Exit this shell, then start the service:\n` +
+      `  ${lavender(`${nextStepNum}.`)} Exit this shell, then start the service:\n` +
         `     ${cyan('exit')}\n` +
         `     ${cyan('sudo systemctl start andybioticlaw')}\n` +
         `     ${cyan('sudo journalctl -u andybioticlaw -f')}\n`,
     );
   } else {
     stdout.write(
-      `  ${lavender('2.')} Start the service (from the project root):\n` +
+      `  ${lavender(`${nextStepNum}.`)} Start the service (from the project root):\n` +
         `     ${dim('# dev (watch mode):')}  ${cyan('pnpm dev')}\n` +
         `     ${dim('# prod (systemd):')}   ${cyan('sudo systemctl start andybioticlaw')}\n`,
     );
   }
+  nextStepNum++;
   stdout.write(
-    `  ${lavender('3.')} DM your bot on Telegram to confirm it answers.\n` +
-      `  ${lavender('4.')} Back up data/ yourself — see docs/DEPLOYMENT.md § 9.\n\n` +
+    `  ${lavender(`${nextStepNum}.`)} DM your bot on Telegram to confirm it answers.\n` +
+      `  ${lavender(`${nextStepNum + 1}.`)} Back up data/ yourself — see docs/DEPLOYMENT.md § 9.\n\n` +
       `${dim('made by')} ${green('cognitek.dev')}\n\n`,
   );
 }

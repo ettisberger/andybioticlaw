@@ -11,6 +11,7 @@ import type {
 } from '../../agent/session.js';
 import type { RateLimitTracker } from '../../agent/rate-limit-tracker.js';
 import type { BotProfile } from '../../telegram/bot.js';
+import type { AuthMethod } from '../../agent/credentials.js';
 
 export interface OverviewDeps {
   sessions: SessionsRepo;
@@ -20,6 +21,7 @@ export interface OverviewDeps {
   schedules: SchedulesRepo;
   queue: QueueManager<SessionExecuteInput, SessionExecuteResult> | null;
   credentialsOk: () => boolean;
+  authMethod: () => AuthMethod | null;
   agentName: string;
   model: string;
   timezone: string;
@@ -61,6 +63,7 @@ export const overviewRoutes =
           hasAvatar: bp?.avatar != null,
         },
         credentialsOk: deps.credentialsOk(),
+        authMethod: deps.authMethod(),
         budget: {
           used: budgetStatus.used,
           limit: budgetStatus.dailyLimit,

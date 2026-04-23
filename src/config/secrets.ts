@@ -15,10 +15,13 @@ import type { AuditRepo } from '../db/repositories/audit.js';
  * `secret_scope_violation`. The caller should propagate the error.
  */
 
-// Only TELEGRAM_BOT_TOKEN lives in .env. The dashboard's basic-auth is
-// verified against an argon2 hash in config.yaml (`dashboard.basicAuth.
-// passwordHash`) — never a plain password in env.
-export const CORE_SECRETS = ['TELEGRAM_BOT_TOKEN'] as const;
+// `.env` holds TELEGRAM_BOT_TOKEN (mandatory) and optionally
+// CLAUDE_CODE_OAUTH_TOKEN (long-lived subscription OAuth token — from
+// `claude setup-token`). The dashboard's basic-auth is verified against an
+// argon2 hash in config.yaml (`dashboard.basicAuth.passwordHash`) — never
+// a plain password in env. Declaring CLAUDE_CODE_OAUTH_TOKEN here gives us
+// scope-violation auditing if a skill ever tries to read it.
+export const CORE_SECRETS = ['TELEGRAM_BOT_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'] as const;
 export type CoreSecret = (typeof CORE_SECRETS)[number];
 
 export type SecretContext = 'core' | { skill: string };

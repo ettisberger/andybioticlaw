@@ -26,6 +26,7 @@ interface OverviewData {
     hasAvatar: boolean;
   };
   credentialsOk: boolean;
+  authMethod: 'session' | 'token' | 'unknown' | null;
   budget: { used: number; limit: number; remaining: number; exhausted: boolean; nextResetMs: number };
   rateLimit: {
     latest: RateLimitSnapshot | null;
@@ -80,6 +81,9 @@ export function OverviewPage() {
           <div className="mt-1 text-lg font-medium">
             {data.credentialsOk ? <Badge tone="success">OK</Badge> : <Badge tone="error">MISSING</Badge>}
           </div>
+          {data.credentialsOk && data.authMethod && (
+            <div className="mt-1 text-xs text-ink-faint">via {data.authMethod}</div>
+          )}
         </Card>
         <Card>
           <div className="text-xs uppercase text-ink-faint">Queue depth</div>
@@ -379,6 +383,9 @@ function AgentHeroCard({ data }: { data: OverviewData }) {
                 }`}
               />
               credentials {data.credentialsOk ? 'OK' : 'missing'}
+              {data.credentialsOk && data.authMethod && (
+                <span className="text-ink-faint"> · {data.authMethod}</span>
+              )}
             </HeroChip>
             {data.principalUserId !== null && (
               <HeroChip>

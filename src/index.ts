@@ -28,6 +28,7 @@ import { createErrorReporter } from './observability/errors.js';
 import { createHeartbeatDriver } from './observability/heartbeat.js';
 import { createEventBus } from './events/bus.js';
 import { runStartupCredentialsCheck } from './agent/credentials.js';
+import type { AuthMethod } from './agent/credentials.js';
 import { loadSkills } from './skills/loader.js';
 import { createSkillRegistry } from './skills/registry.js';
 import { createBudgetTracker } from './agent/budget.js';
@@ -128,6 +129,7 @@ async function main(): Promise<void> {
   });
 
   let credentialsOk = false;
+  let authMethod: AuthMethod | null = null;
   const credentialsResult = await runStartupCredentialsCheck({
     credentialsDir: config.agent.credentialsDir,
     logger,
@@ -136,8 +138,14 @@ async function main(): Promise<void> {
     errors,
   });
   credentialsOk = credentialsResult.ok;
-  bus.on('credentials:status-changed', ({ ok }) => {
+  authMethod = credentialsOk
+    ? ((credentialsResult.details?.['authMethod'] as AuthMethod | undefined) ?? null)
+    : null;
+  bus.on('credentials:status-changed', ({ ok, details }) => {
     credentialsOk = ok;
+    authMethod = ok
+      ? ((details?.['authMethod'] as AuthMethod | undefined) ?? null)
+      : null;
   });
 
   const skillsDir = expandPath(config.skills.dir, projectRoot());
@@ -392,6 +400,7 @@ async function main(): Promise<void> {
     model: config.agent.model,
     timezone: config.service.timezone,
     credentialsOk: () => credentialsOk,
+    authMethod: () => authMethod,
     logPath: resolve(logsDir(dataDir), 'andybioticlaw.log'),
     frontendDistDir: resolve(projectRoot(), 'web', 'dist'),
     onSchedulesChanged: () => scheduler?.refresh(),

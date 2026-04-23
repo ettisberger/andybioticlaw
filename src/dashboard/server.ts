@@ -34,6 +34,7 @@ import { logsRoutes } from './routes/logs.js';
 import { agentRoutes } from './routes/agent.js';
 import { createLogBroadcaster } from './log-broadcaster.js';
 import type { BotProfile } from '../telegram/bot.js';
+import type { AuthMethod } from '../agent/credentials.js';
 
 export interface DashboardDeps {
   currentConfig: () => Config;
@@ -53,6 +54,9 @@ export interface DashboardDeps {
   model: string;
   timezone: string;
   credentialsOk: () => boolean;
+  /** Which subscription-bound auth path is active: keyring session, long-lived
+   *  CLAUDE_CODE_OAUTH_TOKEN, or unknown. `null` when `credentialsOk` is false. */
+  authMethod: () => AuthMethod | null;
   logPath: string;
   /** Absolute path to the built frontend's dist dir (served as static). */
   frontendDistDir: string;
@@ -208,6 +212,7 @@ export function createDashboard(deps: DashboardDeps): DashboardService {
       schedules: deps.schedules,
       queue: deps.queue,
       credentialsOk: deps.credentialsOk,
+      authMethod: deps.authMethod,
       agentName: deps.agentName,
       model: deps.model,
       timezone: deps.timezone,

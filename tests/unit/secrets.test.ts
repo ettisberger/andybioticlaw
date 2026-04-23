@@ -26,12 +26,15 @@ function makeDb() {
 describe('secrets scoping', () => {
   let origToken: string | undefined;
   let origSkillA: string | undefined;
+  let origCct: string | undefined;
 
   beforeEach(() => {
     origToken = process.env.TELEGRAM_BOT_TOKEN;
     origSkillA = process.env.SKILL_A_SECRET;
+    origCct = process.env.CLAUDE_CODE_OAUTH_TOKEN;
     process.env.TELEGRAM_BOT_TOKEN = 'dummy-core-token';
     process.env.SKILL_A_SECRET = 'dummy-skill-a';
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = 'sk-ant-oat-dummy';
   });
 
   afterEach(() => {
@@ -39,6 +42,8 @@ describe('secrets scoping', () => {
     else process.env.TELEGRAM_BOT_TOKEN = origToken;
     if (origSkillA === undefined) delete process.env.SKILL_A_SECRET;
     else process.env.SKILL_A_SECRET = origSkillA;
+    if (origCct === undefined) delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
+    else process.env.CLAUDE_CODE_OAUTH_TOKEN = origCct;
   });
 
   it('core can read allowlisted core secrets', () => {
@@ -50,7 +55,24 @@ describe('secrets scoping', () => {
       audit,
     });
     expect(CORE_SECRETS).toContain('TELEGRAM_BOT_TOKEN');
+    expect(CORE_SECRETS).toContain('CLAUDE_CODE_OAUTH_TOKEN');
     expect(secrets.getSecret('TELEGRAM_BOT_TOKEN', 'core')).toBe('dummy-core-token');
+    expect(secrets.getSecret('CLAUDE_CODE_OAUTH_TOKEN', 'core')).toBe('sk-ant-oat-dummy');
+  });
+
+  it('skill cannot read the core claude-code-oauth-token', () => {
+    const db = makeDb();
+    const audit = createAuditRepo(db);
+    const secrets = createSecretsManager({
+      store: envSecretsStore(),
+      skills: staticSkillPermissions(new Map([['skill-a', ['SKILL_A_SECRET']]])),
+      audit,
+    });
+    expect(() =>
+      secrets.getSecret('CLAUDE_CODE_OAUTH_TOKEN', { skill: 'skill-a' }),
+    ).toThrow(SecretScopeViolationError);
+    const rows = audit.list();
+    expect(rows[0]?.kind).toBe('secret_scope_violation');
   });
 
   it('core cannot read a skill secret', () => {

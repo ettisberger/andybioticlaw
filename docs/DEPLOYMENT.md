@@ -182,29 +182,68 @@ It **does not** start the service yet — a few manual steps remain.
 > **Custom install dir** (rare): pass `ANDYBIOTICLAW_INSTALL_DIR`
 > before the command. Default is `/home/andybioticlaw/.andybioticlaw`.
 
-## 6. Switch to the service user + log into Claude
+## 6. Switch to the service user + authenticate the Claude CLI
 
 Subscription credentials live in the service user's home. Open a shell
-as that user and run `claude login` there:
+as that user:
 
 ```bash
 sudo -iu andybioticlaw
+```
+
+Now pick one of the two subscription-auth paths. Both route to the same
+subscription billing — NOT pay-as-you-go API credits.
+
+### 6a. Long-lived OAuth token (recommended for unattended servers)
+
+```bash
+claude setup-token
+```
+
+The CLI prints a token starting with `sk-ant-oat-...` that's valid for
+**1 year**. Copy it; paste it into the setup wizard in § 7 (which saves
+it to `.env` as `CLAUDE_CODE_OAUTH_TOKEN`). No periodic re-login
+required — set once and leave running.
+
+Requires a Pro / Max / Team / Enterprise subscription.
+
+### 6b. Interactive OAuth session
+
+```bash
 claude login
 ```
 
 Follow the OAuth flow: the CLI prints a URL you open in your browser on
 any machine (not necessarily the VPS), paste the code back in this SSH
-session. Verify:
+session. Session credentials land in `~/.claude/.credentials.json`
+(mode 0600) and auto-refresh on expiry. Every 3-6 months the refresh
+token may rotate and you'll need to re-run `claude login` — fine for
+personal use, less great for a hands-off deployment.
+
+### Verify either path
 
 ```bash
 claude auth status --json
-# should show: "loggedIn": true, "authMethod": "claude.ai",
-# "apiKeySource": "none", "subscriptionType": "pro" or "max".
+# should show:
+#   "loggedIn": true,
+#   "subscriptionType": "pro" | "max" | "team" | "enterprise"
+#   "apiKeySource": "none" (session) OR a CLAUDE_CODE_OAUTH_TOKEN marker (token mode)
+# MUST NOT be "ANTHROPIC_API_KEY" — that's pay-as-you-go and the
+# service will refuse to boot.
 ```
 
-The service enforces subscription auth at three layers (see README §
-Design Decisions). If `apiKeySource` is anything but `"none"`, the
-service will refuse to start sessions.
+The service enforces subscription auth with a reject-list for known API-key
+billing sources (see README § Design Decisions). `ANTHROPIC_API_KEY` or
+`ANTHROPIC_AUTH_TOKEN` as `apiKeySource` → boot failure. Any other value
+paired with a valid `subscriptionType` → accepted (unknown values are
+audited as `unknown_api_key_source` for observability).
+
+> **April 2026 caveat**: Anthropic enforces against third-party 24/7
+> agents running on subscription credentials (openclaw precedent).
+> `setup-token` is not deprecated and both auth paths still work
+> technically, but always-on self-hosted operation risks throttling or
+> brief account suspension via the abuse classifier. No formal written
+> policy, enforcement is heuristic.
 
 ## 7. Run the setup menu (still as the service user)
 
