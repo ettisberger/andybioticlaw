@@ -228,18 +228,3 @@ updates — only code + deps get replaced.
 
 See `docs/DEPLOYMENT.md` § 11 for the step-by-step redeploy flow with
 common failure modes.
-
-## What's next
-
-- **Production hardening:** `docs/DEPLOYMENT.md` walks through SSH
-  hardening, UFW, the nginx + certbot reverse-proxy for the dashboard,
-  and backup-timer verification.
-- **Add a skill:** `skills/README.md` documents the contract. Start
-  with `skills/_template/` — copy the folder, fill in manifest + SKILL.md.
-- **Security posture:** `docs/SECURITY.md` enumerates trust boundaries
-  and enforcement layers. Read it before giving the bot access to
-  anything sensitive.
-- **Backups:** out of scope — use your VPS provider's snapshots or a
-  tool like `restic` / `borg` to back up `/home/andybioticlaw/.andybioticlaw/data/`.
-  Config + `.env` live elsewhere and should be backed up separately.
-  See `docs/DEPLOYMENT.md` § 9.
