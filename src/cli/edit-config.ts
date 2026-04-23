@@ -54,6 +54,7 @@ interface CurrentValues {
   conversationHistoryLimit: number;
   allowedUserIds: number[];
   dashboardEnabled: boolean;
+  dashboardAuthEnabled: boolean;
   passwordHashSet: boolean;
 }
 
@@ -109,6 +110,7 @@ type FieldKey =
   | 'conversationHistoryLimit'
   | 'allowedUserIds'
   | 'dashboardEnabled'
+  | 'dashboardAuthEnabled'
   | 'passwordHash';
 
 async function pickField(
@@ -158,6 +160,12 @@ async function pickField(
       key: 'dashboardEnabled',
       label: 'Dashboard (web UI)',
       current: cur.dashboardEnabled ? 'ON' : 'OFF',
+      restart: true,
+    },
+    {
+      key: 'dashboardAuthEnabled',
+      label: 'Dashboard basic-auth',
+      current: cur.dashboardAuthEnabled ? 'ON' : 'OFF',
       restart: true,
     },
     {
@@ -291,6 +299,20 @@ async function editOne(
         // indent, further down).
         /^(dashboard:\s*\n  enabled:\s*)(true|false)\s*$/m,
         true, // restart (Fastify binds the HTTP listener at boot)
+      );
+      return;
+    case 'dashboardAuthEnabled':
+      await editBoolean(
+        stdin,
+        stdout,
+        configPath,
+        'dashboard.basicAuth.enabled',
+        cur.dashboardAuthEnabled,
+        // Targets the 4-space-indented `enabled:` line that immediately
+        // follows `  basicAuth:` — anchored so it can't confuse itself
+        // with the top-level `dashboard.enabled` (2-space indent).
+        /^(  basicAuth:\s*\n    enabled:\s*)(true|false)\s*$/m,
+        true, // restart (Fastify registers the basic-auth plugin at boot)
       );
       return;
     case 'passwordHash':
@@ -630,6 +652,11 @@ function readCurrent(configPath: string): CurrentValues {
       body,
       // Same two-line anchor as the patch regex — see editOne dispatch.
       /^dashboard:\s*\n  enabled:\s*(true|false)\s*$/m,
+      false,
+    ),
+    dashboardAuthEnabled: matchBool(
+      body,
+      /^  basicAuth:\s*\n    enabled:\s*(true|false)\s*$/m,
       false,
     ),
     passwordHashSet: /^\s+passwordHash:\s*['"][^'"]+['"]\s*$/m.test(body),
