@@ -1,4 +1,4 @@
-import { yellow, dim } from './ansi.js';
+import { yellow, dim, pink, bold } from './ansi.js';
 
 /**
  * Shared raw-mode prompt helpers used by `init`, `edit-config`, and any
@@ -221,4 +221,137 @@ export async function askBoolean(
       `  ${yellow('!')} ${dim('please answer y or n — try again')}\n`,
     );
   }
+}
+
+// --- arrow-key picker -------------------------------------------------
+
+const ESC_UP = '\x1b[A';
+const ESC_DOWN = '\x1b[B';
+const HIDE_CURSOR = '\x1b[?25l';
+const SHOW_CURSOR = '\x1b[?25h';
+
+export interface PickerItem {
+  /** Main label rendered as the choice text. */
+  label: string;
+  /** Optional secondary text rendered to the right (current value, hint, etc.). */
+  meta?: string;
+  /** Optional trailing tag rendered after `meta`, e.g. " (live)" / " (restart)". */
+  tag?: string;
+}
+
+export interface PickerOptions {
+  /** Items to choose from. */
+  items: ReadonlyArray<PickerItem>;
+  /** Title rendered above the list. */
+  title?: string;
+  /** Index that's highlighted on first render (default 0). */
+  initialIndex?: number;
+  /** Help line shown below the title (default: arrow / enter / quit hint). */
+  helpLine?: string;
+  /** Optional footer printed below the list. */
+  footer?: string;
+}
+
+/**
+ * Arrow-key + Enter picker. Highlights the selected row in pink.
+ * Returns the chosen item's index, or `-1` on q / Ctrl-C.
+ *
+ * Falls back to numeric input when stdin is not a TTY (e.g. piped) —
+ * just auto-picks index 0 in that case.
+ */
+export function arrowPicker(
+  stdin: Stdin,
+  stdout: NodeJS.WritableStream,
+  opts: PickerOptions,
+): Promise<number> {
+  const items = opts.items;
+  if (items.length === 0) return Promise.resolve(-1);
+
+  return new Promise((resolve) => {
+    if (!stdin.setRawMode) {
+      // Non-TTY (e.g. piped / scripted): auto-select first item.
+      resolve(0);
+      return;
+    }
+
+    let index = Math.max(0, Math.min(opts.initialIndex ?? 0, items.length - 1));
+    let firstDraw = true;
+    const labelWidth = items.reduce((m, it) => Math.max(m, it.label.length), 0);
+
+    const redraw = (): void => {
+      if (!firstDraw) {
+        // Move cursor up to the start of the previously-printed block,
+        // then clear from there to end of screen — keeps shell history
+        // above intact.
+        const lines = (opts.title ? 2 : 0) + (opts.helpLine ? 2 : 0) + items.length + (opts.footer ? 2 : 0) + 1;
+        stdout.write(`\x1b[${lines}A\x1b[J`);
+      }
+      firstDraw = false;
+      stdout.write('\n');
+      if (opts.title) {
+        stdout.write(`  ${bold(opts.title)}\n\n`);
+      }
+      if (opts.helpLine) {
+        stdout.write(`  ${dim(opts.helpLine)}\n\n`);
+      }
+      items.forEach((it, i) => {
+        const selected = i === index;
+        const arrow = selected ? pink('▸ ') : '  ';
+        const label = it.label.padEnd(labelWidth);
+        const labelPainted = selected ? pink(bold(label)) : dim(label);
+        const meta = it.meta ? `  ${selected ? pink(it.meta) : dim(it.meta)}` : '';
+        const tag = it.tag ? `${selected ? pink(it.tag) : dim(it.tag)}` : '';
+        stdout.write(`  ${arrow}${labelPainted}${meta}${tag}\n`);
+      });
+      if (opts.footer) {
+        stdout.write(`\n  ${dim(opts.footer)}\n`);
+      }
+    };
+
+    const cleanup = (): void => {
+      stdin.off('data', onData);
+      if (stdin.setRawMode) stdin.setRawMode(false);
+      stdout.write(SHOW_CURSOR);
+    };
+
+    const onData = (chunk: Buffer): void => {
+      const s = chunk.toString();
+      if (s === '\x03' || s === 'q' || s === 'Q') {
+        cleanup();
+        stdout.write('\n');
+        resolve(-1);
+        return;
+      }
+      if (s === '\r' || s === '\n') {
+        cleanup();
+        resolve(index);
+        return;
+      }
+      if (s === ESC_UP || s === 'k') {
+        index = (index - 1 + items.length) % items.length;
+        redraw();
+        return;
+      }
+      if (s === ESC_DOWN || s === 'j') {
+        index = (index + 1) % items.length;
+        redraw();
+        return;
+      }
+      // Number shortcut 1..9
+      if (/^[1-9]$/.test(s)) {
+        const n = Number(s) - 1;
+        if (n < items.length) {
+          cleanup();
+          resolve(n);
+          return;
+        }
+      }
+    };
+
+    stdout.write(HIDE_CURSOR);
+    stdin.setRawMode(true);
+    (stdin as unknown as { resume?: () => void }).resume?.();
+    stdin.on('data', onData);
+    redraw();
+  });
 }

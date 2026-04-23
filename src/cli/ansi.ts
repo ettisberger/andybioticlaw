@@ -30,6 +30,11 @@ export const cyan = wrap('36');
 export const lavender = wrap('38;2;180;163;220');
 export const sage = wrap('38;2;164;196;154');
 
+/** Vibrant pink — used to highlight the currently-selected item in
+ *  arrow-key menus. Distinct from lavender so the cursor doesn't blend
+ *  with brand-accent text. */
+export const pink = wrap('38;2;236;72;153');
+
 /** Clear screen + move cursor to top-left. Used by the menu to redraw
  *  cleanly on each keystroke. */
 export function clearScreen(): void {

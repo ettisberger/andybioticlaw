@@ -11,6 +11,7 @@ import {
   green,
   hideCursor,
   lavender,
+  pink,
   sage,
   showCursor,
 } from './ansi.js';
@@ -106,8 +107,9 @@ async function pickItem(
     process.stdout.write(`  ${dim('↑/↓ move · Enter select · q quit')}\n`);
     process.stdout.write('\n');
     items.forEach((item, i) => {
-      const prefix = i === index ? lavender('▸ ') : '  ';
-      const label = i === index ? bold(item.label) : dim(item.label);
+      const selected = i === index;
+      const prefix = selected ? pink('▸ ') : '  ';
+      const label = selected ? pink(bold(item.label)) : dim(item.label);
       process.stdout.write(`  ${prefix}${label}\n`);
     });
     process.stdout.write('\n');

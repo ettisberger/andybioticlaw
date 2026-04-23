@@ -4,6 +4,7 @@ import { loadConfig, projectRoot } from '../config/load.js';
 import { defaultConfigPath, pidFilePath, expandPath } from '../config/paths.js';
 import { bold, cyan, dim, green, lavender, sage, yellow } from './ansi.js';
 import {
+  arrowPicker,
   askBoolean,
   askEnum,
   askInteger,
@@ -105,7 +106,12 @@ async function pickField(
   stdout: NodeJS.WritableStream,
   cur: CurrentValues,
 ): Promise<FieldKey | 'done' | null> {
-  const items: Array<{ key: FieldKey | 'done'; label: string; current: string; restart?: boolean }> = [
+  const fields: Array<{
+    key: FieldKey | 'done';
+    label: string;
+    current: string;
+    restart?: boolean;
+  }> = [
     { key: 'model', label: 'Agent model', current: cur.model, restart: true },
     {
       key: 'dailyTokenLimit',
@@ -144,35 +150,20 @@ async function pickField(
       current: cur.passwordHashSet ? 'set' : 'not set',
       restart: true,
     },
-    { key: 'done', label: 'Done', current: '' },
+    { key: 'done', label: 'Done — back to shell', current: '' },
   ];
 
-  // Compute padding so columns line up nicely.
-  const pad = items.reduce((m, it) => Math.max(m, it.label.length), 0);
-
-  stdout.write(`${dim('──')} ${bold('Edit settings')} ${dim('──')}\n\n`);
-  items.forEach((it, i) => {
-    if (it.key === 'done') {
-      stdout.write(`    ${dim('──')}\n`);
-      stdout.write(`    ${dim(`[${i + 1}]`)} ${dim(it.label)}\n`);
-      return;
-    }
-    const label = it.label.padEnd(pad);
-    const tag = it.restart ? dim(' (restart)') : dim(' (live)');
-    stdout.write(
-      `    ${dim(`[${i + 1}]`)} ${label}  ${dim(`${it.current}`)}${tag}\n`,
-    );
+  const idx = await arrowPicker(stdin, stdout, {
+    title: 'Edit settings',
+    helpLine: '↑/↓ move · Enter select · q quit',
+    items: fields.map((f) => ({
+      label: f.label,
+      meta: f.current,
+      tag: f.key === 'done' ? '' : f.restart ? ' (restart)' : ' (live)',
+    })),
   });
-  stdout.write('\n');
-  const raw = await askLine(stdin, stdout, `  ${lavender('?')} pick a number: `);
-  if (raw === null) return null;
-  const n = Number(raw.trim());
-  if (!Number.isInteger(n) || n < 1 || n > items.length) {
-    stdout.write(`  ${yellow('!')} ${dim('not a valid choice')}\n\n`);
-    return await pickField(stdin, stdout, cur);
-  }
-  const chosen = items[n - 1]!;
-  return chosen.key;
+  if (idx < 0) return null;
+  return fields[idx]!.key;
 }
 
 // --- per-field edit dispatch -----------------------------------------
