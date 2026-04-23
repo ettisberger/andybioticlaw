@@ -7,8 +7,9 @@ Start with the repository root `README.md`. From there:
 | File | Who should read this | 1-line summary |
 |---|---|---|
 | [QUICKSTART.md](./QUICKSTART.md) | First-time operator | VPS happy-path from bare Ubuntu to bot answering a DM. Uses `andybioticlaw init`. |
-| [DEPLOYMENT.md](./DEPLOYMENT.md) | Operator going to production | Full Hetzner walkthrough: SSH hardening, UFW, logrotate, backup strategy, dashboard reverse-proxy. |
+| [DEPLOYMENT.md](./DEPLOYMENT.md) | Operator going to production | Full VPS walkthrough: SSH hardening, UFW, logrotate, backup strategy, dashboard reverse-proxy. |
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | Contributor / new reader of the code | Component diagram + 4 data flows + source-tree map + key invariants. Prerequisite for modifying code. |
+| [DESIGN.md](./DESIGN.md) | Contributor modifying a specific subsystem | Non-obvious architectural decisions + rationale (scheduler, secrets, auth, prompt cache, etc.). |
 | [SECURITY.md](./SECURITY.md) | Operator evaluating trust / Contributor touching auth / secrets / scheduler | Trust boundaries, enforcement layers, incident response. Honest about what's NOT enforced. |
 
 Plus, outside `docs/`:
