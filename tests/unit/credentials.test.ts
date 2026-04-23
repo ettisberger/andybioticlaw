@@ -114,25 +114,26 @@ EOF
     expect(result.reason).toMatch(/API-key billing/i);
   });
 
-  it('token path: CLAUDE_CODE_OAUTH_TOKEN env set + unknown apiKeySource → ok, authMethod "token"', async () => {
+  it('token path: CLI reports authMethod="oauth_token" + null subscriptionType → ok, authMethod "token"', async () => {
+    // Empirically verified on CLI 2.1.x: when CLAUDE_CODE_OAUTH_TOKEN is
+    // live, `claude auth status --json` returns apiKeySource="none" AND
+    // authMethod="oauth_token" AND subscriptionType=null. The service
+    // must accept this without rejecting on the missing tier.
     process.env.CLAUDE_CODE_OAUTH_TOKEN = 'sk-ant-oat-subscription-bound-token';
     const bin = writeStubClaude({
       loggedIn: true,
-      authMethod: 'claude.ai',
-      // Hypothetical value — Anthropic doesn't document exactly what goes
-      // here when CLAUDE_CODE_OAUTH_TOKEN is the live auth path.
-      apiKeySource: 'CLAUDE_CODE_OAUTH_TOKEN',
-      subscriptionType: 'max',
+      authMethod: 'oauth_token',
+      apiKeySource: 'none',
+      subscriptionType: null,
     });
     const result = await checkClaudeCredentials(makeDeps(bin));
     expect(result.ok).toBe(true);
     expect((result.details?.['authMethod'] as AuthMethod)).toBe('token');
-    // Token env var wins over apiKeySource classification, so no "unknown"
-    // warning even though apiKeySource is non-'none'.
-    expect(result.details?.['unknownApiKeySourceWarning']).toBeUndefined();
+    // `claudeAuthMethod` preserves the CLI's raw label for observability.
+    expect(result.details?.['claudeAuthMethod']).toBe('oauth_token');
   });
 
-  it('unknown path: no token env + non-reject apiKeySource → ok, authMethod "unknown", warning set', async () => {
+  it('unknown path: non-oauth_token authMethod + non-reject apiKeySource → ok, authMethod "unknown", warning set', async () => {
     const bin = writeStubClaude({
       loggedIn: true,
       authMethod: 'claude.ai',
@@ -145,5 +146,18 @@ EOF
     expect(result.details?.['unknownApiKeySourceWarning']).toBe(
       'some-future-cli-source',
     );
+  });
+
+  it('rejects session mode when subscriptionType is null (not logged in via subscription)', async () => {
+    // session mode = authMethod !== "oauth_token", so the tier gate applies.
+    const bin = writeStubClaude({
+      loggedIn: true,
+      authMethod: 'claude.ai',
+      apiKeySource: 'none',
+      subscriptionType: null,
+    });
+    const result = await checkClaudeCredentials(makeDeps(bin));
+    expect(result.ok).toBe(false);
+    expect(result.reason).toMatch(/no subscription tier/i);
   });
 });

@@ -143,34 +143,38 @@ export async function checkClaudeCredentials(
       };
     }
 
-    if (!parsed.subscriptionType) {
+    // Classify which auth path is active BEFORE the subscription-tier gate,
+    // because `CLAUDE_CODE_OAUTH_TOKEN` mode legitimately leaves
+    // `subscriptionType` null in the CLI response (verified empirically on
+    // CLI 2.1.x) — the token IS subscription-bound, the CLI just doesn't
+    // surface the tier. We trust `parsed.authMethod === 'oauth_token'` as
+    // the CLI's own label for the long-lived-token path.
+    const isTokenMode = parsed.authMethod === 'oauth_token';
+    let authMethod: AuthMethod;
+    if (isTokenMode) {
+      authMethod = 'token';
+    } else if (apiKeySource === 'none') {
+      authMethod = 'session';
+    } else {
+      authMethod = 'unknown';
+    }
+
+    // Subscription-tier gate: required for session and unknown paths.
+    // Skipped for oauth_token mode (the CLI doesn't populate the tier there,
+    // but the billing path is still subscription — we've already verified
+    // that via the reject-list above).
+    if (!parsed.subscriptionType && !isTokenMode) {
       return {
         ok: false,
         reason: 'claude reports logged in but with no subscription tier — this service requires a Claude subscription (Pro/Max), not API-key access',
         details: {
           method: 'claude-auth-status',
           credentialsDir: expandedDir,
-          authMethod: parsed.authMethod,
+          claudeAuthMethod: parsed.authMethod,
           apiKeySource,
           leakedEnv,
         },
       };
-    }
-
-    // Classify which auth path is active. A non-empty CLAUDE_CODE_OAUTH_TOKEN
-    // env var means the CLI is using the long-lived token. Otherwise
-    // `apiKeySource === 'none'` means keyring session. Anything else is
-    // accepted (we're past the reject-list) but flagged as 'unknown' so the
-    // observed value shows up in audit logs for future investigation.
-    const tokenEnv = process.env.CLAUDE_CODE_OAUTH_TOKEN;
-    const hasTokenEnv = typeof tokenEnv === 'string' && tokenEnv.trim() !== '';
-    let authMethod: AuthMethod;
-    if (hasTokenEnv) {
-      authMethod = 'token';
-    } else if (apiKeySource === 'none') {
-      authMethod = 'session';
-    } else {
-      authMethod = 'unknown';
     }
 
     const details: Record<string, unknown> = {
