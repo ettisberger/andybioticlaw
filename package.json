@@ -3,6 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "description": "Personal AI agent service — Telegram frontend, Claude CLI backend, SQLite persistence.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ettisberger/andybioticlaw.git"
+  },
+  "homepage": "https://github.com/ettisberger/andybioticlaw#readme",
+  "bugs": {
+    "url": "https://github.com/ettisberger/andybioticlaw/issues"
+  },
   "type": "module",
   "engines": {
     "node": ">=20.0.0"

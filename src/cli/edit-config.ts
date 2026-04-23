@@ -464,7 +464,7 @@ async function editAllowedUsers(
   configPath: string,
   current: number[],
 ): Promise<void> {
-  let working = [...current];
+  const working = [...current];
   let aborted = false;
   while (true) {
     const idx = await arrowPicker(stdin, stdout, {

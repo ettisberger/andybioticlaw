@@ -49,6 +49,11 @@ pnpm-debug.log*
 *.tar.gz
 release/
 
+# --- Local dev-only notes (not meant to ship) -----------------------------
+# REVIEW.md is a working scratchpad for architecture reviews; kept out of
+# git so it never leaks into release tarballs or public history.
+REVIEW.md
+
 # --- Test artifacts -------------------------------------------------------
 coverage/
 .vitest-cache/

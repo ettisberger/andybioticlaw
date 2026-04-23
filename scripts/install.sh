@@ -10,22 +10,82 @@
 # native prod deps as the service user, renders the systemd + logrotate
 # templates with the resolved install path, and enables everything.
 #
-# Usage (on the target host):
-#   # clone the repo anywhere (e.g. /tmp/staging)
-#   git clone https://github.com/ettisberger/andybioticlaw.git /tmp/andybioticlaw
-#   cd /tmp/andybioticlaw
-#   pnpm install --frozen-lockfile
-#   pnpm build
-#   pnpm --filter @andybioticlaw/web build
-#   sudo bash scripts/install.sh
-#
-# Override install dir (rare):
-#   sudo ANDYBIOTICLAW_INSTALL_DIR=/srv/andybioticlaw bash scripts/install.sh
-#
 # Idempotent — re-running is safe. If the install dir already has the
 # expected layout, the copy step is a no-op (rsync with --update).
+# Run `sudo bash scripts/install.sh --help` for the full install recipe.
 
 set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# 0. Flag parsing (before anything else; --help exits fast, no root needed)
+# ---------------------------------------------------------------------------
+# `GIT_REMOTE` is only used to print the documented clone URL in --help.
+# Nothing in this script actually invokes git; the release-tarball install
+# path doesn't need git at all. Override via `GIT_REMOTE=... bash install.sh`
+# if you're running from a fork and want the help text to reflect that.
+GIT_REMOTE="${GIT_REMOTE:-https://github.com/ettisberger/andybioticlaw.git}"
+
+show_help() {
+  cat <<HELP
+andybioticlaw installer — copies a staged source tree into the service
+user's home dotdir, installs native prod deps, and sets up systemd +
+logrotate.
+
+USAGE
+  sudo bash scripts/install.sh            # normal install / re-install
+  sudo bash scripts/install.sh --help     # this message
+
+TWO INSTALL PATHS
+
+A) Release tarball (recommended, no build toolchain needed beyond pnpm):
+
+    curl -fsSL -o /tmp/andybioticlaw.tar.gz \\
+      https://github.com/ettisberger/andybioticlaw/releases/latest/download/andybioticlaw.tar.gz
+    mkdir ~/andybioticlaw && cd ~/andybioticlaw
+    tar xzf /tmp/andybioticlaw.tar.gz --strip-components=1
+    sudo bash scripts/install.sh
+
+B) Git clone (for tip-of-main / contributors):
+
+    git clone $GIT_REMOTE ~/andybioticlaw
+    cd ~/andybioticlaw
+    pnpm install --frozen-lockfile
+    pnpm build
+    pnpm --filter @andybioticlaw/web build
+    sudo bash scripts/install.sh
+
+ENVIRONMENT OVERRIDES
+
+  ANDYBIOTICLAW_INSTALL_DIR   Install location. Default: /home/andybioticlaw/.andybioticlaw
+  GIT_REMOTE                  Only used in this help text. Default: $GIT_REMOTE
+
+AFTER INSTALL
+
+  sudo -iu andybioticlaw
+  claude login          # one-time Claude subscription OAuth
+  andybioticlaw         # interactive menu → "Run setup wizard"
+  exit
+  sudo systemctl start andybioticlaw
+  sudo journalctl -u andybioticlaw -f
+
+See docs/DEPLOYMENT.md for the full walkthrough (firewall, backups,
+dashboard reverse-proxy with TLS + basic-auth).
+HELP
+}
+
+case "${1:-}" in
+  -h|--help|help)
+    show_help
+    exit 0
+    ;;
+  "")
+    ;;
+  *)
+    echo "unknown flag: $1" >&2
+    echo "run with --help for usage" >&2
+    exit 2
+    ;;
+esac
 
 SERVICE_USER="andybioticlaw"
 SERVICE_GROUP="andybioticlaw"

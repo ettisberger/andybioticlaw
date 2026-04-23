@@ -1,0 +1,40 @@
+version: 2
+updates:
+  # Root workspace — core service deps.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      # Conventional-commit prefix so dependabot PRs show up correctly
+      # in the release-please changelog (suppressed by default, since
+      # dep bumps are usually chore-level; bump to `fix(deps):` if the
+      # PR is patching a CVE).
+      prefix: chore(deps)
+    groups:
+      # Batch dev-dep updates together to cut PR noise.
+      dev-dependencies:
+        dependency-type: development
+
+  # Web workspace.
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore(deps,web)
+    groups:
+      dev-dependencies:
+        dependency-type: development
+
+  # GitHub Actions themselves — keep checkout/setup-node/etc. current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: chore(ci)

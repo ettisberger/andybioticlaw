@@ -31,8 +31,8 @@ sqlite3 data/andybioticlaw.db ".tables"
 ## 2. Memory CRUD via CLI
 
 ```bash
-pnpm exec tsx src/cli/admin.ts memory add global "user prefers Swiss German"
-pnpm exec tsx src/cli/admin.ts memory add user:18998064 "lives in Zurich" --key pref/location --ttl 3600
+pnpm exec tsx src/cli/admin.ts memory add global "user prefers German"
+pnpm exec tsx src/cli/admin.ts memory add user:123456789 "lives in Example City" --key pref/location --ttl 3600
 pnpm exec tsx src/cli/admin.ts memory list
 pnpm exec tsx src/cli/admin.ts memory list --scope global
 pnpm exec tsx src/cli/admin.ts memory show 1

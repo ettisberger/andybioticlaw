@@ -1,21 +1,38 @@
-# Hetzner deployment guide
+# Production deployment on a Linux VPS
 
-Target: a bare Hetzner Cloud VPS (x86_64) running Ubuntu 24.04 LTS,
-with the service as a dedicated system user and systemd for
-supervision. Budget VPS-class (CX11 / CPX11) is fine — the service is
-I/O-bound, not CPU-bound.
+Target: a bare Linux VPS (x86_64 or arm64) with `systemd`, running
+Ubuntu 24.04 LTS or similar. The service is I/O-bound — 1 vCPU + 2 GB
+RAM is comfortable, budget-VPS-class is fine. Tested end-to-end on
+Hetzner Cloud (CPX11); Vultr / DigitalOcean / Linode / bare-metal all
+work the same way as long as systemd + apt-based package management is
+present.
+
+Two install paths exist — pick one:
+
+- **Release tarball** (recommended for most operators) — fixed version,
+  no build toolchain needed on the server. You still get updates via
+  re-downloading the next release.
+- **Git clone** (for contributors or anyone who wants to track `main`)
+  — needs `git`, `node`, and `pnpm` on the server to build from source.
+
+This guide covers both. § 4 splits into 4a (tarball) and 4b (clone);
+the rest is shared.
 
 ## 1. Provision the box
 
-Hetzner Cloud → New Server →
+Whatever provider you use, target:
 
-- Location: any
-- Image: Ubuntu 24.04
-- Type: CX22 or CPX11 (1 vCPU, 2 GB RAM is comfortable)
-- Networking: IPv4 + IPv6
-- SSH key: add yours
+- Image: Ubuntu 24.04 LTS (other Debian-derivatives work; adjust
+  `apt-get` to your distro if you're on RHEL/Fedora/etc.)
+- Size: 1 vCPU + 2 GB RAM is comfortable.
+- Networking: IPv4 + IPv6.
+- SSH key: add yours so you can log in as `root`.
 
-SSH in:
+**Example — Hetzner Cloud:** New Server → Location (any) → Image
+(Ubuntu 24.04) → Type (CX22 or CPX11) → SSH key. Other providers have
+equivalent wizards.
+
+SSH in as root:
 
 ```bash
 ssh root@<vps-ip>
@@ -24,14 +41,16 @@ ssh root@<vps-ip>
 ## 2. Harden the base image
 
 ```bash
-# Non-root admin user (pick whatever username you prefer)
-adduser eta --disabled-password --gecos ""
-usermod -aG sudo eta
-mkdir /home/eta/.ssh
-cp ~/.ssh/authorized_keys /home/eta/.ssh/
-chown -R eta:eta /home/eta/.ssh
-chmod 700 /home/eta/.ssh
-chmod 600 /home/eta/.ssh/authorized_keys
+# Non-root admin user (pick whatever username you prefer — `ADMIN_USER`
+# is used throughout the rest of this guide as a placeholder).
+ADMIN_USER=myname
+adduser "$ADMIN_USER" --disabled-password --gecos ""
+usermod -aG sudo "$ADMIN_USER"
+mkdir "/home/$ADMIN_USER/.ssh"
+cp ~/.ssh/authorized_keys "/home/$ADMIN_USER/.ssh/"
+chown -R "$ADMIN_USER:$ADMIN_USER" "/home/$ADMIN_USER/.ssh"
+chmod 700 "/home/$ADMIN_USER/.ssh"
+chmod 600 "/home/$ADMIN_USER/.ssh/authorized_keys"
 
 # Disable root SSH + password auth
 sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
@@ -46,7 +65,7 @@ ufw allow 22/tcp
 ufw --force enable
 
 exit
-ssh eta@<vps-ip>    # re-login as the non-root user
+ssh "$ADMIN_USER"@<vps-ip>    # re-login as the non-root user
 ```
 
 ## 3. Install system dependencies
@@ -78,10 +97,36 @@ curl -fsSL https://claude.ai/install.sh | sudo bash
 claude --version
 ```
 
-## 4. Clone + build the source
+## 4. Get the source on the box
+
+Pick the path that matches your install style.
+
+### 4a. Release tarball (recommended)
+
+No build toolchain required beyond what's in `§ 3`. You still need
+`pnpm` because `install.sh` runs `pnpm install --prod
+--frozen-lockfile` as the service user to compile the native modules
+(`better-sqlite3`, `argon2`) for the VPS's architecture. But no
+TypeScript compile happens — the tarball ships `dist/` + `web/dist/`
+pre-built.
+
+```bash
+cd ~
+curl -fsSL -o /tmp/andybioticlaw.tar.gz \
+  https://github.com/ettisberger/andybioticlaw/releases/latest/download/andybioticlaw.tar.gz
+mkdir andybioticlaw && cd andybioticlaw
+tar xzf /tmp/andybioticlaw.tar.gz --strip-components=1
+rm /tmp/andybioticlaw.tar.gz
+```
+
+`~/andybioticlaw/` is now your staging tree. For a future upgrade you
+re-download the newer tarball, re-extract into the same dir, re-run
+`scripts/install.sh`.
+
+### 4b. Git clone (for contributors / tip-of-main)
 
 Clone into your admin user's home (**not `/tmp`** — you want this
-persistent so future redeploys are a simple `git pull` + rebuild):
+persistent so `andybioticlaw update` can run `git pull` against it):
 
 ```bash
 cd ~
@@ -95,10 +140,12 @@ pnpm --filter @andybioticlaw/web build
 
 `~/andybioticlaw/` is now your staging tree. The installer in the next
 step copies the built artifacts out of here into the service user's
-home dotdir; your staging clone remains intact for future updates.
+home dotdir; your staging clone remains intact for future updates
+(`git pull && pnpm install --frozen-lockfile && pnpm build` — or just
+run `andybioticlaw update`).
 
-> **Dev-machine variant:** if you prefer not to install build-tools on
-> the VPS, build locally and rsync:
+> **Build-locally variant:** if you prefer not to install build-tools
+> on the VPS, build on your laptop and rsync:
 > `rsync -avz --delete --exclude='node_modules/' --exclude='data/' --exclude='.git/' ./ <vps>:~/andybioticlaw/`
 > — then continue with § 5 on the VPS. The installer accepts whatever
 > directory it's invoked from as its staging source.
@@ -230,7 +277,7 @@ reachable from the internet. Two ways to access it:
 From your dev machine:
 
 ```bash
-ssh -L 18790:127.0.0.1:18790 eta@<vps-ip>
+ssh -L 18790:127.0.0.1:18790 <your-admin-user>@<vps-ip>
 # leave this open; open http://localhost:18790/ in your browser
 ```
 
@@ -300,10 +347,29 @@ WireGuard endpoint only.
 ## 11. Future redeploys
 
 The installer is idempotent — re-running it performs an in-place update
-of everything except `data/` (runtime state, preserved):
+of everything except `data/` and `config/config.yaml` (runtime state,
+preserved). Pick the path matching your install style:
+
+### 11a. Tarball install (§ 4a path)
 
 ```bash
-# On the VPS, in your ~/andybioticlaw clone (from § 4):
+cd ~/andybioticlaw
+curl -fsSL -o /tmp/andybioticlaw.tar.gz \
+  https://github.com/ettisberger/andybioticlaw/releases/latest/download/andybioticlaw.tar.gz
+tar xzf /tmp/andybioticlaw.tar.gz --strip-components=1
+rm /tmp/andybioticlaw.tar.gz
+
+sudo bash scripts/install.sh
+sudo systemctl restart andybioticlaw
+sudo journalctl -u andybioticlaw -n 50 -f
+```
+
+Check [releases](https://github.com/ettisberger/andybioticlaw/releases)
+for the version + [CHANGELOG.md](../CHANGELOG.md) for the diff.
+
+### 11b. Git-clone install (§ 4b path)
+
+```bash
 cd ~/andybioticlaw
 git pull
 pnpm install --frozen-lockfile
@@ -316,13 +382,21 @@ sudo systemctl restart andybioticlaw
 sudo journalctl -u andybioticlaw -n 50 -f
 ```
 
-`restart` performs the graceful shutdown (up to 35s for in-flight
-sessions), then re-boots. The boot-time orphan sweep flips anything
-that didn't finish to `orphaned` and notifies you.
+Or from the service-user shell: `sudo -iu andybioticlaw andybioticlaw
+update` does the clone-side steps (git pull + pnpm + build + prune
+dev-deps). It stops short of `install.sh` + systemctl because those
+need `sudo`, which the service user doesn't have — run them from your
+admin user as shown above.
 
-> **Dev-machine variant:** build locally, `rsync` to `~/andybioticlaw/`
-> on the VPS, then run `sudo bash ~/andybioticlaw/scripts/install.sh`.
-> Same endpoint.
+### Common notes
+
+`systemctl restart` performs the graceful shutdown (up to 35 s for
+in-flight sessions), then re-boots. The boot-time orphan sweep flips
+anything that didn't finish to `orphaned` and notifies you.
+
+> **Build-locally variant:** build on your laptop, `rsync` to
+> `~/andybioticlaw/` on the VPS, then run
+> `sudo bash ~/andybioticlaw/scripts/install.sh`. Same endpoint.
 
 ## Troubleshooting
 

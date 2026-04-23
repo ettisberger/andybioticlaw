@@ -1,0 +1,108 @@
+name: release-please
+
+on:
+  push:
+    branches: [main]
+
+# release-please-action needs these; the tarball-upload job also needs
+# contents: write to attach assets to the created GitHub Release.
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  # --------------------------------------------------------------------------
+  # Job 1: release-please opens/updates a release PR based on conventional
+  # commits on main. When the release PR is merged, it tags the commit +
+  # creates a GitHub Release and outputs `release_created: true` which
+  # triggers the second job below.
+  # --------------------------------------------------------------------------
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          manifest-file: .release-please-manifest.json
+          config-file: release-please-config.json
+
+  # --------------------------------------------------------------------------
+  # Job 2: on release creation, rebuild artifacts and attach a tarball to
+  # the newly-created GitHub Release so installers can curl it without a
+  # git clone. Skipped on every other main-branch push.
+  # --------------------------------------------------------------------------
+  release-tarball:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (root + web)
+        run: pnpm -r build
+
+      - name: Package release tarball
+        # Tarball ships:
+        #   - source (src/, web/src/) for transparency under MIT
+        #   - built artifacts (dist/, web/dist/) so no tsc/vite needed on the VPS
+        #   - package.json + pnpm-lock.yaml so install.sh's `pnpm install --prod
+        #     --frozen-lockfile` step works natively
+        #   - scripts/, systemd/, config/config.example.yaml, bin/andybioticlaw
+        # Excluded:
+        #   - node_modules (install.sh rebuilds natively for the VPS arch)
+        #   - .git, tests/, .github/ (not runtime)
+        #   - data/ (doesn't exist at build time, defensive exclude)
+        # Uses rsync into a tagged staging dir then tars that dir, so the
+        # top-level inside the tarball is `andybioticlaw-v0.1.0/`. Users
+        # extract with `tar xzf ... --strip-components=1` per docs.
+        # rsync-then-tar is portable across GNU and BSD tar (unlike
+        # --transform, which is GNU-only).
+        run: |
+          set -euo pipefail
+          TAG="${{ needs.release-please.outputs.tag_name }}"
+          OUT="andybioticlaw.tar.gz"
+          STAGING="$(mktemp -d)"
+          trap 'rm -rf "$STAGING"' EXIT
+          RELEASE_DIR="$STAGING/andybioticlaw-$TAG"
+          mkdir -p "$RELEASE_DIR"
+          echo "staging release at $RELEASE_DIR"
+          rsync -a \
+            --exclude='node_modules/' \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            --exclude='data/' \
+            --exclude='tests/' \
+            --exclude='.DS_Store' \
+            --exclude='.env' \
+            --exclude='.idea/' \
+            --exclude='.claude/' \
+            --exclude='REVIEW.md' \
+            ./ "$RELEASE_DIR/"
+          tar -czf "$OUT" -C "$STAGING" "andybioticlaw-$TAG"
+          ls -lh "$OUT"
+          # Sanity: tarball must contain dist/ + web/dist/ + package.json
+          # (otherwise install.sh fails its preflight).
+          tar tzf "$OUT" | grep -E "/(dist/index\.js|web/dist/index\.html|package\.json)$" | head
+
+      - name: Upload tarball to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          gh release upload "$TAG_NAME" andybioticlaw.tar.gz --clobber

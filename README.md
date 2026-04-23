@@ -1,36 +1,90 @@
 # andybioticlaw
 
-A personal AI agent service with a Telegram frontend and a Claude CLI backend. Runs as a single systemd unit on a Hetzner VPS (or locally for dev). Designed as a leaner successor to OpenClaw/NanoClaw: one DM user, one host process, one SQLite file. No Docker, no multi-agent router, no dead-letter queue.
+A single-operator, self-hosted AI agent: Telegram on the front, the Claude CLI (subscription auth) on the back, one SQLite file, one systemd unit. Think of it as a private "Emma" that texts you back — runs schedules, remembers things across sessions, uses MCP skills — but the whole surface is one `systemctl` service under your control.
 
-The default agent identity is **Emma**; the service is named **andybioticlaw**. Both are configurable.
-
-> **Status: Phase 6 — all six spec phases complete.** `scripts/install.sh` is idempotent (system user, perms, prod deps, systemd unit, logrotate). Black-box integration tests spawn the compiled service and assert clean boot + shutdown. `docs/DEPLOYMENT.md` walks through a Hetzner VPS install end-to-end including the subscription `claude login` step. Backups are the operator's responsibility (VPS snapshots or `restic`/`borg`); see `docs/DEPLOYMENT.md` § 9. See `CHANGELOG.md` for per-phase detail.
+> Designed as a leaner successor to OpenClaw/NanoClaw: one DM user, one host process, one SQLite file. No Docker, no multi-agent router, no dead-letter queue. The default agent identity is **Emma**; the service is named **andybioticlaw**. Both are configurable.
 
 ## Requirements
 
-- Node.js 20 LTS or newer (developed on 24, targets 20).
-- pnpm 9+ (enable via `corepack enable pnpm` if not already installed).
-- A working `claude` CLI authenticated with a Claude subscription. Run `claude login` once as the user that will run the service. On macOS, the credential lives in the system Keychain; on Linux, in `~/.claude/`.
+- A Linux server (any VPS — tested on Ubuntu 24.04). 1 vCPU + 2 GB RAM is comfortable; it's I/O-bound, not CPU-bound.
+- Node.js 20 LTS or newer.
+- `claude` CLI authenticated against a Claude Pro/Max subscription (not an API key — the service actively refuses API-key billing).
+- A Telegram bot token (from [@BotFather](https://t.me/BotFather)) and your Telegram numeric user id (from [@userinfobot](https://t.me/userinfobot)).
 
-## Dev setup
+## Install (from release)
 
 ```bash
-# 1. Install deps + copy example configs
-./scripts/bootstrap-dev.sh
+# 1. Download and extract the latest release:
+curl -fsSL -o /tmp/andybioticlaw.tar.gz \
+  https://github.com/ettisberger/andybioticlaw/releases/latest/download/andybioticlaw.tar.gz
+mkdir ~/andybioticlaw && cd ~/andybioticlaw
+tar xzf /tmp/andybioticlaw.tar.gz --strip-components=1
 
-# 2. Edit config/config.yaml and .env to taste
+# 2. Install (creates the `andybioticlaw` system user, systemd unit, logrotate):
+sudo bash scripts/install.sh
+
+# 3. As the service user, log into Claude and run the setup wizard:
+sudo -iu andybioticlaw
+claude login                                    # one-time, OAuth in browser
+andybioticlaw                                   # interactive menu → "Run setup wizard"
+exit
+
+# 4. Start the service:
+sudo systemctl start andybioticlaw
+sudo journalctl -u andybioticlaw -f
+```
+
+DM your bot and you should get an answer.
+
+See **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** for the production-ready walkthrough (SSH hardening, UFW, backups, dashboard reverse-proxy with TLS + basic-auth).
+
+## Update
+
+Releases are versioned. To upgrade a release-tarball install, re-download and re-run the installer — it's idempotent and preserves `data/` + `config/`:
+
+```bash
+cd ~/andybioticlaw
+curl -fsSL -o /tmp/andybioticlaw.tar.gz \
+  https://github.com/ettisberger/andybioticlaw/releases/latest/download/andybioticlaw.tar.gz
+tar xzf /tmp/andybioticlaw.tar.gz --strip-components=1
+sudo bash scripts/install.sh
+sudo systemctl restart andybioticlaw
+```
+
+For installs made from a `git clone` (dev workflow), `andybioticlaw update` still works — it runs `git pull --ff-only` + rebuild + prune. See `src/cli/update.ts`.
+
+## Uninstall
+
+```bash
+sudo systemctl stop andybioticlaw
+sudo systemctl disable andybioticlaw
+sudo rm /etc/systemd/system/andybioticlaw.service /etc/systemd/system/andybioticlaw.service.d -rf
+sudo rm /etc/logrotate.d/andybioticlaw
+sudo rm /usr/local/bin/andybioticlaw
+
+# Optional — remove the service user and its data (irreversible):
+sudo userdel --remove andybioticlaw
+```
+
+## Dev setup (contributors / running from a clone)
+
+```bash
+git clone https://github.com/ettisberger/andybioticlaw.git
+cd andybioticlaw
+./scripts/bootstrap-dev.sh         # install deps + copy example configs
 $EDITOR config/config.yaml
+pnpm dev                           # watch-mode service
+```
 
-# 3. Run the service (auto-reloads on file change)
-pnpm dev
+Other useful commands:
 
-# Other useful commands:
-pnpm cli -- config validate    # sanity-check config
-pnpm cli -- config reload      # SIGHUP the running daemon
-pnpm test                      # run unit tests
-pnpm typecheck                 # tsc --noEmit
-pnpm lint                      # eslint .
-pnpm build                     # compile to dist/
+```bash
+pnpm test                          # unit tests
+pnpm typecheck                     # tsc --noEmit
+pnpm lint                          # eslint .
+pnpm build                         # compile to dist/
+pnpm cli -- config validate        # sanity-check config.yaml
+pnpm cli -- config reload          # SIGHUP the running daemon
 ```
 
 Expected first run in dev:
@@ -43,7 +97,7 @@ Expected first run in dev:
 [HH:MM:SS.mmm] INFO: ready
 ```
 
-If the credentials check fails, the service stays up — you'll see an `ERROR` with a hint and the issue logged to `audit`. Fix it (`claude login`) and restart.
+See **[CONTRIBUTING.md](CONTRIBUTING.md)** for the commit-message convention (required — release notes are auto-generated from commit headers) and the PR workflow.
 
 ## Configuration
 
@@ -51,17 +105,17 @@ If the credentials check fails, the service stays up — you'll see an `ERROR` w
 
 Secrets live in `.env` — see `.env.example`. Never commit `.env`. Only a short hard-coded allowlist (currently just `TELEGRAM_BOT_TOKEN`) is readable by the core service; skill-specific secrets must be declared in the skill's `manifest.yaml` under `required_secrets` and are otherwise inaccessible. The dashboard's basic-auth password is argon2-hashed by `andybioticlaw init` into `config.yaml` — no plain password is ever stored.
 
+### Editing config interactively
+
+Run `andybioticlaw config edit` (or `andybioticlaw settings`, or pick "Edit settings" from the menu) for an arrow-key TUI over the most-tweaked fields: model, budgets, retention, log level, allowed Telegram users, dashboard enable + auth + password. Hot-reloadable changes SIGHUP the daemon automatically; restart-required changes print the `systemctl restart` hint.
+
 ### Hot reload
 
 Send `SIGHUP` (or run `andybioticlaw config reload`) to re-read `config/config.yaml` without restarting. Fields that can be hot-reloaded are listed in `config/config.schema.ts` (`HOT_RELOADABLE_PATHS`); everything else logs a warning and is ignored until a full restart.
 
 ## Quickstart (30 min)
 
-**`docs/QUICKSTART.md`** — happy-path walkthrough from bare VPS to bot-answering-its-first-DM. No hardening detours, uses `andybioticlaw init` for interactive config.
-
-## Production deployment
-
-See **`docs/DEPLOYMENT.md`** — end-to-end with SSH hardening, UFW, backup guidance, optional dashboard reverse-proxy with TLS + basic-auth. Read this after Quickstart works.
+See **[docs/QUICKSTART.md](docs/QUICKSTART.md)** — happy-path walkthrough from bare VPS to bot-answering-its-first-DM. No hardening detours, uses `andybioticlaw init` for interactive config.
 
 ## Directory tour
 

@@ -27,7 +27,7 @@ describe('SessionsRepo', () => {
     repo.create({
       id: 's1',
       source: 'dm',
-      source_ref: '18998064',
+      source_ref: '123456789',
       status: 'running',
       input_preview: 'hello',
       model: 'claude-opus-4-7',

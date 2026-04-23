@@ -20,7 +20,7 @@ describe('assembleContext', () => {
     agentName: 'Emma',
     model: 'claude-opus-4-7',
     timezone: 'Europe/Zurich',
-    principalLabel: 'Telegram user 18998064',
+    principalLabel: 'Telegram user 123456789',
   };
 
   it('substitutes {{agent.name}} in the base prompt', () => {
