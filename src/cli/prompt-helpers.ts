@@ -277,14 +277,17 @@ export function arrowPicker(
     let index = Math.max(0, Math.min(opts.initialIndex ?? 0, items.length - 1));
     let firstDraw = true;
     const labelWidth = items.reduce((m, it) => Math.max(m, it.label.length), 0);
+    // Total vertical lines consumed by one redraw — used both to rewind
+    // the cursor between redraws and to wipe the rendered region on exit.
+    const totalLines =
+      (opts.title ? 2 : 0) + (opts.helpLine ? 2 : 0) + items.length + (opts.footer ? 2 : 0) + 1;
 
     const redraw = (): void => {
       if (!firstDraw) {
         // Move cursor up to the start of the previously-printed block,
         // then clear from there to end of screen — keeps shell history
         // above intact.
-        const lines = (opts.title ? 2 : 0) + (opts.helpLine ? 2 : 0) + items.length + (opts.footer ? 2 : 0) + 1;
-        stdout.write(`\x1b[${lines}A\x1b[J`);
+        stdout.write(`\x1b[${totalLines}A\x1b[J`);
       }
       firstDraw = false;
       stdout.write('\n');
@@ -311,6 +314,13 @@ export function arrowPicker(
     const cleanup = (): void => {
       stdin.off('data', onData);
       if (stdin.setRawMode) stdin.setRawMode(false);
+      // Wipe the rendered menu so the next output (or the shell prompt)
+      // lands at the original cursor position. Without this wipe the
+      // menu lingers on screen — the user is visually "in the menu"
+      // even though the picker has already resolved.
+      if (!firstDraw) {
+        stdout.write(`\x1b[${totalLines}A\x1b[J`);
+      }
       stdout.write(SHOW_CURSOR);
     };
 
@@ -318,7 +328,6 @@ export function arrowPicker(
       const s = chunk.toString();
       if (s === '\x03' || s === 'q' || s === 'Q') {
         cleanup();
-        stdout.write('\n');
         resolve(-1);
         return;
       }

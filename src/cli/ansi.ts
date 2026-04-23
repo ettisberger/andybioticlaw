@@ -49,3 +49,14 @@ export function hideCursor(): void {
 export function showCursor(): void {
   if (process.stdout.isTTY) process.stdout.write(`${ESC}?25h`);
 }
+
+/** Enter / leave the terminal's alternate screen buffer (like vim/less).
+ *  Anything drawn between these is wiped on leave and the original
+ *  terminal contents are restored — gives the top-level menu a clean
+ *  enter/exit so the operator isn't left "stuck in the menu" visually. */
+export function enterAltScreen(): void {
+  if (process.stdout.isTTY) process.stdout.write(`${ESC}?1049h`);
+}
+export function exitAltScreen(): void {
+  if (process.stdout.isTTY) process.stdout.write(`${ESC}?1049l`);
+}

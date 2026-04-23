@@ -8,6 +8,8 @@ import {
   clearScreen,
   cyan,
   dim,
+  enterAltScreen,
+  exitAltScreen,
   green,
   hideCursor,
   lavender,
@@ -124,6 +126,11 @@ async function pickItem(
       // No stdin.pause() — the selected handler (init wizard) needs the
       // stream still flowing for its own readline prompts.
       showCursor();
+      // Leave the alt-screen buffer so the terminal restores to its
+      // pre-menu state (same pattern as vim/less). Without this the
+      // menu lingers on screen and the shell prompt prints below it,
+      // which feels like being "stuck in the menu".
+      exitAltScreen();
     }
 
     function onData(chunk: Buffer): void {
@@ -131,14 +138,12 @@ async function pickItem(
       // Ctrl-C
       if (s === '\x03') {
         cleanup();
-        process.stdout.write('\n');
         resolve(-1);
         return;
       }
       // q
       if (s === 'q' || s === 'Q') {
         cleanup();
-        process.stdout.write('\n');
         resolve(-1);
         return;
       }
@@ -177,6 +182,16 @@ async function pickItem(
       resolve(0);
       return;
     }
+    // Safety net: if the process dies without going through onData (e.g.
+    // SIGTERM from outside), still drop the alt-screen + restore cursor
+    // so the operator's terminal isn't left in a weird state.
+    const onExit = (): void => {
+      if (process.stdout.isTTY) {
+        process.stdout.write('\x1b[?25h\x1b[?1049l');
+      }
+    };
+    process.once('exit', onExit);
+    enterAltScreen();
     hideCursor();
     stdin.setRawMode(true);
     (stdin as unknown as { resume?: () => void }).resume?.();
