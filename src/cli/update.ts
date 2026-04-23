@@ -123,6 +123,13 @@ function runSync(cmd: string, args: string[], cwd: string): void {
   const r = spawnSync(cmd, args, {
     cwd,
     stdio: ['ignore', 'inherit', 'inherit'],
+    // pnpm in non-TTY contexts (sudo -iu wrapped commands) refuses to
+    // auto-purge an out-of-date node_modules with
+    // ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY. Setting CI=true is
+    // pnpm's own documented escape hatch — it then assumes "yes" to
+    // the purge prompt. We forward the rest of process.env so existing
+    // PATH / HOME / NODE_ENV are preserved.
+    env: { ...process.env, CI: 'true' },
   });
   if (r.error) {
     throw new Error(`failed to spawn ${cmd}: ${r.error.message}`);
