@@ -111,7 +111,7 @@ Run `andybioticlaw config edit` (or `andybioticlaw settings`, or pick "Edit sett
 
 Send `SIGHUP` (or run `andybioticlaw config reload`) to re-read `config/config.yaml` without restarting. Fields that can be hot-reloaded are listed in `config/config.schema.ts` (`HOT_RELOADABLE_PATHS`); everything else logs a warning and is ignored until a full restart.
 
-## Quickstart (30 min)
+## Quickstart
 
 See **[docs/QUICKSTART.md](docs/QUICKSTART.md)** — happy-path walkthrough from bare VPS to bot-answering-its-first-DM. No hardening detours, uses `andybioticlaw init` for interactive config.
 

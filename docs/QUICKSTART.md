@@ -1,4 +1,4 @@
-# Quickstart — bare-VPS to answering bot in ~30 minutes
+# Quickstart
 
 This is the **happy path**: fresh Ubuntu VPS, minimal config, your bot
 answering its first DM. No hardening detours, no reverse proxy, no TLS.
@@ -15,7 +15,6 @@ You need:
 - A Claude subscription (Pro or Max) — the service refuses to run on
   pay-as-you-go API-key billing.
 - A Telegram account on your phone.
-- About 30 minutes.
 
 You do not need:
 
