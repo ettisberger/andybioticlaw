@@ -5,10 +5,7 @@ import { defaultConfigPath, pidFilePath, expandPath } from '../config/paths.js';
 import { bold, cyan, dim, green, lavender, sage, yellow } from './ansi.js';
 import {
   arrowPicker,
-  askBoolean,
-  askEnum,
   askInteger,
-  askLine,
   askSecret,
   releaseStdin,
 } from './prompt-helpers.js';
@@ -333,15 +330,22 @@ async function editEnum(
   regex: RegExp,
   restart: boolean,
 ): Promise<void> {
-  stdout.write(`\n  ${dim('current:')} ${cyan(current)}\n\n`);
-  const next = await askEnum(
-    stdin,
-    stdout,
-    `  ${lavender('?')} new value (number or full name, Enter = keep): `,
-    options,
-    { default: current },
-  );
-  if (next === null || next === current) {
+  const currentIdx = options.findIndex((o) => o.value === current);
+  const idx = await arrowPicker(stdin, stdout, {
+    title: `${pathLabel}  ${dim(`(current: ${current})`)}`,
+    helpLine: '↑/↓ move · Enter select · q keep current',
+    items: options.map((o) => ({
+      label: o.label ?? o.value,
+      meta: o.value === current ? ' ← current' : '',
+    })),
+    initialIndex: currentIdx >= 0 ? currentIdx : 0,
+  });
+  if (idx < 0) {
+    stdout.write(`  ${dim('unchanged.')}\n\n`);
+    return;
+  }
+  const next = options[idx]!.value;
+  if (next === current) {
     stdout.write(`  ${dim('unchanged.')}\n\n`);
     return;
   }
@@ -424,14 +428,21 @@ async function editBoolean(
   regex: RegExp,
   restart: boolean,
 ): Promise<void> {
-  stdout.write(`\n  ${dim('current:')} ${cyan(current ? 'ON' : 'OFF')}\n\n`);
-  const next = await askBoolean(
-    stdin,
-    stdout,
-    `  ${lavender('?')} new value (y/n, Enter = keep): `,
-    { default: current },
-  );
-  if (next === null || next === current) {
+  const idx = await arrowPicker(stdin, stdout, {
+    title: `${pathLabel}  ${dim(`(current: ${current ? 'ON' : 'OFF'})`)}`,
+    helpLine: '↑/↓ move · Enter select · q keep current',
+    items: [
+      { label: 'ON', meta: current ? ' ← current' : '' },
+      { label: 'OFF', meta: !current ? ' ← current' : '' },
+    ],
+    initialIndex: current ? 0 : 1,
+  });
+  if (idx < 0) {
+    stdout.write(`  ${dim('unchanged.')}\n\n`);
+    return;
+  }
+  const next = idx === 0;
+  if (next === current) {
     stdout.write(`  ${dim('unchanged.')}\n\n`);
     return;
   }
@@ -454,16 +465,27 @@ async function editAllowedUsers(
   current: number[],
 ): Promise<void> {
   let working = [...current];
+  let aborted = false;
   while (true) {
-    stdout.write(
-      `\n  ${dim('current:')} ${cyan(working.length === 0 ? '(none)' : working.join(', '))}\n` +
-        `  ${dim('a = add, r = remove, d = done')}\n`,
-    );
-    const raw = await askLine(stdin, stdout, `  ${lavender('?')} action: `);
-    if (raw === null) return;
-    const c = raw.trim().toLowerCase();
-    if (c === 'd' || c === 'done') break;
-    if (c === 'a' || c === 'add') {
+    const idx = await arrowPicker(stdin, stdout, {
+      title: 'Allowed Telegram users',
+      helpLine: '↑/↓ move · Enter select · q cancel (no save)',
+      footer:
+        working.length === 0
+          ? 'current: (none — bot will reject all DMs)'
+          : `current: ${working.join(', ')}`,
+      items: [
+        { label: 'Add user' },
+        { label: 'Remove user' },
+        { label: 'Done — save changes' },
+      ],
+    });
+    if (idx < 0) {
+      aborted = true;
+      break;
+    }
+    if (idx === 2) break; // Done
+    if (idx === 0) {
       const id = await askInteger(stdin, stdout, `  ${lavender('?')} user id to add: `, {
         min: 1,
       });
@@ -473,7 +495,7 @@ async function editAllowedUsers(
         continue;
       }
       working.push(id);
-    } else if (c === 'r' || c === 'remove') {
+    } else if (idx === 1) {
       if (working.length === 0) {
         stdout.write(`  ${yellow('!')} ${dim('list is already empty')}\n`);
         continue;
@@ -482,16 +504,16 @@ async function editAllowedUsers(
         min: 1,
       });
       if (id === null || id === 'aborted') continue;
-      const idx = working.indexOf(id);
-      if (idx < 0) {
+      const removeIdx = working.indexOf(id);
+      if (removeIdx < 0) {
         stdout.write(`  ${yellow('!')} ${dim(`${id} not in list`)}\n`);
         continue;
       }
-      working.splice(idx, 1);
-    } else {
-      stdout.write(`  ${yellow('!')} ${dim('use a, r or d')}\n`);
+      working.splice(removeIdx, 1);
     }
   }
+
+  if (aborted) return;
 
   if (sameNumberArray(working, current)) {
     stdout.write(`  ${dim('unchanged.')}\n\n`);
