@@ -16,6 +16,20 @@ export type Stdin = NodeJS.ReadableStream & {
 };
 
 /**
+ * Pause stdin so node's event loop can exit after an interactive flow.
+ * Every helper in this file calls `stdin.resume()` on entry (to unpause
+ * it from whatever state it was in) but never pauses it back — which
+ * means after the prompt resolves, the TTY keeps the process alive.
+ * Interactive CLI entry points must call this in a `finally` block so
+ * `andybioticlaw config edit`, `andybioticlaw init`, etc. actually exit
+ * when the user picks "Done" / finishes the wizard.
+ */
+export function releaseStdin(): void {
+  const stdin = process.stdin as { pause?: () => void };
+  if (typeof stdin.pause === 'function') stdin.pause();
+}
+
+/**
  * Low-level char-by-char input. `mask=true` echoes `*` per keystroke
  * (use for secrets). Backspace works; arrow keys are ignored.
  */

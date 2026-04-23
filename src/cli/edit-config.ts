@@ -10,6 +10,7 @@ import {
   askInteger,
   askLine,
   askSecret,
+  releaseStdin,
 } from './prompt-helpers.js';
 
 /**
@@ -73,18 +74,25 @@ export async function runEditConfigCommand(): Promise<void> {
       dim(`  Ctrl-C / pick "Done" to leave\n\n`),
   );
 
-  while (true) {
-    const cur = readCurrent(configPath);
-    const choice = await pickField(stdin, stdout, cur);
-    if (choice === null || choice === 'done') {
-      stdout.write(`\n${dim('bye.')}\n\n`);
-      return;
+  try {
+    while (true) {
+      const cur = readCurrent(configPath);
+      const choice = await pickField(stdin, stdout, cur);
+      if (choice === null || choice === 'done') {
+        stdout.write(`\n${dim('bye.')}\n\n`);
+        return;
+      }
+      try {
+        await editOne(stdin, stdout, configPath, choice, cur);
+      } catch (e) {
+        stdout.write(`\n  ${yellow('!')} ${dim((e as Error).message)}\n`);
+      }
     }
-    try {
-      await editOne(stdin, stdout, configPath, choice, cur);
-    } catch (e) {
-      stdout.write(`\n  ${yellow('!')} ${dim((e as Error).message)}\n`);
-    }
+  } finally {
+    // Pause stdin so the CLI process can exit when this function
+    // returns — the prompt helpers resume stdin on entry but never
+    // pause it, which would otherwise leave node's event loop alive.
+    releaseStdin();
   }
 }
 

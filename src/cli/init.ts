@@ -5,7 +5,7 @@ import { readEnvFile, writeEnvFileUpdates } from '../config/env-file.js';
 import { loadConfig, projectRoot } from '../config/load.js';
 import { defaultConfigPath, defaultEnvPath } from '../config/paths.js';
 import { bold, cyan, dim, green, lavender, sage, yellow } from './ansi.js';
-import { askLine, askSecret } from './prompt-helpers.js';
+import { askLine, askSecret, releaseStdin } from './prompt-helpers.js';
 
 class InitAbortedError extends Error {
   constructor() {
@@ -35,6 +35,17 @@ class InitAbortedError extends Error {
  */
 
 export async function runInitCommand(): Promise<void> {
+  try {
+    await runInitCommandInner();
+  } finally {
+    // Pause stdin so the CLI process can exit after the wizard returns.
+    // The prompt helpers call stdin.resume() but never pause, which
+    // would otherwise keep node's event loop alive post-wizard.
+    releaseStdin();
+  }
+}
+
+async function runInitCommandInner(): Promise<void> {
   const root = projectRoot();
   const envPath = defaultEnvPath(root);
   const configPath = defaultConfigPath(root);
