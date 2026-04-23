@@ -23,7 +23,7 @@ You do not need:
 - Docker, Node installed anywhere except the VPS.
 - A domain name (until you want the dashboard public).
 
-## 1. Create a Telegram bot (2 min)
+## 1. Create a Telegram bot
 
 1. On your phone, open Telegram and search for `@BotFather`.
 2. Send `/newbot`. BotFather asks for a display name (anything you
@@ -35,7 +35,7 @@ You do not need:
    message. It replies with your numeric user id. Note it down; you
    are the bot's only allowed user.
 
-## 2. SSH in and install system dependencies (5 min)
+## 2. SSH in and install system dependencies
 
 ```bash
 ssh root@<vps-ip>
@@ -62,7 +62,7 @@ pnpm -v
 claude --version
 ```
 
-## 3. Download and install (5 min)
+## 3. Download and install
 
 Get the source into a persistent folder in your admin user's home, then run the installer.
 
@@ -89,7 +89,7 @@ installs the systemd unit + logrotate config, and symlinks
 > ```
 > Then `sudo bash scripts/install.sh` as usual.
 
-## 4. Switch to the service user (1 min)
+## 4. Switch to the service user
 
 ```bash
 sudo -iu andybioticlaw
@@ -99,7 +99,7 @@ You are now in a shell as the `andybioticlaw` service user. Everything
 from here runs with the service's own home + permissions — including the
 Claude OAuth credentials which must land in this user's `~/.claude/`.
 
-## 5. Authenticate the Claude CLI (3 min)
+## 5. Authenticate the Claude CLI
 
 Two ways, both subscription-billed (NOT pay-as-you-go API credits). Pick one:
 
@@ -146,7 +146,7 @@ See `docs/SECURITY.md` § 1 for the subscription-enforcement details.
 > agent harnesses using subscription credentials. Both paths above
 > still work, but always-on self-hosted operation is at your own risk.
 
-## 6. Run the interactive menu (3 min)
+## 6. Run the interactive menu
 
 ```bash
 andybioticlaw
@@ -171,7 +171,7 @@ Already-set values are reused, so re-running is safe.
 When done, type `exit` to leave the service-user shell and return to
 your admin user.
 
-## 7. Start the service (2 min)
+## 7. Start the service
 
 ```bash
 sudo systemctl start andybioticlaw
@@ -195,7 +195,7 @@ ready
 telegram bot polling started
 ```
 
-## 8. Send your first DM (1 min)
+## 8. Send your first DM
 
 1. On your phone, open the Telegram chat with the @username bot you
    created in step 1 (search for it, `/start`).
