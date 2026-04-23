@@ -5,7 +5,12 @@ import { readEnvFile, writeEnvFileUpdates } from '../config/env-file.js';
 import { loadConfig, projectRoot } from '../config/load.js';
 import { defaultConfigPath, defaultEnvPath } from '../config/paths.js';
 import { bold, cyan, dim, green, lavender, sage, yellow } from './ansi.js';
-import { askEnum, askLine, askSecret, releaseStdin } from './prompt-helpers.js';
+import {
+  arrowPicker,
+  askLine,
+  askSecret,
+  releaseStdin,
+} from './prompt-helpers.js';
 
 class InitAbortedError extends Error {
   constructor() {
@@ -139,29 +144,8 @@ async function runInitCommandInner(): Promise<void> {
         `  ${sage('✓')} ${dim(`service.timezone already customised (${currentTz}) — reusing`)}\n`,
       );
     } else {
-      stdout.write(
-        `  ${dim('Must be a full IANA timezone, e.g.')} ${cyan('Europe/Zurich')}${dim(',')} ${cyan('America/New_York')}${dim('.')}\n` +
-          `  ${dim('Press Enter to accept the default detected from this host.')}\n\n`,
-      );
-      // Loop until the operator gives us a valid IANA zone. An invalid
-      // entry (e.g. "zurich" without the "Europe/" prefix) would silently
-      // land in config.yaml and crash the service on boot later.
-      while (timezone === null) {
-        const raw = await askLine(
-          stdin,
-          stdout,
-          `  ${lavender('?')} timezone ${dim(`[default: ${systemTz}]`)}: `,
-        );
-        if (raw === null) throw new InitAbortedError();
-        const candidate = raw.trim() || systemTz;
-        if (!isValidTimezone(candidate)) {
-          stdout.write(
-            `  ${yellow('!')} ${dim(`"${candidate}" is not a valid IANA timezone (need format like Europe/Zurich). Try again.`)}\n`,
-          );
-          continue;
-        }
-        timezone = candidate;
-      }
+      timezone = await pickTimezone(stdin, stdout, systemTz);
+      if (timezone === null) throw new InitAbortedError();
     }
 
     // --- 5. Dashboard password -------------------------------------------
@@ -218,17 +202,23 @@ async function runInitCommandInner(): Promise<void> {
           `  ${dim('is not deprecated, but use of subscription auth for always-on services')}\n` +
           `  ${dim('is at your own risk. See README § Subscription auth.')}\n\n`,
       );
-      const choice = await askEnum(
-        stdin,
-        stdout,
-        `  ${lavender('?')} how do you want to authenticate: `,
-        [
-          { value: 'token', label: 'Paste a long-lived OAuth token (recommended for unattended servers)' },
-          { value: 'skip', label: 'Skip — I\'ll run `claude login` later' },
-        ],
-        { default: 'skip' },
-      );
-      if (choice === null) throw new InitAbortedError();
+      const authItems = [
+        {
+          label: 'Paste a long-lived OAuth token',
+          meta: '  (recommended for unattended servers)',
+        },
+        {
+          label: 'Skip — I\'ll run `claude login` later',
+          meta: '',
+        },
+      ];
+      const authIdx = await arrowPicker(stdin, stdout, {
+        title: 'Claude authentication method',
+        helpLine: '↑/↓ move · Enter select · q abort',
+        items: authItems,
+      });
+      if (authIdx < 0) throw new InitAbortedError();
+      const choice: 'token' | 'skip' = authIdx === 0 ? 'token' : 'skip';
       if (choice === 'token') {
         stdout.write(
           `  ${dim('Generate a token by running:')} ${cyan('claude setup-token')}\n` +
@@ -388,6 +378,101 @@ async function runInitCommandInner(): Promise<void> {
 /** Prints a section header like `── 2/4 · Principal user id ──`. */
 function section(stdout: NodeJS.WritableStream, step: string, title: string): void {
   stdout.write(`\n${dim('──')} ${lavender(step)} ${dim('·')} ${bold(title)} ${dim('──')}\n\n`);
+}
+
+/** Curated list of IANA timezones covering the most common operator
+ *  locations. Not exhaustive — the picker includes an "Other" escape
+ *  hatch that falls through to the validated-type-in loop for rarer
+ *  zones (e.g. Pacific/Auckland, Africa/Johannesburg). */
+const COMMON_TIMEZONES: ReadonlyArray<string> = [
+  'Europe/London',
+  'Europe/Paris',
+  'Europe/Berlin',
+  'Europe/Zurich',
+  'Europe/Madrid',
+  'Europe/Rome',
+  'Europe/Amsterdam',
+  'America/New_York',
+  'America/Chicago',
+  'America/Denver',
+  'America/Los_Angeles',
+  'America/Sao_Paulo',
+  'America/Toronto',
+  'Asia/Tokyo',
+  'Asia/Shanghai',
+  'Asia/Singapore',
+  'Asia/Dubai',
+  'Asia/Kolkata',
+  'Australia/Sydney',
+  'UTC',
+];
+
+/**
+ * Arrow-key timezone picker. The detected system timezone comes first
+ * (if valid), followed by the curated common list, then an "Other"
+ * option that falls through to a type-in loop for rare zones.
+ *
+ * Returns the selected timezone string or `null` on Ctrl-C / q.
+ */
+async function pickTimezone(
+  stdin: NodeJS.ReadableStream & { setRawMode?: (mode: boolean) => void },
+  stdout: NodeJS.WritableStream,
+  systemTz: string,
+): Promise<string | null> {
+  // Build the options: detected first (if valid + not already in list),
+  // then curated list in the baked order, then "Other (type manually)".
+  const seen = new Set<string>();
+  const items: Array<{ label: string; value: string | null; meta?: string }> = [];
+  if (isValidTimezone(systemTz)) {
+    items.push({ label: systemTz, value: systemTz, meta: '  (detected from host)' });
+    seen.add(systemTz);
+  }
+  for (const tz of COMMON_TIMEZONES) {
+    if (seen.has(tz)) continue;
+    items.push({ label: tz, value: tz });
+    seen.add(tz);
+  }
+  items.push({
+    label: 'Other (type a custom IANA zone)',
+    value: null,
+    meta: '  e.g. Pacific/Auckland, Africa/Johannesburg',
+  });
+
+  const idx = await arrowPicker(stdin, stdout, {
+    title: 'Service timezone',
+    helpLine: '↑/↓ move · Enter select · q abort',
+    items: items.map((it) => ({
+      label: it.label,
+      ...(it.meta ? { meta: it.meta } : {}),
+    })),
+  });
+  if (idx < 0) return null;
+  const picked = items[idx];
+  if (!picked) return null;
+  if (picked.value !== null) return picked.value;
+
+  // "Other" branch — fall through to the classic validated type-in loop.
+  stdout.write(
+    `  ${dim('Must be a full IANA timezone, e.g.')} ${cyan('Europe/Zurich')}${dim(',')} ${cyan('Pacific/Auckland')}${dim('.')}\n\n`,
+  );
+  while (true) {
+    const raw = await askLine(stdin, stdout, `  ${lavender('?')} timezone: `);
+    if (raw === null) return null;
+    const candidate = raw.trim();
+    if (!candidate) {
+      stdout.write(
+        `  ${yellow('!')} ${dim('empty input — type a timezone or Ctrl-C to abort')}\n`,
+      );
+      continue;
+    }
+    if (!isValidTimezone(candidate)) {
+      stdout.write(
+        `  ${yellow('!')} ${dim(`"${candidate}" is not a valid IANA timezone (need format like Europe/Zurich). Try again.`)}\n`,
+      );
+      continue;
+    }
+    return candidate;
+  }
 }
 
 // --- config.yaml line readers -----------------------------------------
