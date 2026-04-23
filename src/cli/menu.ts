@@ -43,6 +43,13 @@ export async function runInteractiveMenu(): Promise<void> {
   ];
   if (setupDone) {
     items.push({
+      label: 'Edit settings — model, budget, memory, retention, …',
+      handler: async () => {
+        const { runEditConfigCommand } = await import('./edit-config.js');
+        await runEditConfigCommand();
+      },
+    });
+    items.push({
       label: 'Update — git pull + rebuild + prune dev deps',
       handler: async () => {
         const { runUpdateCommand } = await import('./update.js');

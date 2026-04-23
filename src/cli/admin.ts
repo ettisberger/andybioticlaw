@@ -76,7 +76,34 @@ program
   });
 
 // --- config ---------------------------------------------------------------
-const config = program.command('config').description('Inspect and reload configuration');
+const config = program.command('config').description('Inspect, edit, and reload configuration');
+
+config
+  .command('edit')
+  .description('Interactively edit the most-tweaked config.yaml fields (model, budget, retention, …).')
+  .action(async () => {
+    const { runEditConfigCommand } = await import('./edit-config.js');
+    try {
+      await runEditConfigCommand();
+    } catch (e) {
+      process.stderr.write(`\nedit failed: ${(e as Error).message}\n`);
+      process.exit(1);
+    }
+  });
+
+// Top-level alias so `andybioticlaw settings` is discoverable too.
+program
+  .command('settings')
+  .description('Alias for `config edit` — interactive settings editor.')
+  .action(async () => {
+    const { runEditConfigCommand } = await import('./edit-config.js');
+    try {
+      await runEditConfigCommand();
+    } catch (e) {
+      process.stderr.write(`\nedit failed: ${(e as Error).message}\n`);
+      process.exit(1);
+    }
+  });
 
 config
   .command('validate')

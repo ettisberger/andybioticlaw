@@ -5,6 +5,7 @@ import { readEnvFile, writeEnvFileUpdates } from '../config/env-file.js';
 import { loadConfig, projectRoot } from '../config/load.js';
 import { defaultConfigPath, defaultEnvPath } from '../config/paths.js';
 import { bold, cyan, dim, green, lavender, sage, yellow } from './ansi.js';
+import { askLine, askSecret } from './prompt-helpers.js';
 
 class InitAbortedError extends Error {
   constructor() {
@@ -344,77 +345,6 @@ function isValidTimezone(tz: string): boolean {
   }
 }
 
-// --- prompt helpers ---------------------------------------------------
-// Both askLine and askSecret run in raw mode with our OWN onData handler.
-// We deliberately don't use readline: its internal data listener can't
-// be cleanly suspended around a raw-mode secret prompt, which was
-// producing doubled output like `e*t*t*i*...` during password entry.
-
-type Stdin = NodeJS.ReadableStream & { setRawMode?: (mode: boolean) => void };
-
-function readOneLine(
-  stdin: Stdin,
-  stdout: NodeJS.WritableStream,
-  prompt: string,
-  mask: boolean,
-): Promise<string | null> {
-  stdout.write(prompt);
-  return new Promise((resolve) => {
-    let input = '';
-    const onData = (chunk: Buffer) => {
-      const s = chunk.toString();
-      for (const char of s) {
-        // Enter
-        if (char === '\r' || char === '\n') {
-          cleanup();
-          stdout.write('\n');
-          resolve(input);
-          return;
-        }
-        // Ctrl-C
-        if (char === '\x03') {
-          cleanup();
-          stdout.write('\n');
-          resolve(null);
-          return;
-        }
-        // Ctrl-D on an empty line → abort
-        if (char === '\x04' && input.length === 0) {
-          cleanup();
-          stdout.write('\n');
-          resolve(null);
-          return;
-        }
-        // Backspace / DEL
-        if (char === '\x7f' || char === '\b') {
-          if (input.length > 0) {
-            input = input.slice(0, -1);
-            stdout.write('\b \b');
-          }
-          continue;
-        }
-        // Ignore other control chars (including stray escape sequences
-        // from arrow keys — we don't support editing mid-line beyond
-        // backspace).
-        if (char.charCodeAt(0) < 0x20) continue;
-        input += char;
-        stdout.write(mask ? '*' : char);
-      }
-    };
-    const cleanup = () => {
-      stdin.off('data', onData);
-      if (stdin.setRawMode) stdin.setRawMode(false);
-    };
-    if (stdin.setRawMode) stdin.setRawMode(true);
-    (stdin as unknown as { resume?: () => void }).resume?.();
-    stdin.on('data', onData);
-  });
-}
-
-function askLine(stdin: Stdin, stdout: NodeJS.WritableStream, prompt: string) {
-  return readOneLine(stdin, stdout, prompt, false);
-}
-
-function askSecret(stdin: Stdin, stdout: NodeJS.WritableStream, prompt: string) {
-  return readOneLine(stdin, stdout, prompt, true);
-}
+// askLine / askSecret are imported from `./prompt-helpers` so the same
+// raw-mode flow is shared with edit-config and any future interactive
+// CLI flow.
