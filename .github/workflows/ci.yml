@@ -15,7 +15,7 @@ jobs:
     name: typecheck · test · build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Install pnpm before actions/setup-node so setup-node can use
       # pnpm's cache ("cache: pnpm"). The version comes from
