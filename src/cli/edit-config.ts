@@ -53,6 +53,7 @@ interface CurrentValues {
   logLevel: string;
   conversationHistoryLimit: number;
   allowedUserIds: number[];
+  dashboardEnabled: boolean;
   passwordHashSet: boolean;
 }
 
@@ -107,6 +108,7 @@ type FieldKey =
   | 'logLevel'
   | 'conversationHistoryLimit'
   | 'allowedUserIds'
+  | 'dashboardEnabled'
   | 'passwordHash';
 
 async function pickField(
@@ -150,6 +152,12 @@ async function pickField(
         cur.allowedUserIds.length === 0
           ? '(none — bot will reject all DMs)'
           : `${cur.allowedUserIds.length}: ${cur.allowedUserIds.join(', ')}`,
+      restart: true,
+    },
+    {
+      key: 'dashboardEnabled',
+      label: 'Dashboard (web UI)',
+      current: cur.dashboardEnabled ? 'ON' : 'OFF',
       restart: true,
     },
     {
@@ -269,6 +277,21 @@ async function editOne(
       return;
     case 'allowedUserIds':
       await editAllowedUsers(stdin, stdout, configPath, cur.allowedUserIds);
+      return;
+    case 'dashboardEnabled':
+      await editBoolean(
+        stdin,
+        stdout,
+        configPath,
+        'dashboard.enabled',
+        cur.dashboardEnabled,
+        // Targets the 2-space-indented `enabled:` line that immediately
+        // follows `dashboard:` — deliberately anchored to the top-level
+        // key so it can't match `dashboard.basicAuth.enabled` (4-space
+        // indent, further down).
+        /^(dashboard:\s*\n  enabled:\s*)(true|false)\s*$/m,
+        true, // restart (Fastify binds the HTTP listener at boot)
+      );
       return;
     case 'passwordHash':
       await editPassword(stdin, stdout, configPath);
@@ -603,6 +626,12 @@ function readCurrent(configPath: string): CurrentValues {
       50,
     ),
     allowedUserIds: matchAllowedUserIds(body),
+    dashboardEnabled: matchBool(
+      body,
+      // Same two-line anchor as the patch regex — see editOne dispatch.
+      /^dashboard:\s*\n  enabled:\s*(true|false)\s*$/m,
+      false,
+    ),
     passwordHashSet: /^\s+passwordHash:\s*['"][^'"]+['"]\s*$/m.test(body),
   };
 }
