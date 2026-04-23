@@ -31,52 +31,70 @@ import {
  */
 export async function runInteractiveMenu(): Promise<void> {
   const version = readCoreVersion();
-  const setupDone = detectSetupDone();
 
-  const items: Array<{ label: string; handler: () => Promise<void> }> = [
-    {
-      label: setupDone
-        ? 'Re-run setup wizard (safe, idempotent)'
-        : 'Run setup wizard — Telegram bot token, principal id, timezone',
-      handler: async () => {
-        const { runInitCommand } = await import('./init.js');
-        await runInitCommand();
-      },
-    },
-  ];
-  if (setupDone) {
-    items.push({
-      label: 'Edit settings — model, budget, memory, retention, …',
-      handler: async () => {
-        const { runEditConfigCommand } = await import('./edit-config.js');
-        await runEditConfigCommand();
-      },
-    });
-    items.push({
-      label: 'Update — git pull + rebuild + prune dev deps',
-      handler: async () => {
-        const { runUpdateCommand } = await import('./update.js');
-        await runUpdateCommand();
-      },
-    });
-  }
-  items.push({
-    label: 'Quit',
-    handler: async () => {
-      /* no-op — caller exits */
-    },
-  });
+  try {
+    while (true) {
+      // Recompute each iteration — after `Run setup wizard` finishes the
+      // first time, `setupDone` flips and the menu grows new entries.
+      const setupDone = detectSetupDone();
 
-  const selected = await pickItem(items, version, setupDone);
-  if (selected < 0) {
-    // User hit Ctrl-C / q. Already exited raw mode; just return.
-    return;
+      const items: Array<{
+        label: string;
+        quit?: boolean;
+        handler: () => Promise<void>;
+      }> = [
+        {
+          label: setupDone
+            ? 'Re-run setup wizard (safe, idempotent)'
+            : 'Run setup wizard — Telegram bot token, principal id, timezone',
+          handler: async () => {
+            const { runInitCommand } = await import('./init.js');
+            await runInitCommand();
+          },
+        },
+      ];
+      if (setupDone) {
+        items.push({
+          label: 'Edit settings — model, budget, memory, retention, …',
+          handler: async () => {
+            const { runEditConfigCommand } = await import('./edit-config.js');
+            await runEditConfigCommand();
+          },
+        });
+        items.push({
+          label: 'Update — git pull + rebuild + prune dev deps',
+          handler: async () => {
+            const { runUpdateCommand } = await import('./update.js');
+            await runUpdateCommand();
+          },
+        });
+      }
+      items.push({
+        label: 'Quit',
+        quit: true,
+        handler: async () => {
+          /* no-op — handled by the loop */
+        },
+      });
+
+      const selected = await pickItem(items, version, setupDone);
+      if (selected < 0) return; // Ctrl-C / q — exit the loop entirely.
+      const chosen = items[selected];
+      if (!chosen || chosen.quit) return;
+      // Newline between menu and wizard output looks cleaner.
+      process.stdout.write('\n');
+      await chosen.handler();
+      // Back to the top-level menu for another pick.
+    }
+  } finally {
+    // Without this the process stays alive: pickItem called
+    // stdin.resume() and never paused it, so node's event loop keeps
+    // waiting on an empty TTY. Pause now so `andybioticlaw` actually
+    // exits when the menu is dismissed.
+    if (typeof (process.stdin as { pause?: () => void }).pause === 'function') {
+      process.stdin.pause();
+    }
   }
-  const chosen = items[selected];
-  if (!chosen) return;
-  // Newline between menu and wizard output looks cleaner.
-  process.stdout.write('\n');
-  await chosen.handler();
 }
 
 /**
