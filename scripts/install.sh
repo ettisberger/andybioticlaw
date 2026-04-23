@@ -39,10 +39,9 @@ TWO INSTALL PATHS
 
 A) Release tarball (recommended, no build toolchain needed beyond pnpm):
 
-    curl -fsSL -o /tmp/andybioticlaw.tar.gz \\
-      https://github.com/ettisberger/andybioticlaw/releases/latest/download/andybioticlaw.tar.gz
-    mkdir ~/andybioticlaw && cd ~/andybioticlaw
-    tar xzf /tmp/andybioticlaw.tar.gz --strip-components=1
+    mkdir -p ~/andybioticlaw && cd ~/andybioticlaw
+    curl -fsSL https://github.com/ettisberger/andybioticlaw/releases/latest/download/andybioticlaw.tar.gz \\
+      | tar xz --strip-components=1
     sudo bash scripts/install.sh
 
 B) Git clone (for tip-of-main / contributors):

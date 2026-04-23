@@ -111,17 +111,14 @@ TypeScript compile happens — the tarball ships `dist/` + `web/dist/`
 pre-built.
 
 ```bash
-cd ~
-curl -fsSL -o /tmp/andybioticlaw.tar.gz \
-  https://github.com/ettisberger/andybioticlaw/releases/latest/download/andybioticlaw.tar.gz
-mkdir andybioticlaw && cd andybioticlaw
-tar xzf /tmp/andybioticlaw.tar.gz --strip-components=1
-rm /tmp/andybioticlaw.tar.gz
+mkdir -p ~/andybioticlaw && cd ~/andybioticlaw
+curl -fsSL https://github.com/ettisberger/andybioticlaw/releases/latest/download/andybioticlaw.tar.gz \
+  | tar xz --strip-components=1
 ```
 
-`~/andybioticlaw/` is now your staging tree. For a future upgrade you
-re-download the newer tarball, re-extract into the same dir, re-run
-`scripts/install.sh`.
+`~/andybioticlaw/` is now your staging tree. For a future upgrade, run
+the same two commands in the same directory — the tarball overwrites
+shipped files, and `scripts/install.sh` re-syncs the install.
 
 ### 4b. Git clone (for contributors / tip-of-main)
 
@@ -161,7 +158,8 @@ sudo bash ~/andybioticlaw/scripts/install.sh
 This performs all the one-time setup:
 
 - Creates the `andybioticlaw` system user with home `/home/andybioticlaw`.
-- Copies the source tree from `/tmp/andybioticlaw` into
+- Copies the source tree from wherever you invoked `install.sh` (your
+  staging dir, typically `~/andybioticlaw/`) into
   `/home/andybioticlaw/.andybioticlaw/` (hidden dotdir, mode 0700, owned
   by the service user).
 - Runs `pnpm install --prod --frozen-lockfile` as the service user so
@@ -393,15 +391,18 @@ preserved). Pick the path matching your install style:
 
 ```bash
 cd ~/andybioticlaw
-curl -fsSL -o /tmp/andybioticlaw.tar.gz \
-  https://github.com/ettisberger/andybioticlaw/releases/latest/download/andybioticlaw.tar.gz
-tar xzf /tmp/andybioticlaw.tar.gz --strip-components=1
-rm /tmp/andybioticlaw.tar.gz
+curl -fsSL https://github.com/ettisberger/andybioticlaw/releases/latest/download/andybioticlaw.tar.gz \
+  | tar xz --strip-components=1
 
 sudo bash scripts/install.sh
 sudo systemctl restart andybioticlaw
 sudo journalctl -u andybioticlaw -n 50 -f
 ```
+
+Or even simpler once the service is installed: `sudo -iu andybioticlaw
+andybioticlaw update` does the curl + extract + `pnpm install --prod`
+in one step (stops short of `scripts/install.sh` + systemctl because
+those need sudo).
 
 Check [releases](https://github.com/ettisberger/andybioticlaw/releases)
 for the version + [CHANGELOG.md](../CHANGELOG.md) for the diff.

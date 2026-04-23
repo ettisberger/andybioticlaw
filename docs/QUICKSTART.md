@@ -64,18 +64,12 @@ claude --version
 
 ## 3. Download and install (5 min)
 
-Grab the latest release tarball into your admin user's home (not
-`/tmp` — you want the source persistent for future updates) and run
-the installer:
+Get the source into a persistent folder in your admin user's home, then run the installer.
 
 ```bash
-cd ~
-curl -fsSL -o /tmp/andybioticlaw.tar.gz \
-  https://github.com/ettisberger/andybioticlaw/releases/latest/download/andybioticlaw.tar.gz
-mkdir andybioticlaw && cd andybioticlaw
-tar xzf /tmp/andybioticlaw.tar.gz --strip-components=1
-rm /tmp/andybioticlaw.tar.gz
-
+mkdir -p ~/andybioticlaw && cd ~/andybioticlaw
+curl -fsSL https://github.com/ettisberger/andybioticlaw/releases/latest/download/andybioticlaw.tar.gz \
+  | tar xz --strip-components=1
 sudo bash scripts/install.sh
 ```
 
@@ -86,14 +80,12 @@ compile `better-sqlite3` + `argon2` natively for the VPS, renders +
 installs the systemd unit + logrotate config, and symlinks
 `andybioticlaw` into `/usr/local/bin/`.
 
-> **Prefer tip-of-main (contributor workflow)?** Replace the
-> download + extract steps above with:
+> **Contributor / tip-of-main install?** Replace the two `curl | tar`
+> lines above with:
 > ```bash
-> git clone https://github.com/ettisberger/andybioticlaw.git
-> cd andybioticlaw
-> pnpm install --frozen-lockfile
-> pnpm build
-> pnpm --filter @andybioticlaw/web build
+> git clone https://github.com/ettisberger/andybioticlaw.git ~/andybioticlaw
+> cd ~/andybioticlaw
+> pnpm install --frozen-lockfile && pnpm -r build
 > ```
 > Then `sudo bash scripts/install.sh` as usual.
 

@@ -15,10 +15,9 @@ A single-operator, self-hosted AI agent: Telegram on the front, the Claude CLI (
 
 ```bash
 # 1. Download and extract the latest release:
-curl -fsSL -o /tmp/andybioticlaw.tar.gz \
-  https://github.com/ettisberger/andybioticlaw/releases/latest/download/andybioticlaw.tar.gz
-mkdir ~/andybioticlaw && cd ~/andybioticlaw
-tar xzf /tmp/andybioticlaw.tar.gz --strip-components=1
+mkdir -p ~/andybioticlaw && cd ~/andybioticlaw
+curl -fsSL https://github.com/ettisberger/andybioticlaw/releases/latest/download/andybioticlaw.tar.gz \
+  | tar xz --strip-components=1
 
 # 2. Install (creates the `andybioticlaw` system user, systemd unit, logrotate):
 sudo bash scripts/install.sh
@@ -44,9 +43,8 @@ Releases are versioned. To upgrade a release-tarball install, re-download and re
 
 ```bash
 cd ~/andybioticlaw
-curl -fsSL -o /tmp/andybioticlaw.tar.gz \
-  https://github.com/ettisberger/andybioticlaw/releases/latest/download/andybioticlaw.tar.gz
-tar xzf /tmp/andybioticlaw.tar.gz --strip-components=1
+curl -fsSL https://github.com/ettisberger/andybioticlaw/releases/latest/download/andybioticlaw.tar.gz \
+  | tar xz --strip-components=1
 sudo bash scripts/install.sh
 sudo systemctl restart andybioticlaw
 ```
