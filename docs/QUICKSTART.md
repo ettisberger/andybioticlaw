@@ -62,30 +62,40 @@ pnpm -v
 claude --version
 ```
 
-## 3. Clone, build, install (5 min)
+## 3. Download and install (5 min)
 
-Clone into **your admin user's home** (not `/tmp` — that gets wiped
-eventually, and you want the source persistent for future redeploys):
+Grab the latest release tarball into your admin user's home (not
+`/tmp` — you want the source persistent for future updates) and run
+the installer:
 
 ```bash
 cd ~
-git clone https://github.com/<your-fork-or-upstream>/andybioticlaw.git
-cd andybioticlaw
+curl -fsSL -o /tmp/andybioticlaw.tar.gz \
+  https://github.com/ettisberger/andybioticlaw/releases/latest/download/andybioticlaw.tar.gz
+mkdir andybioticlaw && cd andybioticlaw
+tar xzf /tmp/andybioticlaw.tar.gz --strip-components=1
+rm /tmp/andybioticlaw.tar.gz
 
-pnpm install --frozen-lockfile
-pnpm build
-pnpm --filter @andybioticlaw/web build
-
-# Run the production installer. It creates the `andybioticlaw` service
-# user, copies the source into `/home/andybioticlaw/.andybioticlaw/`
-# (mode 0700), re-compiles native deps for the VPS arch, renders + installs
-# the systemd unit + logrotate config, and symlinks `andybioticlaw` into
-# `/usr/local/bin/`.
 sudo bash scripts/install.sh
 ```
 
-`~/andybioticlaw/` stays around; re-deploys are just `git pull &&
-pnpm build && sudo bash scripts/install.sh` from that directory.
+The installer creates the `andybioticlaw` service user, copies the
+source into `/home/andybioticlaw/.andybioticlaw/` (mode 0700), runs
+`pnpm install --prod --frozen-lockfile` as the service user to
+compile `better-sqlite3` + `argon2` natively for the VPS, renders +
+installs the systemd unit + logrotate config, and symlinks
+`andybioticlaw` into `/usr/local/bin/`.
+
+> **Prefer tip-of-main (contributor workflow)?** Replace the
+> download + extract steps above with:
+> ```bash
+> git clone https://github.com/ettisberger/andybioticlaw.git
+> cd andybioticlaw
+> pnpm install --frozen-lockfile
+> pnpm build
+> pnpm --filter @andybioticlaw/web build
+> ```
+> Then `sudo bash scripts/install.sh` as usual.
 
 ## 4. Switch to the service user (1 min)
 
@@ -176,6 +186,26 @@ If it doesn't, check:
   currently-loaded config so you can spot a bad user id or timezone.
 - BotFather: confirm no second process is polling the same token (the
   Telegram API enforces exclusivity).
+
+## Updating later
+
+When a new release lands upstream:
+
+```bash
+sudo -iu andybioticlaw
+andybioticlaw update    # tarball install → fetches the newer release
+                         # git-clone install → git pull + rebuild
+exit
+sudo systemctl restart andybioticlaw
+```
+
+`andybioticlaw update` auto-detects which install mode you used
+(presence of `.git/` in the install dir) and does the right thing.
+`data/`, `config/config.yaml`, and `.env` are preserved across
+updates — only code + deps get replaced.
+
+See `docs/DEPLOYMENT.md` § 11 for the step-by-step redeploy flow with
+common failure modes.
 
 ## What's next
 
