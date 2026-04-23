@@ -17,11 +17,7 @@
     "isolatedModules": true,
     "skipLibCheck": true,
     "sourceMap": true,
-    "declaration": false,
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["src/*"]
-    }
+    "declaration": false
   },
   "include": ["src/**/*", "tests/**/*"],
   "exclude": ["node_modules", "dist", "web"]
