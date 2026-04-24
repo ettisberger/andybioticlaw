@@ -1,10 +1,11 @@
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 import type { Logger } from 'pino';
 import type { AuditRepo } from '../db/repositories/audit.js';
 import type { SkillRegistry } from './registry.js';
+import type { SkillRecord } from './registry.js';
 import { dim } from '../cli/ansi.js';
 import { section } from '../cli/section.js';
 
@@ -33,6 +34,20 @@ export interface SkillInstallOptions {
    * Overridable for tests.
    */
   confirm?: (skillName: string) => Promise<boolean>;
+  /**
+   * Stream install.sh's stdout/stderr live to the parent process in real
+   * time (for interactive flows — e.g. an OAuth device-code handshake
+   * where the operator has to SEE the URL and user code before approving
+   * on their phone). Default: false (buffered via pexec).
+   */
+  stream?: boolean;
+  /**
+   * Override install.sh's timeout in ms. Defaults:
+   *   - buffered mode: 120_000 (2 min — anything slower is probably stuck)
+   *   - stream mode:   1_800_000 (30 min — matches Google's device-code TTL;
+   *                                no point waiting longer)
+   */
+  timeoutMs?: number;
 }
 
 export interface InstallResult {
@@ -109,21 +124,33 @@ export async function installSkill(
     }
   }
 
-  deps.logger.info({ name, script }, 'running skill install.sh');
+  deps.logger.info(
+    { name, script, stream: opts.stream === true },
+    'running skill install.sh',
+  );
+  const stream = opts.stream === true;
+  const timeoutMs =
+    opts.timeoutMs ?? (stream ? 1_800_000 : 120_000);
   try {
-    const { stdout, stderr } = await pexec('/usr/bin/env', ['bash', script], {
-      cwd: skill.skillDir,
-      timeout: 120_000,
-      maxBuffer: 2 * 1024 * 1024,
-    });
-    const combined = [stdout, stderr].filter(Boolean).join('\n---stderr---\n');
+    const runResult = stream
+      ? await runStreamed(script, skill, timeoutMs)
+      : await runBuffered(script, skill, timeoutMs);
+    const combined = [runResult.stdout, runResult.stderr]
+      .filter(Boolean)
+      .join('\n---stderr---\n');
     deps.registry.recordInstall(name, combined);
     deps.audit.record({
       kind: 'skill_install',
       actor: 'cli',
-      detail: { name, exitCode: 0, version: skill.version },
+      detail: { name, exitCode: 0, version: skill.version, stream },
     });
-    return { name, ran: true, exitCode: 0, stdout, stderr };
+    return {
+      name,
+      ran: true,
+      exitCode: 0,
+      stdout: runResult.stdout,
+      stderr: runResult.stderr,
+    };
   } catch (e) {
     const err = e as NodeJS.ErrnoException & {
       stdout?: string;
@@ -138,10 +165,115 @@ export async function installSkill(
     deps.audit.record({
       kind: 'skill_install',
       actor: 'cli',
-      detail: { name, exitCode, error: stderr.slice(0, 400), version: skill.version },
+      detail: {
+        name,
+        exitCode,
+        error: stderr.slice(0, 400),
+        version: skill.version,
+        stream,
+      },
     });
     throw new Error(`skill ${name} install failed (exit ${exitCode}): ${stderr.slice(0, 400)}`);
   }
+}
+
+/**
+ * Buffered exec — captures all stdout/stderr in memory via execFile. Used
+ * for non-interactive installs where we want the full output recorded
+ * atomically (e.g. a future dashboard-triggered install button).
+ */
+async function runBuffered(
+  script: string,
+  skill: SkillRecord,
+  timeoutMs: number,
+): Promise<{ stdout: string; stderr: string }> {
+  const { stdout, stderr } = await pexec('/usr/bin/env', ['bash', script], {
+    cwd: skill.skillDir,
+    timeout: timeoutMs,
+    maxBuffer: 2 * 1024 * 1024,
+  });
+  return { stdout, stderr };
+}
+
+/**
+ * Streamed exec — forwards stdout/stderr to the parent process in real
+ * time so interactive install scripts (OAuth device flow printing a URL
+ * that the operator must act on) are actually visible as they run.
+ * Simultaneously tees into buffers so `recordInstall` still has the full
+ * output for `skill_state.last_install_output`.
+ *
+ * On non-zero exit / timeout, throws with the same shape as the buffered
+ * path (an Error decorated with `.stdout`, `.stderr`, `.code`) so the
+ * outer error-handling works unchanged.
+ */
+async function runStreamed(
+  script: string,
+  skill: SkillRecord,
+  timeoutMs: number,
+): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const child = spawn('/usr/bin/env', ['bash', script], {
+      cwd: skill.skillDir,
+      stdio: ['inherit', 'pipe', 'pipe'],
+    });
+
+    let stdoutBuf = '';
+    let stderrBuf = '';
+
+    child.stdout?.on('data', (chunk: Buffer) => {
+      const s = chunk.toString();
+      stdoutBuf += s;
+      process.stdout.write(s);
+    });
+    child.stderr?.on('data', (chunk: Buffer) => {
+      const s = chunk.toString();
+      stderrBuf += s;
+      process.stderr.write(s);
+    });
+
+    const timer = setTimeout(() => {
+      try {
+        child.kill('SIGTERM');
+      } catch {
+        /* already gone */
+      }
+    }, timeoutMs);
+
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      const e = new Error(
+        `failed to spawn bash for ${skill.name}/install.sh: ${err.message}`,
+      ) as Error & {
+        stdout?: string;
+        stderr?: string;
+        code?: number | string;
+      };
+      e.stdout = stdoutBuf;
+      e.stderr = stderrBuf || err.message;
+      e.code = 1;
+      rejectPromise(e);
+    });
+
+    child.on('exit', (code, signal) => {
+      clearTimeout(timer);
+      if (code === 0) {
+        resolvePromise({ stdout: stdoutBuf, stderr: stderrBuf });
+        return;
+      }
+      const suffix = signal ? ` (signal ${signal})` : '';
+      const e = new Error(
+        `install.sh exited ${code ?? 'null'}${suffix}`,
+      ) as Error & {
+        stdout?: string;
+        stderr?: string;
+        code?: number | string;
+      };
+      e.stdout = stdoutBuf;
+      e.stderr = stderrBuf || e.message;
+      e.code = typeof code === 'number' ? code : 1;
+      rejectPromise(e);
+    });
+  });
 }
 
 /**

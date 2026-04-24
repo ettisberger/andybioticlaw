@@ -85,16 +85,26 @@ export async function runSkillSetup(input: RunSkillSetupInput): Promise<void> {
   if (runInstall) {
     stdout.write('\nRunning install.sh…\n');
     try {
+      // `stream: true` forwards the child's stdout/stderr live to the
+      // terminal. Critical for install scripts that print something the
+      // operator must act on (e.g. the OAuth device-code URL +
+      // user-code box in google-calendar's install.sh). Without it the
+      // output is buffered until exit, which looks like the command
+      // hung and makes the device flow impossible to complete.
       const out = await installSkill(
         skill.name,
         { registry, audit, logger },
-        { autoConfirm: true },
+        { autoConfirm: true, stream: true },
       );
-      if (out.ran) {
-        stdout.write(out.stdout);
-        if (out.stderr) stderr.write(out.stderr);
-      } else {
+      if (!out.ran) {
         stdout.write('(no install.sh — skill recorded as installed.)\n');
+      }
+      // In stream mode the script body already appeared on the terminal
+      // as it ran; re-printing `out.stdout` would double-print. So we
+      // don't. An explicit "✓" line here so the operator knows the
+      // script ended cleanly (vs. still-running / hung):
+      if (out.ran) {
+        stdout.write('\n✓ install.sh exited cleanly.\n');
       }
     } catch (e) {
       throw new SkillSetupError(
