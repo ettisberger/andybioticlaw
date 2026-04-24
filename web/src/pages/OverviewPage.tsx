@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { Bot } from 'lucide-react';
+import { Bot, Info } from 'lucide-react';
 import { apiGet, formatTs } from '../lib/api';
 import { Badge, Card, ErrorBanner, LiveDot } from '../components/ui';
 import { Sparkline } from '../components/charts/Sparkline';
@@ -275,20 +275,24 @@ function SubscriptionWindowCard({
   rateLimit: OverviewData['rateLimit'];
   now: number;
 }) {
+  const [infoOpen, setInfoOpen] = useState(false);
   const latest = rateLimit.latest;
   const localEstimate = rateLimit.localRollingFiveHourTokens;
   const hasObservation = latest !== null;
   const resetsInMs = latest?.resetsAtSec ? latest.resetsAtSec * 1000 - now : null;
   const observedAgo = latest ? now - latest.observedAt : null;
 
-  const statusTone =
-    latest?.status === 'allowed' ? 'success' : latest?.status ? 'error' : 'neutral';
-  const dot =
-    latest?.status === 'allowed'
-      ? 'bg-success'
-      : latest?.status
-        ? 'bg-error'
-        : 'bg-ink-faint';
+  // A "rejected" status is anything other than 'allowed' (the CLI emits
+  // error strings like 'rate_limit_exceeded' when throttled). Treat
+  // that as the loud path; allowed is the quiet path.
+  const isRejected = latest !== null && latest.status !== null && latest.status !== 'allowed';
+  const isUsingOverage = latest?.isUsingOverage === true;
+  const overageOff = latest?.overageStatus === 'rejected';
+
+  // Only surface "snapshot from X ago" when it's stale enough to be
+  // meaningful (>5 min = service might be idle). Fresh observations are
+  // the normal case and don't need a timestamp on the card.
+  const isStale = observedAgo !== null && observedAgo > 5 * 60 * 1000;
 
   return (
     <Card className="flex flex-col">
@@ -298,90 +302,122 @@ function SubscriptionWindowCard({
             Subscription window
           </div>
           <div className="text-xs text-ink-faint">
-            Anthropic · 5h rolling · observed from the CLI
+            Anthropic · 5h rolling
           </div>
         </div>
+        {hasObservation && (
+          <button
+            type="button"
+            onClick={() => setInfoOpen((v) => !v)}
+            aria-label={infoOpen ? 'Hide details' : 'Show details'}
+            className="rounded-md p-1 text-ink-faint hover:bg-surface-muted hover:text-ink"
+          >
+            <Info size={14} strokeWidth={2} />
+          </button>
+        )}
       </div>
 
       {!hasObservation ? (
-        <div className="flex-1 rounded border border-dashed border-line bg-surface-muted px-3 py-4 text-center text-xs text-ink-faint">
+        <div className="flex-1 rounded-xl border border-dashed border-line bg-surface-muted/40 px-3 py-4 text-center text-xs text-ink-faint backdrop-blur-sm">
           No CLI rate-limit event observed yet.
           <br />
           Send Emma a message to populate this card.
         </div>
       ) : (
-        <>
-          <div className="mb-4 flex items-center gap-3">
-            <span className={`inline-block h-2.5 w-2.5 rounded-full ${dot}`} />
+        <div className="flex flex-1 flex-col gap-2">
+          {/* Headline row. Quiet on the happy path; loud when rejected. */}
+          <div className="flex items-center gap-2">
             <span
-              className={`text-xl font-semibold ${statusTone === 'success' ? 'text-success-ink' : statusTone === 'error' ? 'text-error-ink' : 'text-ink'}`}
+              className={`inline-block h-2.5 w-2.5 rounded-full ${
+                isRejected ? 'bg-error' : 'bg-success'
+              }`}
+            />
+            <span
+              className={`text-lg font-semibold ${
+                isRejected ? 'text-error-ink' : 'text-success-ink'
+              }`}
             >
-              {latest?.status === 'allowed' ? 'Allowed' : (latest?.status ?? '—')}
+              {isRejected ? 'Rejected' : 'Allowed'}
             </span>
-            <span className="text-ink-faint">·</span>
-            <span className="text-sm text-ink">
-              {resetsInMs !== null && resetsInMs > 0 && (
-                <>resets in <span className="font-medium text-ink">{formatDuration(resetsInMs)}</span></>
-              )}
-              {resetsInMs !== null && resetsInMs <= 0 && (
-                <span className="text-success-ink">reset due</span>
-              )}
+            {isUsingOverage && <Badge tone="warn">overage active</Badge>}
+            {resetsInMs !== null && resetsInMs > 0 && (
+              <span className="ml-auto text-xs text-ink-dim">
+                resets in <span className="tabular-nums">{formatDuration(resetsInMs)}</span>
+              </span>
+            )}
+            {resetsInMs !== null && resetsInMs <= 0 && (
+              <span className="ml-auto text-xs text-success-ink">reset due</span>
+            )}
+          </div>
+
+          {/* Rejected + overage off → prominent actionable hint. */}
+          {isRejected && overageOff && (
+            <div className="rounded-lg border border-error/30 bg-error-bg/70 px-3 py-2 text-xs text-error-ink">
+              Overage is off — enable in your Anthropic account settings to
+              keep going, or wait for the reset.
+            </div>
+          )}
+
+          {/* Rejected but overage is on → neutral info. */}
+          {isRejected && !overageOff && (
+            <div className="text-xs text-ink-dim">
+              Throttled — {latest?.rateLimitType ?? 'rate_limit'}. New
+              requests should succeed on overage.
+            </div>
+          )}
+
+          {/* Local count — de-emphasized. */}
+          <div className="mt-auto flex items-center justify-between pt-2 text-xs text-ink-faint">
+            <span>Local 5h rolling</span>
+            <span className="font-mono tabular-nums text-ink-dim">
+              {formatCompact(localEstimate)} tokens
             </span>
           </div>
 
-          <div className="mb-4 grid grid-cols-2 gap-2 text-xs">
-            <div className="rounded bg-surface-muted px-2 py-1.5">
-              <div className="text-ink-faint">Overage</div>
-              <div className="mt-0.5 text-ink">
-                {latest?.overageStatus === 'allowed'
-                  ? 'on (pay-as-you-go)'
-                  : latest?.overageStatus === 'rejected'
-                    ? 'off'
-                    : (latest?.overageStatus ?? '—')}
+          {/* Staleness only when actually stale. */}
+          {isStale && observedAgo !== null && (
+            <div className="text-[10px] text-warn-ink">
+              ⚠ CLI snapshot from {formatDuration(observedAgo)} ago — service
+              may be idle
+            </div>
+          )}
+
+          {/* Popover (toggled by the ⓘ button). Holds diagnostics that
+              rarely matter day-to-day: overage posture, snapshot age,
+              and the "why no % used" explainer. */}
+          {infoOpen && (
+            <div className="mt-2 space-y-2 border-t border-line/60 pt-3 text-[11px] leading-relaxed text-ink-dim">
+              <p>
+                The Claude CLI's <code>rate_limit_event</code> doesn't
+                expose a usage count — only status + reset time. The
+                "N% used" number in your Claude profile UI comes from a
+                separate, undocumented API we don't call. Local 5h
+                rolling above is our own session-token tally; it's
+                <em> not</em> Anthropic's meter.
+              </p>
+              <div className="flex justify-between">
+                <span>Overage:</span>
+                <span>
+                  {overageOff ? 'off' : 'on (pay-as-you-go)'}
+                  {latest?.overageDisabledReason
+                    ? ` (${latest.overageDisabledReason.replace(/_/g, ' ')})`
+                    : ''}
+                </span>
               </div>
-              {latest?.overageDisabledReason && (
-                <div className="mt-0.5 text-[10px] text-ink-faint">
-                  {latest.overageDisabledReason.replace(/_/g, ' ')}
+              <div className="flex justify-between">
+                <span>Using overage:</span>
+                <span>{isUsingOverage ? 'yes' : 'no'}</span>
+              </div>
+              {observedAgo !== null && (
+                <div className="flex justify-between">
+                  <span>Snapshot:</span>
+                  <span>{formatDuration(observedAgo)} ago</span>
                 </div>
               )}
             </div>
-            <div className="rounded bg-surface-muted px-2 py-1.5">
-              <div className="text-ink-faint">Using overage</div>
-              <div className="mt-0.5 text-ink">
-                {latest?.isUsingOverage === true
-                  ? 'yes'
-                  : latest?.isUsingOverage === false
-                    ? 'no'
-                    : '—'}
-              </div>
-            </div>
-          </div>
-        </>
+          )}
+        </div>
       )}
-
-      <div className="mt-auto border-t border-line pt-3">
-        <div className="mb-1 text-[11px] uppercase tracking-wide text-ink-faint">
-          Why no % used?
-        </div>
-        <div className="text-[11px] leading-relaxed text-ink-dim">
-          The Claude CLI's <code>rate_limit_event</code> does not expose a
-          usage count — only status + reset time. The "80% used" number in
-          your Claude profile UI comes from a separate (undocumented) API
-          we don't call. Below is our own local proxy; it's not Anthropic's
-          meter.
-        </div>
-        <div className="mt-2 flex justify-between text-xs">
-          <span className="text-ink-dim">Our 5h rolling (local count)</span>
-          <span className="font-medium text-ink">
-            {formatCompact(localEstimate)} tokens
-          </span>
-        </div>
-        {observedAgo !== null && (
-          <div className="mt-1 text-[11px] text-ink-faint">
-            CLI snapshot from {formatDuration(observedAgo)} ago
-          </div>
-        )}
-      </div>
     </Card>
   );
 }
