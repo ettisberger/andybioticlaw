@@ -12,6 +12,17 @@
 
 set -euo pipefail
 
+# Disable bracketed-paste mode for the duration of this script. bash's
+# `read` doesn't strip bracketed-paste markers, so without this a
+# pasted OAuth code lands in HUE_CODE as `\e[200~abc\e[201~`. The outer
+# skill-setup flow also disables it, but we do it here too so this
+# script is safe if invoked directly. Restored on exit so the operator's
+# shell is left how we found it.
+if [[ -t 1 ]]; then
+  printf '\e[?2004l'
+  trap 'printf "\e[?2004h"' EXIT
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # Walk up to find .env (skills/hue/../../.env).
 ENV_FILE="$(cd "$SCRIPT_DIR/../.." && pwd -P)/.env"
@@ -85,6 +96,13 @@ echo
 
 printf "code: "
 read -r HUE_CODE
+# Strip any bracketed-paste markers, arrow-key codes, or other CSI
+# sequences that slipped through despite the ?2004l disable above.
+# Perl's character-class escapes make this compact; sed would need
+# $'\e' literals and be less portable.
+if command -v perl >/dev/null 2>&1; then
+  HUE_CODE="$(printf %s "$HUE_CODE" | perl -pe 's/\e\[\d*[~A-Za-z]//g; s/\e[OP-Z]//g')"
+fi
 HUE_CODE="${HUE_CODE//[[:space:]]/}"
 
 if [[ -z "$HUE_CODE" ]]; then

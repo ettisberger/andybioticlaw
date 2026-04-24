@@ -69,71 +69,87 @@ export async function runSkillSetup(input: RunSkillSetupInput): Promise<void> {
     );
   }
 
+  // Disable bracketed-paste mode for the ENTIRE setup flow (wizard +
+  // install.sh + SIGHUP). Modern terminals bracket pastes with
+  // `\x1b[200~…\x1b[201~`, and bash's `read` (used by install scripts)
+  // does NOT strip them — so without this a pasted OAuth code lands
+  // in the shell var as e.g. `\x1b[200~abc123\x1b[201~` and the token
+  // exchange fails. Re-enabled in the finally so the operator's shell
+  // is left how we found it; if we crash mid-flow, shells re-enable
+  // bracketed paste on their next prompt anyway.
+  stdout.write('\x1b[?2004l');
   try {
-    await runSetupWizard({
-      skillName: skill.name,
-      wizard: skill.setupWizard,
-      envPath,
-    });
-  } catch (e) {
-    if (e instanceof WizardAbortedError) {
-      throw new SkillSetupError('wizard aborted by operator', 'wizard-aborted');
-    }
-    throw e;
-  }
-
-  if (runInstall) {
-    stdout.write('\nRunning install.sh…\n');
     try {
-      // `stream: true` forwards the child's stdout/stderr live to the
-      // terminal. Critical for install scripts that print something the
-      // operator must act on (e.g. the OAuth device-code URL +
-      // user-code box in google-calendar's install.sh). Without it the
-      // output is buffered until exit, which looks like the command
-      // hung and makes the device flow impossible to complete.
-      const out = await installSkill(
-        skill.name,
-        { registry, audit, logger },
-        { autoConfirm: true, stream: true },
-      );
-      if (!out.ran) {
-        stdout.write('(no install.sh — skill recorded as installed.)\n');
-      }
-      // In stream mode the script body already appeared on the terminal
-      // as it ran; re-printing `out.stdout` would double-print. So we
-      // don't. An explicit "✓" line here so the operator knows the
-      // script ended cleanly (vs. still-running / hung):
-      if (out.ran) {
-        stdout.write('\n✓ install.sh exited cleanly.\n');
-      }
+      await runSetupWizard({
+        skillName: skill.name,
+        wizard: skill.setupWizard,
+        envPath,
+      });
     } catch (e) {
-      throw new SkillSetupError(
-        `install.sh FAILED: ${(e as Error).message}`,
-        'install-failed',
-      );
+      if (e instanceof WizardAbortedError) {
+        throw new SkillSetupError('wizard aborted by operator', 'wizard-aborted');
+      }
+      throw e;
     }
-  }
 
-  if (sighup) {
-    const pidPath = pidFilePath(dataDir);
-    if (existsSync(pidPath)) {
-      const pid = parseInt(readFileSync(pidPath, 'utf8').trim(), 10);
+    if (runInstall) {
+      stdout.write('\nRunning install.sh…\n');
       try {
-        process.kill(pid, 'SIGHUP');
-        stdout.write(
-          `\n✓ SIGHUP sent to pid ${pid} — skill registry will re-scan.\n`,
+        // `stream: true` forwards the child's stdout/stderr live to the
+        // terminal. Critical for install scripts that print something
+        // the operator must act on (e.g. the OAuth device-code URL +
+        // user-code box in google-calendar's install.sh). Without it
+        // the output is buffered until exit, which looks like the
+        // command hung and makes the device flow impossible to
+        // complete.
+        const out = await installSkill(
+          skill.name,
+          { registry, audit, logger },
+          { autoConfirm: true, stream: true },
         );
+        if (!out.ran) {
+          stdout.write('(no install.sh — skill recorded as installed.)\n');
+        }
+        // In stream mode the script body already appeared on the
+        // terminal as it ran; re-printing `out.stdout` would
+        // double-print. So we don't. An explicit "✓" line here so the
+        // operator knows the script ended cleanly (vs. still-running /
+        // hung):
+        if (out.ran) {
+          stdout.write('\n✓ install.sh exited cleanly.\n');
+        }
       } catch (e) {
-        stderr.write(
-          `could not SIGHUP daemon (pid ${pid}): ${(e as Error).message}\n`,
+        throw new SkillSetupError(
+          `install.sh FAILED: ${(e as Error).message}`,
+          'install-failed',
         );
       }
-    } else {
-      stdout.write(
-        '\n(daemon not running — skill will be picked up on next start.)\n',
-      );
     }
-  }
 
-  stdout.write(`\nSkill "${skill.name}" is ready.\n`);
+    if (sighup) {
+      const pidPath = pidFilePath(dataDir);
+      if (existsSync(pidPath)) {
+        const pid = parseInt(readFileSync(pidPath, 'utf8').trim(), 10);
+        try {
+          process.kill(pid, 'SIGHUP');
+          stdout.write(
+            `\n✓ SIGHUP sent to pid ${pid} — skill registry will re-scan.\n`,
+          );
+        } catch (e) {
+          stderr.write(
+            `could not SIGHUP daemon (pid ${pid}): ${(e as Error).message}\n`,
+          );
+        }
+      } else {
+        stdout.write(
+          '\n(daemon not running — skill will be picked up on next start.)\n',
+        );
+      }
+    }
+
+    stdout.write(`\nSkill "${skill.name}" is ready.\n`);
+  } finally {
+    // Restore bracketed paste for the operator's shell.
+    stdout.write('\x1b[?2004h');
+  }
 }

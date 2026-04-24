@@ -234,16 +234,11 @@ export function stripEscapeSequences(s: string): string {
  * characters. One raw-mode implementation for everything.
  *
  * Modern terminals wrap pastes with bracketed-paste markers
- * (`\x1b[200~…\x1b[201~`). If those leak into the input — or worse, if
- * a mid-paste newline finalises the line while the marker prefix is
- * still captured — the stored secret is garbage. We work around it two
- * ways:
- *   1. Emit `\x1b[?2004l` before entering raw mode to tell the
- *      terminal NOT to bracket pastes while we're reading. Restored on
- *      cleanup so the operator's shell behaves normally afterward.
- *   2. Defensively strip any CSI / SS3 / Fe escape sequence from
- *      incoming chunks, in case a terminal ignores our disable request
- *      or sends arrow keys.
+ * (`\x1b[200~…\x1b[201~`). The caller is expected to have already
+ * disabled bracketed paste (see runSetupWizard / runSkillSetup), so
+ * those markers shouldn't arrive — but we defensively strip any CSI
+ * / SS3 / Fe escape sequence from incoming chunks anyway, in case a
+ * terminal ignores the disable request or sends arrow keys.
  */
 function readOneLine(
   stdin: Stdin,
@@ -252,10 +247,6 @@ function readOneLine(
   mask: boolean,
 ): Promise<string | null> {
   stdout.write(prompt);
-  // Disable bracketed paste. Some terminals (iTerm2, modern GNOME
-  // Terminal, tmux) enable it by default; the markers would otherwise
-  // be appended to `input` as visible chars.
-  stdout.write('\x1b[?2004l');
   return new Promise((resolve) => {
     let input = '';
 
@@ -304,10 +295,6 @@ function readOneLine(
     const cleanup = () => {
       stdin.off('data', onData);
       if (stdin.setRawMode) stdin.setRawMode(false);
-      // Re-enable bracketed paste for the operator's shell after we
-      // hand control back. (Terminals default to "on" post-shell-init,
-      // so we leave them the way we found them.)
-      stdout.write('\x1b[?2004h');
     };
 
     if (stdin.setRawMode) stdin.setRawMode(true);
