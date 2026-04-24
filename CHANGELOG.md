@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.8.0](https://github.com/ettisberger/andybioticlaw/compare/v0.7.0...v0.8.0) (2026-04-24)
+
+
+### Features
+
+* **dashboard:** live session view + memory search/revoke ([531e4c9](https://github.com/ettisberger/andybioticlaw/commit/531e4c9cd8880f6052a2fb4689c378963af2c839))
+
 ## [0.7.0](https://github.com/ettisberger/andybioticlaw/compare/v0.6.0...v0.7.0) (2026-04-24)
 
 
