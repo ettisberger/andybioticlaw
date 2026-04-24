@@ -1,4 +1,4 @@
-import { yellow, dim, pink, bold, sage } from './ansi.js';
+import { yellow, dim, pink, bold, green } from './ansi.js';
 
 /**
  * Shared raw-mode prompt helpers used by `init`, `edit-config`, and any
@@ -377,12 +377,16 @@ export function arrowPicker(
         }
         const selected = i === index;
         const arrow = selected ? pink('▸ ') : '  ';
+        // Checkbox: 4-column-wide frame `[ ]` / `[✓]` — significantly
+        // more legible at 80-col width than the 1-char Unicode
+        // glyphs we had before. Rows without `checked` render 4 spaces
+        // so column alignment across the whole picker stays stable.
         const checkbox =
           it.checked === undefined
-            ? '   '
+            ? '    '
             : it.checked
-              ? `${sage('☑')}  `
-              : `${dim('☐')}  `;
+              ? `${dim('[')}${bold(green('✓'))}${dim(']')} `
+              : `${dim('[ ]')} `;
         const paddedLabel = it.label.padEnd(
           Math.max(labelWidth - 4, it.label.length),
         );

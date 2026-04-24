@@ -57,8 +57,8 @@ export async function runInteractiveMenu(): Promise<void> {
         items.push({
           label: 'Settings — model, budget, dashboard, voice, …',
           handler: async () => {
-            const { runEditConfigCommand } = await import('./edit-config.js');
-            await runEditConfigCommand();
+            const { runSettingsCommand } = await import('./settings/run.js');
+            await runSettingsCommand();
           },
         });
         items.push({

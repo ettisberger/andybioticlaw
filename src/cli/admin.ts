@@ -83,9 +83,9 @@ config
   .command('edit')
   .description('Interactively edit the most-tweaked config.yaml fields (model, budget, retention, …).')
   .action(async () => {
-    const { runEditConfigCommand } = await import('./edit-config.js');
+    const { runSettingsCommand } = await import('./settings/run.js');
     try {
-      await runEditConfigCommand();
+      await runSettingsCommand();
     } catch (e) {
       process.stderr.write(`\nedit failed: ${(e as Error).message}\n`);
       process.exit(1);
@@ -97,9 +97,9 @@ program
   .command('settings')
   .description('Alias for `config edit` — interactive settings editor.')
   .action(async () => {
-    const { runEditConfigCommand } = await import('./edit-config.js');
+    const { runSettingsCommand } = await import('./settings/run.js');
     try {
-      await runEditConfigCommand();
+      await runSettingsCommand();
     } catch (e) {
       process.stderr.write(`\nedit failed: ${(e as Error).message}\n`);
       process.exit(1);
