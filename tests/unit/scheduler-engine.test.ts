@@ -62,6 +62,9 @@ function makeEngine(db: ReturnType<typeof makeDb>) {
       }) as never,
     canStart: () => true,
     exhaustedMessage: () => '',
+    resetNow: () => {
+      throw new Error('not used in these tests');
+    },
   };
   const engine = createSchedulerEngine({
     logger,

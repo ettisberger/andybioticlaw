@@ -1,6 +1,7 @@
 import type { Bot, Context } from 'grammy';
 import type { Logger } from 'pino';
 import type { SessionsRepo } from '../../db/repositories/sessions.js';
+import type { AuditRepo } from '../../db/repositories/audit.js';
 import type { BudgetTracker } from '../../agent/budget.js';
 import type { TelegramDmSubmit } from './dm.js';
 import type { TelegramCancel } from './dm.js';
@@ -8,12 +9,37 @@ import type { TelegramCancel } from './dm.js';
 export interface CommandsDeps {
   sessions: SessionsRepo;
   budget: BudgetTracker;
+  audit: AuditRepo;
   agentName: string;
   model: string;
   logger: Logger;
   submit: TelegramDmSubmit;
   cancel: TelegramCancel;
+  /** Timezone for rendering the reset window label in /reset_budget's reply. */
+  timezone: string;
 }
+
+/**
+ * User-facing slash commands we register with Telegram via
+ * `setMyCommands`. The array is exported so bot.ts can feed it to the
+ * Telegram API at startup without duplicating the list. NOTE:
+ * Telegram's command-name validator only accepts `[a-z0-9_]` — no
+ * hyphens — which is why we use underscores even though kebab-case is
+ * friendlier elsewhere.
+ */
+export const TELEGRAM_MENU_COMMANDS: Array<{
+  command: string;
+  description: string;
+}> = [
+  { command: 'help', description: 'List commands and usage' },
+  { command: 'status', description: 'Service + daily-budget summary' },
+  { command: 'cancel', description: 'Abort running + queued sessions' },
+  { command: 'retry', description: 'Re-run a prior session (needs id)' },
+  { command: 'reset_budget', description: 'Zero the daily-budget counter' },
+  { command: 'remember', description: 'Propose a memory entry' },
+  { command: 'memory', description: 'Show current memory entries' },
+  { command: 'forget', description: 'Delete a memory entry (needs id)' },
+];
 
 export function registerCommands(bot: Bot, deps: CommandsDeps): void {
   bot.command('start', async (ctx) => {
@@ -32,6 +58,8 @@ export function registerCommands(bot: Bot, deps: CommandsDeps): void {
         '/status — service + daily budget summary',
         '/cancel — abort the running session and drop any queued messages in this chat',
         '/retry <session-id> — start a new session with the original user input of a prior failed/cancelled one',
+        '/reset\\_budget — zero the daily-budget counter (works even when the budget is exhausted)',
+        '/remember, /memory, /forget — manage memory entries',
       ].join('\n'),
       { parse_mode: 'Markdown' },
     );
@@ -55,6 +83,49 @@ export function registerCommands(bot: Bot, deps: CommandsDeps): void {
       { parse_mode: 'Markdown' },
     );
   });
+
+  // Accept both /reset_budget (telegram-native, appears in the `/` menu)
+  // and /reset-budget (typed by hand, matches CLI convention). Grammy
+  // dispatches the first matching handler, so we register both.
+  const resetBudget = async (ctx: Context) => {
+    if (!ctx.chat) return;
+    try {
+      const { before, after } = deps.budget.resetNow();
+      deps.audit.record({
+        kind: 'budget_reset',
+        actor: `tg:${ctx.chat.id}`,
+        detail: {
+          previousUsed: before.used,
+          previousRemaining: before.remaining,
+          anchorMs: after.window.manualResetAt ?? Date.now(),
+        },
+      });
+      deps.logger.info(
+        { chatId: ctx.chat.id, previousUsed: before.used, limit: after.dailyLimit },
+        'budget reset via telegram',
+      );
+      const natural = new Date(after.window.nextResetMs).toLocaleString('en-GB', {
+        timeZone: deps.timezone,
+        hour12: false,
+      });
+      await ctx.reply(
+        [
+          '✅ *Daily budget reset.*',
+          '',
+          `Previous: ${before.used.toLocaleString()} / ${before.dailyLimit.toLocaleString()} tokens`,
+          `Now:      ${after.used.toLocaleString()} / ${after.dailyLimit.toLocaleString()}`,
+          '',
+          `Natural reset still fires at ${natural} (${deps.timezone}).`,
+        ].join('\n'),
+        { parse_mode: 'Markdown' },
+      );
+    } catch (e) {
+      deps.logger.error({ err: (e as Error).message }, 'budget reset via telegram failed');
+      await ctx.reply(`⚠️ Budget reset failed: ${(e as Error).message}`);
+    }
+  };
+  bot.command('reset_budget', resetBudget);
+  bot.command('reset-budget', resetBudget);
 
   bot.command('cancel', async (ctx) => {
     if (!ctx.chat) return;

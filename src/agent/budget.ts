@@ -39,6 +39,18 @@ export interface BudgetTracker {
   canStart(now?: number): boolean;
   /** Formats a reset message the bot can show the user verbatim. */
   exhaustedMessage(status?: BudgetStatus): string;
+  /**
+   * Zero the daily counter by anchoring the window start to "now". The
+   * natural daily reset still fires at its configured time; this is a
+   * manual-override for the principal (e.g. when they hit the soft cap
+   * mid-day). Requires the tracker to have been built with a
+   * `budgetState` repo; throws if not.
+   *
+   * Does NOT write an audit row or DM the principal — callers are
+   * expected to do both so they can tag the audit with their own
+   * `actor` string (cli / tg:chatId / dashboard).
+   */
+  resetNow(now?: number): { before: BudgetStatus; after: BudgetStatus };
 }
 
 export function createBudgetTracker(
@@ -99,7 +111,19 @@ export function createBudgetTracker(
     return `⛔ Daily token budget exhausted (${st.used.toLocaleString()} / ${st.dailyLimit.toLocaleString()} tokens). Window resets at ${reset} (${cfg().timezone}).`;
   }
 
-  return { status, canStart, exhaustedMessage };
+  function resetNow(now = Date.now()): { before: BudgetStatus; after: BudgetStatus } {
+    if (!budgetState) {
+      throw new Error(
+        'BudgetTracker.resetNow() requires a budgetState repo — tracker was constructed with null',
+      );
+    }
+    const before = status(now);
+    budgetState.setResetAnchor(now);
+    const after = status(now);
+    return { before, after };
+  }
+
+  return { status, canStart, exhaustedMessage, resetNow };
 }
 
 /**

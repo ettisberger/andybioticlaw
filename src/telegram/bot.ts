@@ -19,7 +19,7 @@ import { createChatRunner, createQueueManager } from '../agent/queue.js';
 import type { RateLimitTracker } from '../agent/rate-limit-tracker.js';
 import type { LiveSessionsTracker } from '../observability/live-sessions.js';
 import { executeSession } from '../agent/session.js';
-import { registerCommands } from './handlers/commands.js';
+import { registerCommands, TELEGRAM_MENU_COMMANDS } from './handlers/commands.js';
 import { registerDmHandler } from './handlers/dm.js';
 import { registerGroupRejectHandler } from './handlers/group.js';
 import { registerMemoryCommands } from './handlers/memory-commands.js';
@@ -198,8 +198,10 @@ export function createTelegramService(deps: BotDeps): TelegramService {
   registerCommands(bot, {
     sessions: deps.sessions,
     budget: deps.budget,
+    audit: deps.audit,
     agentName: deps.config.agentName,
     model: deps.config.model,
+    timezone: deps.config.timezone,
     logger: deps.logger,
     submit,
     cancel: async (chatId) => queue.cancel(chatId),
@@ -288,6 +290,18 @@ export function createTelegramService(deps: BotDeps): TelegramService {
     async start() {
       if (running) return;
       running = true;
+      // Populate Telegram's `/` autocomplete menu with our slash
+      // commands. Non-fatal on failure — the commands still work by
+      // typing them manually; we just lose the UI hint. Fire-and-forget
+      // so bot.start() isn't blocked by a flaky Telegram API moment.
+      bot.api
+        .setMyCommands(TELEGRAM_MENU_COMMANDS)
+        .catch((e) => {
+          deps.logger.warn(
+            { err: (e as Error).message },
+            'setMyCommands failed — slash menu will be empty but commands still work',
+          );
+        });
       void bot
         .start({
           drop_pending_updates: false,

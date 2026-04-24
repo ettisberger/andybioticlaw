@@ -146,4 +146,49 @@ describe('budget tracker — manual reset anchor', () => {
     expect(s.used).toBe(400);
     expect(s.window.manualResetAt).toBeNull();
   });
+
+  describe('resetNow()', () => {
+    it('zeroes the effective used counter by anchoring the window to now', () => {
+      // 500 tokens used before the reset — after the anchor they fall
+      // out of the effective window.
+      const t = createBudgetTracker(
+        makeWindowedRepo([{ startedAt: tenAm, tokens: 500 }]) as never,
+        cfg,
+        stateRepo(null),
+      );
+      const { before, after } = t.resetNow(threePm);
+      expect(before.used).toBe(500);
+      expect(after.used).toBe(0);
+      expect(after.window.manualResetAt).toBe(threePm);
+      // Subsequent status() reads still honour the anchor.
+      expect(t.status(fourPm).used).toBe(0);
+    });
+
+    it('throws if the tracker was constructed without a budgetState repo', () => {
+      const t = createBudgetTracker(
+        makeWindowedRepo([{ startedAt: tenAm, tokens: 400 }]) as never,
+        cfg,
+        // No state repo.
+      );
+      expect(() => t.resetNow()).toThrowError(/budgetState/);
+    });
+
+    it('unblocks a previously-exhausted window', () => {
+      const overLimitCfg = () => ({
+        dailyTokenLimit: 400,
+        perSessionTokenLimit: 100,
+        dailyResetTime: '00:00',
+        timezone: 'UTC',
+      });
+      const t = createBudgetTracker(
+        makeWindowedRepo([{ startedAt: tenAm, tokens: 500 }]) as never,
+        overLimitCfg,
+        stateRepo(null),
+      );
+      expect(t.status(noon).exhausted).toBe(true);
+      t.resetNow(noon);
+      expect(t.status(noon).exhausted).toBe(false);
+      expect(t.canStart(noon)).toBe(true);
+    });
+  });
 });
