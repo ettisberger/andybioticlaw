@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.5.5](https://github.com/ettisberger/andybioticlaw/compare/v0.5.4...v0.5.5) (2026-04-24)
+
+
+### Bug Fixes
+
+* **skills:** resolve relative MCP server paths against the skill dir ([c8172d6](https://github.com/ettisberger/andybioticlaw/commit/c8172d653ad8f45fec702e679c65989697a6c4f1))
+
 ## [0.5.4](https://github.com/ettisberger/andybioticlaw/compare/v0.5.3...v0.5.4) (2026-04-24)
 
 
