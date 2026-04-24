@@ -52,9 +52,13 @@ DEVICE_RES="$(curl -sS \
   "https://oauth2.googleapis.com/device/code")"
 
 # If Google returned an `error` field the handshake failed — surface it.
-DEVICE_ERR="$(echo "$DEVICE_RES" | grep -o '"error":"[^"]*"' | sed 's/^"error":"//;s/"$//')"
+# `|| true` at the end of the pipeline: `set -euo pipefail` would otherwise
+# kill the script when grep -o has no match (i.e. success case, no error
+# field). `|| true` makes the substitution return empty instead of
+# propagating the exit-1.
+DEVICE_ERR="$(echo "$DEVICE_RES" | grep -o '"error":"[^"]*"' | sed 's/^"error":"//;s/"$//' || true)"
 if [[ -n "$DEVICE_ERR" ]]; then
-  DEVICE_DESC="$(echo "$DEVICE_RES" | grep -o '"error_description":"[^"]*"' | sed 's/^"error_description":"//;s/"$//')"
+  DEVICE_DESC="$(echo "$DEVICE_RES" | grep -o '"error_description":"[^"]*"' | sed 's/^"error_description":"//;s/"$//' || true)"
   echo "✗ Google rejected the device-code request:" >&2
   echo "    error: $DEVICE_ERR" >&2
   if [[ -n "$DEVICE_DESC" ]]; then
@@ -80,12 +84,15 @@ if [[ -n "$DEVICE_ERR" ]]; then
 fi
 
 # Minimal JSON field extraction — no jq required. These fields are simple
-# strings without embedded quotes, so grep + sed works reliably.
+# strings without embedded quotes, so grep + sed works reliably. Trailing
+# `|| true` so `set -euo pipefail` doesn't kill the script when a field
+# happens to be absent (e.g. grepping for "refresh_token" while still in
+# the polling-pending state).
 extract() {
-  echo "$DEVICE_RES" | grep -o "\"$1\":\"[^\"]*\"" | sed "s/^\"$1\":\"//;s/\"$//"
+  echo "$DEVICE_RES" | grep -o "\"$1\":\"[^\"]*\"" | sed "s/^\"$1\":\"//;s/\"$//" || true
 }
 extract_num() {
-  echo "$DEVICE_RES" | grep -o "\"$1\":[0-9]*" | sed "s/^\"$1\"://"
+  echo "$DEVICE_RES" | grep -o "\"$1\":[0-9]*" | sed "s/^\"$1\"://" || true
 }
 
 DEVICE_CODE="$(extract device_code)"
@@ -129,9 +136,11 @@ while [[ $(date +%s) -lt $DEADLINE ]]; do
     -d "grant_type=urn:ietf:params:oauth:grant-type:device_code" \
     "https://oauth2.googleapis.com/token" || true)"
 
-  # `refresh_token` field only present on a successful response.
-  POLL_REFRESH="$(echo "$POLL_RES" | grep -o '"refresh_token":"[^"]*"' | sed 's/^"refresh_token":"//;s/"$//')"
-  POLL_ERROR="$(echo "$POLL_RES" | grep -o '"error":"[^"]*"' | sed 's/^"error":"//;s/"$//')"
+  # `refresh_token` field only present on a successful response. `|| true`
+  # on each pipeline so pipefail doesn't nuke the loop when the grep misses
+  # (which it does on every `authorization_pending` tick).
+  POLL_REFRESH="$(echo "$POLL_RES" | grep -o '"refresh_token":"[^"]*"' | sed 's/^"refresh_token":"//;s/"$//' || true)"
+  POLL_ERROR="$(echo "$POLL_RES" | grep -o '"error":"[^"]*"' | sed 's/^"error":"//;s/"$//' || true)"
 
   if [[ -n "$POLL_REFRESH" ]]; then
     REFRESH_TOKEN="$POLL_REFRESH"
