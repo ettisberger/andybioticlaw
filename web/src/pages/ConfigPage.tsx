@@ -428,14 +428,21 @@ const NULL_LABELS: Record<string, string> = {
 
 function numberSuffix(path: string): string | null {
   const last = lastSegment(path).toLowerCase();
+  // Order matters — more-specific matches must come first.
   if (last.endsWith('ms')) return 'ms';
   if (last.endsWith('sec')) return 's';
   if (last.endsWith('days')) return 'days';
   if (last.includes('port')) return null;
-  if (last.includes('limit') || last.includes('tokens') || last.includes('default')) {
+  if (last.includes('historylimit')) return 'msgs';
+  if (last.includes('retentiondays')) return null; // already 'days' via endsWith
+  if (last.includes('tokenlimit') || last.includes('tokens') || last.includes('schedulledefault')) {
     return 'tokens';
   }
-  if (last.includes('historylimit')) return 'msgs';
+  // Generic `limit` fallback — catches budget.dailyTokenLimit etc. AFTER
+  // the specific 'historylimit' + 'retentiondays' checks above.
+  if (last.includes('limit') || last.includes('default')) {
+    return 'tokens';
+  }
   return null;
 }
 
