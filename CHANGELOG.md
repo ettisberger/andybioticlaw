@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.5.1](https://github.com/ettisberger/andybioticlaw/compare/v0.5.0...v0.5.1) (2026-04-24)
+
+
+### Bug Fixes
+
+* **wizard:** unified section style, colored prompts, re-run keeps current as default ([f1255aa](https://github.com/ettisberger/andybioticlaw/commit/f1255aacd692e933cd5cf66433697eb3de3a64e2))
+
 ## [0.5.0](https://github.com/ettisberger/andybioticlaw/compare/v0.4.0...v0.5.0) (2026-04-24)
 
 
