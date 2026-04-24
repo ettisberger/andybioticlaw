@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.10.2](https://github.com/ettisberger/andybioticlaw/compare/v0.10.1...v0.10.2) (2026-04-24)
+
+
+### Bug Fixes
+
+* **skills:** scope bracketed-paste disable to the whole setup flow ([24f57f6](https://github.com/ettisberger/andybioticlaw/commit/24f57f6c201d1a803369bb370964a0a9d775e1ce))
+
 ## [0.10.1](https://github.com/ettisberger/andybioticlaw/compare/v0.10.0...v0.10.1) (2026-04-24)
 
 
