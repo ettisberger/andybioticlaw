@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.11.0](https://github.com/ettisberger/andybioticlaw/compare/v0.10.2...v0.11.0) (2026-04-24)
+
+
+### Features
+
+* **telegram:** /reset_budget command + slash-menu registration ([83d7c4e](https://github.com/ettisberger/andybioticlaw/commit/83d7c4e49d34409e5e48e22b5eed696dc656a54c))
+
 ## [0.10.2](https://github.com/ettisberger/andybioticlaw/compare/v0.10.1...v0.10.2) (2026-04-24)
 
 
