@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.14.0](https://github.com/ettisberger/andybioticlaw/compare/v0.13.0...v0.14.0) (2026-04-24)
+
+
+### Features
+
+* **cli:** component-based Settings menu with id-routing + tests ([39c85e0](https://github.com/ettisberger/andybioticlaw/commit/39c85e06747eb02516dc9c830882ce46ef14040f))
+
 ## [0.13.0](https://github.com/ettisberger/andybioticlaw/compare/v0.12.0...v0.13.0) (2026-04-24)
 
 
