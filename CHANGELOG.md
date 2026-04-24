@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.5.4](https://github.com/ettisberger/andybioticlaw/compare/v0.5.3...v0.5.4) (2026-04-24)
+
+
+### Bug Fixes
+
+* **installer:** stream install.sh output live for interactive flows ([b04bc6b](https://github.com/ettisberger/andybioticlaw/commit/b04bc6b54185e1c5c6fd6496f2332ba440a56ca4))
+
 ## [0.5.3](https://github.com/ettisberger/andybioticlaw/compare/v0.5.2...v0.5.3) (2026-04-24)
 
 
