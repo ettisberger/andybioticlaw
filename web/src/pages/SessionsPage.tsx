@@ -138,10 +138,10 @@ export function SessionsPage() {
           <button
             key={f.label}
             onClick={() => setFilter(f.status)}
-            className={`rounded-lg px-3 py-1.5 text-xs font-medium border ${
+            className={`rounded-lg px-3 py-1.5 text-xs font-medium border backdrop-blur-sm ${
               filter === f.status
                 ? 'bg-accent-bg border-accent/30 text-accent-ink'
-                : 'bg-surface border-line text-ink-dim hover:bg-surface-muted hover:text-ink'
+                : 'bg-surface/50 border-line/60 text-ink-dim hover:bg-surface hover:text-ink'
             }`}
           >
             {f.label}

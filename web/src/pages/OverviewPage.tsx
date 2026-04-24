@@ -3,9 +3,20 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Bot } from 'lucide-react';
 import { apiGet, formatTs } from '../lib/api';
-import { Badge, Card, ErrorBanner } from '../components/ui';
+import { Badge, Card, ErrorBanner, LiveDot } from '../components/ui';
 import { Sparkline } from '../components/charts/Sparkline';
 import { formatUsd } from '../lib/pricing';
+
+interface LiveSession {
+  sessionId: string;
+  chatId: string;
+  source: string;
+  startedAt: number;
+  lastDeltaAt: number | null;
+  text: string;
+  toolUses: string[];
+  truncated: boolean;
+}
 
 interface RateLimitSnapshot {
   observedAt: number;
@@ -48,6 +59,7 @@ interface OverviewData {
 
 export function OverviewPage() {
   const [data, setData] = useState<OverviewData | null>(null);
+  const [live, setLive] = useState<LiveSession[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
@@ -72,12 +84,31 @@ export function OverviewPage() {
     };
   }, []);
 
+  // Separate fast poll for live sessions — the hero's "Right now" strip.
+  useEffect(() => {
+    let cancelled = false;
+    async function tick() {
+      try {
+        const r = await apiGet<{ live: LiveSession[] }>('/api/sessions/live');
+        if (!cancelled) setLive(r.live);
+      } catch {
+        /* transient — leave last value */
+      }
+    }
+    tick();
+    const h = setInterval(tick, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(h);
+    };
+  }, []);
+
   if (error) return <ErrorBanner>{error}</ErrorBanner>;
   if (!data) return <div className="text-ink-dim">loading…</div>;
 
   return (
     <div>
-      <AgentHeroCard data={data} />
+      <AgentHeroCard data={data} live={live} now={now} />
 
       {/* Status strip */}
       <div className="mb-5 grid grid-cols-4 gap-4">
@@ -356,18 +387,29 @@ function SubscriptionWindowCard({
 }
 
 /**
- * Header card at the top of the Overview. Shows the bot's Telegram avatar
- * (or a Bot-icon fallback), the agent name as a heading, and runtime
- * context chips below. Used in place of the old PageTitle.
+ * Top hero card — combines agent identity, live activity, and a budget
+ * mini-gauge into one "glance your phone, see everything" panel. The
+ * three sub-sections are visually separated by hairline dividers.
  */
-function AgentHeroCard({ data }: { data: OverviewData }) {
+function AgentHeroCard({
+  data,
+  live,
+  now,
+}: {
+  data: OverviewData;
+  live: LiveSession[];
+  now: number;
+}) {
   const [avatarFailed, setAvatarFailed] = useState(false);
   const showAvatar = data.bot.hasAvatar && !avatarFailed;
 
+  const pct = data.budget.limit > 0 ? Math.min(100, (data.budget.used / data.budget.limit) * 100) : 0;
+  const barTone = pct >= 95 ? 'bg-error' : pct >= 75 ? 'bg-warn' : 'bg-success';
+
   return (
-    <div className="mb-6 overflow-hidden rounded-2xl border border-line bg-surface">
+    <div className="glass glass-highlight mb-6 overflow-hidden rounded-3xl">
+      {/* Identity row */}
       <div className="flex items-center gap-5 px-6 py-5">
-        {/* Avatar */}
         <div className="shrink-0">
           {showAvatar ? (
             <img
@@ -383,10 +425,9 @@ function AgentHeroCard({ data }: { data: OverviewData }) {
           )}
         </div>
 
-        {/* Identity + meta */}
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
           <div className="flex items-baseline gap-2">
-            <h1 className="text-2xl font-semibold tracking-tight text-ink">
+            <h1 className="text-[26px] font-semibold tracking-tight text-ink">
               {data.agentName}
             </h1>
             {data.bot.username && (
@@ -442,13 +483,94 @@ function AgentHeroCard({ data }: { data: OverviewData }) {
           </div>
         </div>
       </div>
+
+      {/* Right-now strip — hairline divider above */}
+      <div className="border-t border-line/60 px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.14em] text-ink-faint">
+            <LiveDot />
+            Right now
+          </div>
+          <div className="text-xs text-ink-faint">
+            updates every 2s
+          </div>
+        </div>
+
+        {live.length === 0 ? (
+          <div className="mt-2 text-sm text-ink-dim">
+            Emma is quiet — no sessions in flight.
+          </div>
+        ) : (
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            {live.slice(0, 4).map((l) => (
+              <Link
+                key={l.sessionId}
+                to={`/sessions/${l.sessionId}`}
+                className="rounded-xl border border-line/60 bg-surface/40 px-3 py-2 text-left backdrop-blur-sm hover:bg-surface/70"
+              >
+                <div className="flex items-center justify-between text-xs text-ink-dim">
+                  <span className="font-mono text-info-ink">
+                    {l.sessionId.slice(0, 8)}…
+                  </span>
+                  <span>
+                    {l.source} · {Math.max(0, Math.floor((now - l.startedAt) / 1000))}s
+                  </span>
+                </div>
+                {l.toolUses.length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {l.toolUses.slice(-3).map((t, i) => (
+                      <span
+                        key={i}
+                        className="rounded bg-surface-muted px-1.5 py-0.5 font-mono text-[10px] text-ink-dim"
+                      >
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {l.text && (
+                  <div className="mt-1.5 line-clamp-2 text-xs text-ink-dim">
+                    {l.text.length > 160 ? '…' + l.text.slice(-160) : l.text}
+                  </div>
+                )}
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Budget mini-gauge — hairline divider above */}
+      <div className="border-t border-line/60 px-6 py-4">
+        <div className="flex items-center justify-between text-xs">
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] uppercase tracking-[0.14em] text-ink-faint">
+              Daily budget
+            </span>
+            <span className="font-medium text-ink tabular-nums">
+              {pct.toFixed(0)}%
+            </span>
+            <span className="text-ink-faint tabular-nums">
+              {formatCompact(data.budget.used)} / {formatCompact(data.budget.limit)} tok
+            </span>
+          </div>
+          <span className="text-ink-faint">
+            resets in {formatDuration(Math.max(0, data.budget.nextResetMs - now))}
+          </span>
+        </div>
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-muted">
+          <div
+            className={`h-full rounded-full ${barTone} transition-all`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      </div>
     </div>
   );
 }
 
 function HeroChip({ children }: { children: ReactNode }) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface-muted px-2.5 py-1 text-ink-dim">
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-line/60 bg-surface/50 px-2.5 py-1 text-ink-dim backdrop-blur-sm">
       {children}
     </span>
   );

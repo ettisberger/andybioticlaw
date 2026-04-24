@@ -83,12 +83,12 @@ export function MemoryPage() {
           placeholder="Search key, value, or source…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 min-w-[12rem] rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-ink placeholder:text-ink-faint focus:border-accent/50 focus:outline-none"
+          className="flex-1 min-w-[12rem] rounded-lg border border-line bg-surface/60 px-3 py-1.5 text-sm text-ink backdrop-blur-sm placeholder:text-ink-faint focus:border-accent/50 focus:outline-none"
         />
         <select
           value={scope}
           onChange={(e) => setScope(e.target.value)}
-          className="rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-ink"
+          className="rounded-lg border border-line bg-surface/60 px-3 py-1.5 text-sm text-ink backdrop-blur-sm"
         >
           <option value="">All scopes</option>
           {scopes.map((s) => (

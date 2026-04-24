@@ -34,7 +34,7 @@ export function AuditPage() {
           value={kindFilter}
           onChange={(e) => setKindFilter(e.target.value)}
           placeholder="filter by kind"
-          className="rounded border border-line bg-surface-muted px-3 py-1.5 text-sm text-ink placeholder:text-ink-faint"
+          className="rounded-lg border border-line bg-surface/60 px-3 py-1.5 text-sm text-ink backdrop-blur-sm placeholder:text-ink-faint"
         />
       </div>
       {rows.length === 0 ? (

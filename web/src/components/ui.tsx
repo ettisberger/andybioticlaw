@@ -6,8 +6,8 @@ import type {
 } from 'react';
 
 /**
- * PageTitle — top of each route. Balanced against the generous padding of
- * the main content area; subtitle sits one line below, muted.
+ * PageTitle — top of each route. Slightly larger than before, tighter
+ * tracking for the glass aesthetic.
  */
 export function PageTitle({
   children,
@@ -18,7 +18,7 @@ export function PageTitle({
 }) {
   return (
     <div className="mb-8">
-      <h1 className="text-2xl font-semibold tracking-tight text-ink">
+      <h1 className="text-[26px] font-semibold tracking-tight text-ink">
         {children}
       </h1>
       {subtitle && (
@@ -29,19 +29,26 @@ export function PageTitle({
 }
 
 /**
- * Card — the main content container. White surface, hair-thin line,
- * generous inner padding. Lifts subtly off the warm canvas.
+ * Card — the default content container. Translucent surface with
+ * backdrop blur + hairline border + soft ambient shadow. Reads as a
+ * floating glass panel against the mesh gradient backdrop.
+ *
+ * Pass `tone="strong"` for the rare spot (e.g. sidebar, sticky header)
+ * that should feel more opaque.
  */
 export function Card({
   children,
   className = '',
+  tone = 'default',
 }: {
   children: ReactNode;
   className?: string;
+  tone?: 'default' | 'strong';
 }) {
+  const toneClass = tone === 'strong' ? 'glass-strong' : 'glass';
   return (
     <div
-      className={`rounded-xl border border-line bg-surface p-5 ${className}`}
+      className={`glass-highlight rounded-2xl p-5 ${toneClass} ${className}`}
     >
       {children}
     </div>
@@ -49,8 +56,8 @@ export function Card({
 }
 
 /**
- * Badge — pastel-filled pill with readable ink. The five tones map to
- * the semantic state palette defined in index.css.
+ * Badge — pastel-filled pill with readable ink. Six tones mapped to
+ * the semantic palette in index.css.
  */
 export function Badge({
   children,
@@ -77,9 +84,9 @@ export function Badge({
 }
 
 /**
- * Button — three variants. `default` is the safe bet; `primary` for the
- * single main CTA on a view; `danger` for destructive; `ghost` for
- * low-visual-weight actions that live inside a table row or card footer.
+ * Button — four variants. `default` is the glass-native button (works
+ * on any background); `primary` for main CTAs; `danger` for destructive;
+ * `ghost` for row-level actions that shouldn't grab attention.
  */
 export function Button({
   children,
@@ -91,14 +98,14 @@ export function Button({
   const base =
     'inline-flex items-center justify-center rounded-lg px-3 py-1.5 text-sm font-medium ' +
     'disabled:cursor-not-allowed disabled:opacity-50 ' +
-    'focus:outline-none focus:ring-2 focus:ring-accent/40 focus:ring-offset-2 focus:ring-offset-surface';
+    'focus:outline-none focus:ring-2 focus:ring-accent/40 focus:ring-offset-2 focus:ring-offset-bg';
   const variantClass = {
     default:
-      'bg-surface border border-line text-ink hover:bg-surface-muted hover:border-line-strong',
+      'border border-line bg-surface/60 text-ink backdrop-blur-sm hover:bg-surface hover:border-line-strong',
     primary:
-      'bg-accent text-white border border-accent hover:brightness-95',
+      'border border-accent bg-accent text-white hover:brightness-95 shadow-sm',
     danger:
-      'bg-error text-white border border-error hover:brightness-95',
+      'border border-error bg-error text-white hover:brightness-95 shadow-sm',
     ghost:
       'bg-transparent text-ink-dim hover:bg-accent-bg hover:text-accent-ink',
   }[variant];
@@ -110,8 +117,8 @@ export function Button({
 }
 
 /**
- * Table — rounded container with soft row dividers. Header is a muted
- * wash with uppercase micro-labels.
+ * Table — glass container with soft row dividers. Header is a muted
+ * translucent wash with uppercase micro-labels.
  */
 export function Table({
   children,
@@ -122,7 +129,7 @@ export function Table({
 }) {
   return (
     <div
-      className={`overflow-auto rounded-xl border border-line bg-surface ${className}`}
+      className={`glass glass-highlight overflow-auto rounded-2xl ${className}`}
     >
       <table className="w-full text-left text-sm">{children}</table>
     </div>
@@ -148,12 +155,12 @@ export function Td(props: HTMLAttributes<HTMLTableCellElement>) {
 }
 
 /**
- * Empty — dashed placeholder for "nothing yet" states. Friendlier than
- * a plain line of text, but visually quiet.
+ * Empty — dashed-outline placeholder for "nothing yet" states. Quiet,
+ * friendly, glass-tinted.
  */
 export function Empty({ message }: { message: string }) {
   return (
-    <div className="rounded-xl border border-dashed border-line bg-surface-muted/40 px-6 py-10 text-center text-sm text-ink-faint">
+    <div className="rounded-2xl border border-dashed border-line bg-surface/30 px-6 py-10 text-center text-sm text-ink-faint backdrop-blur-sm">
       {message}
     </div>
   );
@@ -165,27 +172,26 @@ export function Empty({ message }: { message: string }) {
  */
 export function ErrorBanner({ children }: { children: ReactNode }) {
   return (
-    <div className="mb-4 rounded-xl border border-error/30 bg-error-bg px-4 py-3 text-sm text-error-ink">
+    <div className="mb-4 rounded-2xl border border-error/30 bg-error-bg/70 px-4 py-3 text-sm text-error-ink backdrop-blur-sm">
       {children}
     </div>
   );
 }
 
 /**
- * InfoBanner — pastel-blue equivalent of ErrorBanner for soft notices
- * like "nothing to do here, but here's why".
+ * InfoBanner — pastel-blue equivalent of ErrorBanner for soft notices.
  */
 export function InfoBanner({ children }: { children: ReactNode }) {
   return (
-    <div className="mb-4 rounded-xl border border-info/30 bg-info-bg px-4 py-3 text-sm text-info-ink">
+    <div className="mb-4 rounded-2xl border border-info/30 bg-info-bg/70 px-4 py-3 text-sm text-info-ink backdrop-blur-sm">
       {children}
     </div>
   );
 }
 
 /**
- * StatNumber — large numeric display used in overview cards. Tight
- * letter-spacing pairs well with the pastel accents.
+ * StatNumber — large numeric display used in overview / hero cards.
+ * Tabular nums so aligned rows of numbers don't jitter as digits change.
  */
 export function StatNumber({
   value,
@@ -198,7 +204,7 @@ export function StatNumber({
 }) {
   return (
     <div className={`flex items-baseline gap-1.5 ${className}`}>
-      <span className="text-3xl font-semibold tracking-tight text-ink">
+      <span className="text-3xl font-semibold tracking-tight text-ink tabular-nums">
         {value}
       </span>
       {suffix && <span className="text-sm text-ink-dim">{suffix}</span>}
@@ -207,13 +213,26 @@ export function StatNumber({
 }
 
 /**
- * CardLabel — little uppercase label that goes above StatNumber or a
- * card's first line of content.
+ * CardLabel — little uppercase label above StatNumber.
  */
 export function CardLabel({ children }: { children: ReactNode }) {
   return (
     <div className="text-[11px] font-medium uppercase tracking-wider text-ink-faint">
       {children}
     </div>
+  );
+}
+
+/**
+ * LiveDot — pulsing indicator for "something is happening right now".
+ * Standardised here so every page uses the same visual signal.
+ */
+export function LiveDot({ size = 'sm' }: { size?: 'sm' | 'md' }) {
+  const s = size === 'md' ? 'h-2.5 w-2.5' : 'h-2 w-2';
+  return (
+    <span className={`relative flex ${s}`}>
+      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent/60" />
+      <span className={`relative inline-flex ${s} rounded-full bg-accent`} />
+    </span>
   );
 }

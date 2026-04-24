@@ -1,5 +1,6 @@
 import { Outlet, NavLink } from 'react-router-dom';
 import { Bot } from 'lucide-react';
+import { ThemeToggle } from './components/theme';
 
 const NAV_ITEMS = [
   { to: '/overview', label: 'Overview' },
@@ -15,19 +16,18 @@ const NAV_ITEMS = [
 
 export function App() {
   return (
-    <div className="flex h-screen bg-bg">
-      <aside className="flex w-60 shrink-0 flex-col border-r border-line bg-surface px-4 py-6">
+    <div className="flex h-screen">
+      {/* Glass sidebar — sits on top of the gradient mesh. Uses a
+          slightly stronger blur than content cards so nav stays readable
+          even over busy backdrops. */}
+      <aside className="glass-strong glass-highlight m-3 flex w-56 shrink-0 flex-col rounded-2xl px-3 py-5">
         <div className="mb-8 px-2">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent-bg text-accent-ink">
-              <Bot
-                size={24}
-                strokeWidth={2}
-                aria-label="andybioticlaw"
-              />
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-bg text-accent-ink">
+              <Bot size={22} strokeWidth={2} aria-label="andybioticlaw" />
             </div>
             <div>
-              <div className="text-[11px] font-medium uppercase tracking-wider text-ink-faint">
+              <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-ink-faint">
                 service
               </div>
               <div className="text-sm font-semibold text-ink">
@@ -62,13 +62,19 @@ export function App() {
           ))}
         </nav>
 
-        <div className="mt-auto pt-6">
-          <div className="rounded-lg bg-surface-muted/60 px-3 py-2.5">
-            <div className="text-[11px] font-medium uppercase tracking-wider text-ink-faint">
+        <div className="mt-auto space-y-3 pt-6">
+          <div className="flex items-center justify-between">
+            <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-ink-faint">
+              theme
+            </div>
+            <ThemeToggle />
+          </div>
+          <div className="rounded-xl border border-line/60 bg-surface/40 px-3 py-2.5 backdrop-blur-sm">
+            <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-ink-faint">
               Tip
             </div>
             <div className="mt-1 text-xs leading-relaxed text-ink-dim">
-              CLI still covers what the dashboard can't — e.g.{' '}
+              CLI still covers what the dashboard can&apos;t — e.g.{' '}
               <code className="rounded bg-surface px-1 py-0.5 text-[11px] text-ink">
                 andybioticlaw schedule add
               </code>
@@ -79,7 +85,7 @@ export function App() {
       </aside>
 
       <main className="flex-1 overflow-auto">
-        <div className="mx-auto max-w-7xl px-8 py-8">
+        <div className="fade-in mx-auto max-w-7xl px-8 py-8">
           <Outlet />
         </div>
       </main>

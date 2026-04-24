@@ -2,47 +2,43 @@
 
 @theme {
   /* --- Canvas --------------------------------------------------------- */
-  /* Warm off-white base — reads calmer than pure white, especially next
-     to the pastel accents. Surfaces (cards, nav) are pure white so they
-     lift visibly without needing heavy shadows or borders. */
-  --color-bg: #faf9f6;
+  /* Slightly warmer than before — lets the gradient mesh show through
+     the translucent glass panels without feeling muddy. */
+  --color-bg: #f6f3ed;
   --color-surface: #ffffff;
-  --color-surface-muted: #f5f3ee;
-  --color-surface-sunken: #efede6;
+  --color-surface-muted: #f0eee7;
+  --color-surface-sunken: #e9e6de;
 
   /* --- Ink ------------------------------------------------------------ */
-  /* Deep slate instead of pure black — less clinical, easier on the eye
-     against the warm canvas. */
-  --color-ink: #2a2a2e;
-  --color-ink-dim: #606068;
-  --color-ink-faint: #9696a0;
+  --color-ink: #1f2028;
+  --color-ink-dim: #5a5b66;
+  --color-ink-faint: #8d8e9a;
 
-  /* --- Lines ---------------------------------------------------------- */
-  --color-line: #eceae3;
-  --color-line-strong: #d9d6ce;
+  /* --- Lines (hairline borders for glass) ----------------------------- */
+  --color-line: #e3dfd5;
+  --color-line-strong: #cfcabe;
 
-  /* --- Accent = soft lavender ---------------------------------------- */
-  /* Used for active nav, primary CTAs, links. Muted enough not to shout. */
-  --color-accent: #b4a3dc;
-  --color-accent-ink: #6c5ca5;
-  --color-accent-bg: #f0eafa;
+  /* --- Accent = soft lavender (unchanged identity) ------------------- */
+  --color-accent: #9b8bd9;
+  --color-accent-ink: #5e4da3;
+  --color-accent-bg: #ece3fc;
 
-  /* --- Pastel state colors ------------------------------------------- */
-  --color-success: #a4c49a;
-  --color-success-ink: #436d3b;
-  --color-success-bg: #edf3ea;
+  /* --- Pastel state palette ------------------------------------------ */
+  --color-success: #6fa16b;
+  --color-success-ink: #406c3b;
+  --color-success-bg: #e2ecdc;
 
-  --color-warn: #e6c38e;
-  --color-warn-ink: #856028;
-  --color-warn-bg: #faf0df;
+  --color-warn: #d8a866;
+  --color-warn-ink: #7a561f;
+  --color-warn-bg: #f5e5c9;
 
-  --color-error: #d8a0a9;
+  --color-error: #d07a8b;
   --color-error-ink: #9c3f55;
-  --color-error-bg: #f8ebef;
+  --color-error-bg: #f4dbe1;
 
-  --color-info: #a9c3de;
+  --color-info: #7aa1c8;
   --color-info-ink: #3f6085;
-  --color-info-bg: #ebf0f8;
+  --color-info-bg: #dde8f4;
 
   /* --- Typography ----------------------------------------------------- */
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
@@ -50,13 +46,70 @@
   --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono',
     monospace;
 
-  /* --- Radii / shadows ----------------------------------------------- */
+  /* --- Radii ---------------------------------------------------------- */
   --radius-sm: 0.375rem;
   --radius: 0.625rem;
   --radius-lg: 0.875rem;
   --radius-xl: 1.125rem;
+  --radius-2xl: 1.5rem;
+
+  /* --- Glass shadows ------------------------------------------------- */
+  /* Two layers: sharp contact shadow for crispness + wide soft shadow
+     for the floating feel. Softer tints than pure black to match the
+     warm palette. */
+  --shadow-glass: 0 1px 2px rgba(20, 18, 38, 0.04),
+    0 8px 24px rgba(70, 55, 110, 0.08);
+  --shadow-glass-lg: 0 2px 4px rgba(20, 18, 38, 0.05),
+    0 16px 40px rgba(70, 55, 110, 0.12);
 }
 
+/* ---------------------------------------------------------------------- */
+/* Dark mode — same token names, different values. The ThemeProvider       */
+/* toggles [data-theme="dark"] on the root element and every Tailwind      */
+/* utility backed by a CSS var picks up the new value automatically.       */
+/* ---------------------------------------------------------------------- */
+:root[data-theme="dark"] {
+  --color-bg: #0b0c12;
+  --color-surface: #181a24;
+  --color-surface-muted: #20222e;
+  --color-surface-sunken: #131520;
+
+  --color-ink: #ebebef;
+  --color-ink-dim: #a4a6b2;
+  --color-ink-faint: #6e7080;
+
+  --color-line: #2c2e3c;
+  --color-line-strong: #3f4152;
+
+  --color-accent: #a896e3;
+  --color-accent-ink: #d6c8f5;
+  --color-accent-bg: #372d57;
+
+  --color-success: #84af7a;
+  --color-success-ink: #c6e3bd;
+  --color-success-bg: #2d4229;
+
+  --color-warn: #d9a95f;
+  --color-warn-ink: #f5d7a0;
+  --color-warn-bg: #493819;
+
+  --color-error: #d67e91;
+  --color-error-ink: #f3bac7;
+  --color-error-bg: #4a2a32;
+
+  --color-info: #7aa2ca;
+  --color-info-ink: #c7dcf2;
+  --color-info-bg: #263a4e;
+
+  --shadow-glass: 0 1px 2px rgba(0, 0, 0, 0.5),
+    0 12px 32px rgba(0, 0, 0, 0.35);
+  --shadow-glass-lg: 0 2px 4px rgba(0, 0, 0, 0.55),
+    0 20px 48px rgba(0, 0, 0, 0.45);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Base elements                                                           */
+/* ---------------------------------------------------------------------- */
 html, body, #root {
   height: 100%;
   margin: 0;
@@ -67,9 +120,63 @@ body {
   color: var(--color-ink);
   font-family: var(--font-sans);
   font-size: 14px;
-  font-feature-settings: 'cv11', 'ss01';
+  font-feature-settings: 'cv11', 'ss01', 'ss03';
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+/* Soft gradient mesh backdrop that makes glass panels actually feel
+   like they're sitting on something. Two radial blobs in the accent
+   and info tones plus a warn tint for variety; stays subtle, never
+   competes with content. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      45vmax 45vmax at 8% 10%,
+      color-mix(in srgb, var(--color-accent) 32%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      35vmax 35vmax at 92% 85%,
+      color-mix(in srgb, var(--color-info) 28%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      30vmax 30vmax at 60% 45%,
+      color-mix(in srgb, var(--color-warn) 14%, transparent),
+      transparent 75%
+    );
+}
+
+:root[data-theme="dark"] body::before {
+  background:
+    radial-gradient(
+      45vmax 45vmax at 8% 10%,
+      color-mix(in srgb, var(--color-accent) 25%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      35vmax 35vmax at 92% 85%,
+      color-mix(in srgb, var(--color-info) 22%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      30vmax 30vmax at 60% 45%,
+      color-mix(in srgb, var(--color-accent) 10%, transparent),
+      transparent 75%
+    );
+}
+
+#root {
+  position: relative;
+  z-index: 1;
 }
 
 pre, code {
@@ -77,7 +184,9 @@ pre, code {
   font-size: 12.5px;
 }
 
-/* Subtle scrollbars that match the calm aesthetic. */
+/* ---------------------------------------------------------------------- */
+/* Scrollbars — bind to tokens so they flip with theme automatically       */
+/* ---------------------------------------------------------------------- */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -88,13 +197,18 @@ pre, code {
 ::-webkit-scrollbar-thumb {
   background: var(--color-line-strong);
   border-radius: 8px;
-  border: 2px solid var(--color-bg);
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-ink-faint);
+  background-clip: padding-box;
+  border: 2px solid transparent;
 }
 
-/* Pulse for live indicators. */
+/* ---------------------------------------------------------------------- */
+/* Motion                                                                   */
+/* ---------------------------------------------------------------------- */
 @keyframes softPulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
@@ -103,9 +217,68 @@ pre, code {
   animation: softPulse 2s ease-in-out infinite;
 }
 
-/* Smooth transitions on interactive elements. */
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-in {
+  animation: fadeSlideIn 240ms cubic-bezier(0.2, 0, 0, 1) both;
+}
+
 button, a {
-  transition-property: background-color, color, border-color, opacity, transform;
+  transition-property: background-color, color, border-color, opacity, transform, box-shadow;
   transition-duration: 150ms;
   transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Glass utility — apply to any container you want to look like a panel    */
+/* ---------------------------------------------------------------------- */
+.glass {
+  background-color: color-mix(in srgb, var(--color-surface) 70%, transparent);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border: 1px solid var(--color-line);
+  box-shadow: var(--shadow-glass);
+}
+.glass-strong {
+  background-color: color-mix(in srgb, var(--color-surface) 85%, transparent);
+  backdrop-filter: blur(28px) saturate(160%);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+  border: 1px solid var(--color-line);
+  box-shadow: var(--shadow-glass-lg);
+}
+
+/* Subtle top-edge highlight — the Apple-glass signature. One-pixel
+   inner bevel that catches the gradient behind it. Most visible on
+   dark mode; provides a quiet lift in light mode too. */
+.glass-highlight {
+  position: relative;
+}
+.glass-highlight::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--color-surface) 90%, white),
+    transparent 40%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0.7;
+}
+:root[data-theme="dark"] .glass-highlight::before {
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, white 8%, transparent),
+    transparent 40%
+  );
+  opacity: 1;
 }
