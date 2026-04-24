@@ -34,12 +34,26 @@ export const TelegramGroupConfig = z.object({
   workspaceBase: z.string().min(1),
 });
 
+/**
+ * Voice-input pre-processing for Telegram DMs. The on/off toggle itself
+ * lives in SQLite (`voice_state.enabled`) so it can be flipped from the
+ * CLI menu without a service restart. These knobs are the parts that
+ * *rarely* change — they fit better as static config.
+ */
+export const TelegramVoiceConfig = z.object({
+  /** Reject voice messages longer than this (Telegram → Groq upload cap). */
+  maxDurationSec: z.number().int().min(5).max(600).default(120),
+  /** 'auto' lets Groq detect; otherwise ISO-639-1 code passed verbatim. */
+  language: z.string().default('auto'),
+});
+
 export const TelegramConfig = z.object({
   dm: TelegramDmConfig,
   group: TelegramGroupConfig,
   streamEditIntervalMs: z.number().int().min(200).max(10_000),
   longTaskNotifyAfterMs: z.number().int().min(1_000),
   conversationHistoryLimit: z.number().int().min(0).max(500),
+  voice: TelegramVoiceConfig.default({ maxDurationSec: 120, language: 'auto' }),
 });
 
 export const BudgetConfig = z.object({

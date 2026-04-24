@@ -38,6 +38,7 @@ import { createAuthChecker } from './telegram/auth.js';
 import { createTelegramService } from './telegram/bot.js';
 import { createSchedulesRepo } from './db/repositories/schedules.js';
 import { createBudgetStateRepo } from './db/repositories/budget-state.js';
+import { createVoiceStateRepo } from './db/repositories/voice-state.js';
 import { createSchedulerEngine } from './scheduler/engine.js';
 import { createDashboard } from './dashboard/server.js';
 import type { DispatchDeps } from './agent/dispatch.js';
@@ -96,6 +97,7 @@ async function main(): Promise<void> {
   const memoryRepo = createMemoryRepo(dbHandle.db);
   const schedulesRepo = createSchedulesRepo(dbHandle.db);
   const budgetStateRepo = createBudgetStateRepo(dbHandle.db);
+  const voiceStateRepo = createVoiceStateRepo(dbHandle.db);
 
   const orphanResult = sessions.markRunningAsOrphaned();
   if (orphanResult.count > 0) {
@@ -251,6 +253,8 @@ async function main(): Promise<void> {
         longTaskNotifyAfterMs: () => config.telegram.longTaskNotifyAfterMs,
         conversationHistoryLimit: () => config.telegram.conversationHistoryLimit,
         memoryAutoAccept: () => config.memory.autoAccept,
+        voiceMaxDurationSec: () => config.telegram.voice.maxDurationSec,
+        voiceLanguage: () => config.telegram.voice.language,
       },
       logger,
       audit,
@@ -271,6 +275,7 @@ async function main(): Promise<void> {
         secrets.getSecret(secretName, { skill: skillName }),
       rateLimitTracker,
       liveSessions,
+      voiceState: voiceStateRepo,
     });
     telegramQueueDepths = () => telegram!.queue.depths();
 

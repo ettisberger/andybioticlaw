@@ -69,6 +69,13 @@ export async function runInteractiveMenu(): Promise<void> {
           },
         });
         items.push({
+          label: 'Configure voice input — Groq API key + enable/disable',
+          handler: async () => {
+            const { runVoiceMenuCommand } = await import('./voice-menu.js');
+            await runVoiceMenuCommand();
+          },
+        });
+        items.push({
           label: 'Update — git pull + rebuild + prune dev deps',
           handler: async () => {
             const { runUpdateCommand } = await import('./update.js');

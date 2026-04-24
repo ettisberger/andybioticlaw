@@ -16,6 +16,8 @@ import type {
 } from '../../agent/session.js';
 import { dispatchUserPrompt } from '../../agent/dispatch.js';
 import type { DispatchDeps } from '../../agent/dispatch.js';
+import type { VoiceStateRepo } from '../../db/repositories/voice-state.js';
+import { downloadVoiceMessage, transcribeWithGroq } from '../voice.js';
 
 export interface TelegramSubmitOptions {
   /** Set when this prompt is a `/retry` of a prior session — audit row
@@ -60,6 +62,14 @@ export interface DmHandlerDeps {
   dbPath: string;
   sessionWorkspaceRoot: string;
   memoryProposalServer: { command: string; args: string[] };
+  /** Voice-input feature state (enabled flag + audit timestamp). */
+  voiceState: VoiceStateRepo;
+  /** Reject voice messages longer than this (seconds). */
+  voiceMaxDurationSec: () => number;
+  /** Groq Whisper language hint; `'auto'` lets the model detect. */
+  voiceLanguage: () => string;
+  /** Telegram bot token (needed for the file-download URL). */
+  botToken: string;
 }
 
 function dispatchDepsFromHandler(deps: DmHandlerDeps): DispatchDeps {
@@ -144,6 +154,86 @@ export function registerDmHandler(deps: DmHandlerDeps): TelegramDmSubmit {
     await submit(ctx, text);
   });
 
+  // Voice-message pre-processor. Runs before the non-text reject below
+  // so voice messages get transcribed via Groq Whisper and fed into the
+  // normal text-DM path. The feature is gated by two things:
+  //   (a) `voiceState.enabled` (operator toggle in the CLI menu — hot,
+  //       no restart needed)
+  //   (b) `GROQ_API_KEY` in process.env (operator paste in the same
+  //       menu; requires a restart to pick up)
+  // Either missing → polite refusal. Duration cap rejects before we
+  // even download. Any error from download or transcription surfaces
+  // verbatim so the operator can diagnose Groq rate-limit / auth / etc.
+  deps.bot.on('message:voice', async (ctx, next) => {
+    if (ctx.chat?.type !== 'private') {
+      await next();
+      return;
+    }
+    const voice = ctx.message?.voice;
+    if (!voice) {
+      await next();
+      return;
+    }
+
+    if (!deps.voiceState.getEnabled()) {
+      await ctx.reply(
+        '🎙 Voice input is currently disabled. Send a text message, or enable voice from the CLI menu.',
+      );
+      return;
+    }
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey) {
+      await ctx.reply(
+        '🎙 Voice input is enabled but no GROQ_API_KEY is configured on the server. Set one via the CLI menu and restart the service.',
+      );
+      return;
+    }
+    const maxDuration = deps.voiceMaxDurationSec();
+    if ((voice.duration ?? 0) > maxDuration) {
+      await ctx.reply(
+        `🎙 Voice message is too long (${voice.duration}s > ${maxDuration}s cap). Send a shorter clip or raise telegram.voice.maxDurationSec in config.yaml.`,
+      );
+      return;
+    }
+
+    // Best-effort "recording" indicator — signals "I heard your voice
+    // and I'm working on it". Ignored if Telegram hiccups.
+    void ctx.api.sendChatAction(ctx.chat.id, 'typing').catch(() => {});
+
+    try {
+      const audio = await downloadVoiceMessage(
+        deps.api,
+        voice.file_id,
+        deps.botToken,
+      );
+      const { text } = await transcribeWithGroq(audio, {
+        apiKey,
+        language: deps.voiceLanguage(),
+      });
+      if (!text) {
+        await ctx.reply(
+          "🎙 I couldn't make out any words in that clip. Try again in a quieter spot?",
+        );
+        return;
+      }
+      // Prefix the text so Emma knows the channel was voice (useful for
+      // her to tailor tone — e.g. briefer replies when the user is
+      // on-the-go). The prefix is visible to her but NOT re-echoed to
+      // the user; the user just sees Emma's response.
+      deps.logger.info(
+        { chatId: ctx.chat.id, duration: voice.duration, chars: text.length },
+        'voice transcribed',
+      );
+      await submit(ctx, `[🎙 voice] ${text}`);
+    } catch (e) {
+      deps.logger.warn(
+        { err: (e as Error).message, chatId: ctx.chat.id },
+        'voice transcription failed',
+      );
+      await ctx.reply(`🎙 Couldn't transcribe that: ${(e as Error).message}`);
+    }
+  });
+
   deps.bot.on('message', async (ctx, next) => {
     if (ctx.chat?.type !== 'private') {
       // Non-private non-text → let group reject handle it.
@@ -159,10 +249,15 @@ export function registerDmHandler(deps: DmHandlerDeps): TelegramDmSubmit {
       await next();
       return;
     }
-    // Non-text (photo, sticker, voice, …) in a DM → tell the user we
-    // don't handle it. Nothing downstream cares about this kind of
-    // update, so we don't need to forward.
-    await ctx.reply('I can only handle text messages for now.');
+    if (ctx.message?.voice !== undefined) {
+      // Already handled by the message:voice middleware above — don't
+      // fall through to the generic "text only" refusal.
+      return;
+    }
+    // Non-text (photo, sticker, …) in a DM → tell the user we don't
+    // handle it. Nothing downstream cares about this kind of update,
+    // so we don't need to forward.
+    await ctx.reply('I can only handle text and voice messages for now.');
   });
 
   return submit;

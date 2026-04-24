@@ -61,7 +61,7 @@ describe('migration runner — fresh boot', () => {
         .prepare<[], { version: number }>('SELECT version FROM schema_version ORDER BY version')
         .all()
         .map((r) => r.version);
-      expect(versions).toEqual([1, 2, 3, 4, 5]);
+      expect(versions).toEqual([1, 2, 3, 4, 5, 6]);
 
       close();
     } finally {
@@ -80,7 +80,7 @@ describe('migration runner — fresh boot', () => {
       const rows = second.db
         .prepare<[], { n: number }>('SELECT COUNT(*) AS n FROM schema_version')
         .all();
-      expect(rows[0]!.n).toBe(5);
+      expect(rows[0]!.n).toBe(6);
       second.close();
     } finally {
       rmSync(dir, { recursive: true, force: true });

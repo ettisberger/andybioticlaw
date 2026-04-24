@@ -18,6 +18,7 @@ import type { SkillRegistry } from '../skills/registry.js';
 import { createChatRunner, createQueueManager } from '../agent/queue.js';
 import type { RateLimitTracker } from '../agent/rate-limit-tracker.js';
 import type { LiveSessionsTracker } from '../observability/live-sessions.js';
+import type { VoiceStateRepo } from '../db/repositories/voice-state.js';
 import { executeSession } from '../agent/session.js';
 import { registerCommands, TELEGRAM_MENU_COMMANDS } from './handlers/commands.js';
 import { registerDmHandler } from './handlers/dm.js';
@@ -37,6 +38,10 @@ export interface BotConfigView {
   longTaskNotifyAfterMs(): number;
   conversationHistoryLimit(): number;
   memoryAutoAccept(): boolean;
+  /** Reject voice messages longer than this (seconds). */
+  voiceMaxDurationSec(): number;
+  /** Language hint for voice transcription; 'auto' lets the model detect. */
+  voiceLanguage(): string;
 }
 
 export interface BotDeps {
@@ -65,6 +70,8 @@ export interface BotDeps {
   rateLimitTracker?: RateLimitTracker;
   /** In-flight session state for the dashboard's live view. */
   liveSessions?: LiveSessionsTracker;
+  /** Voice-input feature state (enabled flag, toggleable from the CLI menu). */
+  voiceState: VoiceStateRepo;
 }
 
 export interface BotProfile {
@@ -193,6 +200,10 @@ export function createTelegramService(deps: BotDeps): TelegramService {
     dbPath: deps.dbPath,
     sessionWorkspaceRoot: deps.sessionWorkspaceRoot,
     memoryProposalServer: deps.memoryProposalServer,
+    voiceState: deps.voiceState,
+    voiceMaxDurationSec: () => deps.config.voiceMaxDurationSec(),
+    voiceLanguage: () => deps.config.voiceLanguage(),
+    botToken: deps.config.botToken,
   });
 
   registerCommands(bot, {

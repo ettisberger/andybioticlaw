@@ -21,7 +21,14 @@ import type { AuditRepo } from '../db/repositories/audit.js';
 // argon2 hash in config.yaml (`dashboard.basicAuth.passwordHash`) — never
 // a plain password in env. Declaring CLAUDE_CODE_OAUTH_TOKEN here gives us
 // scope-violation auditing if a skill ever tries to read it.
-export const CORE_SECRETS = ['TELEGRAM_BOT_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'] as const;
+export const CORE_SECRETS = [
+  'TELEGRAM_BOT_TOKEN',
+  'CLAUDE_CODE_OAUTH_TOKEN',
+  // Optional: enables voice-message transcription in the Telegram DM
+  // handler via Groq Whisper. When unset, voice messages are politely
+  // refused. Toggleable at runtime via the CLI menu's voice submenu.
+  'GROQ_API_KEY',
+] as const;
 export type CoreSecret = (typeof CORE_SECRETS)[number];
 
 export type SecretContext = 'core' | { skill: string };
