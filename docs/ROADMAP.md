@@ -23,6 +23,13 @@ a one-line add to Backlog is enough — don't gate on a full spec.
 - **Config-page numeric unit heuristics — broader audit** — fixed in
   `844a9b1` for `conversationHistoryLimit → msgs`; other potentially
   wrong units worth auditing as the config grows.
+- **Memory hygiene — re-enable dashboard UI** — DB plumbing is
+  already in (migration 0007, `last_used_at` bumped on every
+  snapshot). Put the Last-used column + Stale filter + pin button
+  back when skill-scoped memories are common or any scope grows
+  past `MemoryManager.snapshot()`'s `maxEntries=50` cutoff — that's
+  when pruning candidates actually differ from "everything Emma
+  has."
 
 ## Backlog — medium scope (a weekend each)
 
@@ -78,8 +85,12 @@ a one-line add to Backlog is enough — don't gate on a full spec.
   keyword + `/opus` / `/haiku` slash prefix) at `src/agent/route.ts`.
   Toggled from Settings → Agent → "Cheap-model router".
   *(see `feat: proactive briefings + model routing + memory hygiene + roadmap`)*
-- **Memory hygiene** — migration 0007 adds `last_used_at` + `pinned`
-  columns. Dashboard Memory page gains a Last-used column, Stale filter,
-  pin button, and a sort dropdown. `MemoryManager.snapshot()` now bumps
-  `last_used_at` for the entries it reads into context.
+- **Memory hygiene — DB plumbing only** — migration 0007 adds
+  `last_used_at` + `pinned` columns. `MemoryManager.snapshot()` bumps
+  `last_used_at` for every entry it reads into context. Dashboard UI
+  + pin endpoint were reverted the same day: for a single-user setup
+  where every DM loads all global/user/chat memories, the Stale
+  filter has nothing meaningful to hide. Data collection continues
+  silently so the UI can come back cheaply once skill-scoped
+  memories or a >50-entry scope makes the distinction meaningful.
   *(see `feat: proactive briefings + model routing + memory hygiene + roadmap`)*

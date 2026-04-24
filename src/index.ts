@@ -401,7 +401,6 @@ async function main(): Promise<void> {
     sessions,
     messages,
     memoryManager,
-    memoryRepo,
     skills: skillRegistry,
     schedules: schedulesRepo,
     heartbeats,

@@ -10,7 +10,6 @@ import type { Logger } from 'pino';
 import type { SessionsRepo } from '../db/repositories/sessions.js';
 import type { MessagesRepo } from '../db/repositories/messages.js';
 import type { MemoryManager } from '../memory/manager.js';
-import type { MemoryRepo } from '../db/repositories/memory.js';
 import type { SkillRegistry } from '../skills/registry.js';
 import type { SchedulesRepo } from '../db/repositories/schedules.js';
 import type { HeartbeatsRepo } from '../db/repositories/heartbeats.js';
@@ -45,7 +44,6 @@ export interface DashboardDeps {
   sessions: SessionsRepo;
   messages: MessagesRepo;
   memoryManager: MemoryManager;
-  memoryRepo: MemoryRepo;
   skills: SkillRegistry;
   schedules: SchedulesRepo;
   heartbeats: HeartbeatsRepo;
@@ -256,7 +254,6 @@ export function createDashboard(deps: DashboardDeps): DashboardService {
   app.register(
     memoryRoutes({
       manager: deps.memoryManager,
-      repo: deps.memoryRepo,
       principalUserId: deps.principalUserId,
     }),
   );
