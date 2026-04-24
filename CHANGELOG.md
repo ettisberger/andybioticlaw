@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.17.0](https://github.com/ettisberger/andybioticlaw/compare/v0.16.0...v0.17.0) (2026-04-24)
+
+
+### Features
+
+* **dashboard:** compact Subscription-window card with info popover ([7d65195](https://github.com/ettisberger/andybioticlaw/commit/7d651954046e929a2ca40e40b2ac29d915a4a665))
+
 ## [0.16.0](https://github.com/ettisberger/andybioticlaw/compare/v0.15.0...v0.16.0) (2026-04-24)
 
 
