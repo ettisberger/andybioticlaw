@@ -203,12 +203,47 @@ function validate(value: string, kind: WizardQuestion['validate']): string | nul
 }
 
 /**
+ * Matches a complete ANSI escape sequence (CSI, SS3, or two-byte Fe code).
+ * Used to strip arrow keys, function keys, and stray control sequences
+ * that would otherwise leak visible chars (`[A`, `[200~`, …) into the
+ * captured input — the prior naive filter only dropped the ESC byte
+ * itself, which meant the rest of each sequence ended up in the value.
+ *
+ *   CSI: ESC [ <params 0x30-0x3F> <intermediate 0x20-0x2F> <final 0x40-0x7E>
+ *   SS3: ESC O <final>
+ *   Fe:  ESC followed by one char in 0x40–0x7E (covers most two-byte codes)
+ */
+const ESC_SEQ_RE =
+  /\x1b(?:\[[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]|O.|[\x40-\x7e])/g;
+
+/**
+ * Remove every ANSI escape sequence (CSI, SS3, two-byte Fe) from a
+ * string. Exported only for unit-testing — external callers should
+ * rely on `runSetupWizard` which applies it transparently.
+ */
+export function stripEscapeSequences(s: string): string {
+  return s.replace(ESC_SEQ_RE, '');
+}
+
+/**
  * Raw-mode prompt. Handles Enter, Ctrl-C/D, backspace. When `mask` is
  * true echoes `*` per keystroke (for secrets); otherwise echoes the char.
  *
  * We deliberately do NOT use Node's readline here — mixing a persistent
  * readline listener with a raw-mode secret prompt produces double-echoed
  * characters. One raw-mode implementation for everything.
+ *
+ * Modern terminals wrap pastes with bracketed-paste markers
+ * (`\x1b[200~…\x1b[201~`). If those leak into the input — or worse, if
+ * a mid-paste newline finalises the line while the marker prefix is
+ * still captured — the stored secret is garbage. We work around it two
+ * ways:
+ *   1. Emit `\x1b[?2004l` before entering raw mode to tell the
+ *      terminal NOT to bracket pastes while we're reading. Restored on
+ *      cleanup so the operator's shell behaves normally afterward.
+ *   2. Defensively strip any CSI / SS3 / Fe escape sequence from
+ *      incoming chunks, in case a terminal ignores our disable request
+ *      or sends arrow keys.
  */
 function readOneLine(
   stdin: Stdin,
@@ -217,11 +252,19 @@ function readOneLine(
   mask: boolean,
 ): Promise<string | null> {
   stdout.write(prompt);
+  // Disable bracketed paste. Some terminals (iTerm2, modern GNOME
+  // Terminal, tmux) enable it by default; the markers would otherwise
+  // be appended to `input` as visible chars.
+  stdout.write('\x1b[?2004l');
   return new Promise((resolve) => {
     let input = '';
 
     const onData = (chunk: Buffer) => {
-      const s = chunk.toString();
+      // Strip complete escape sequences first so arrow-key / function-key
+      // / stray bracketed-paste leftovers don't pollute `input`. ESC
+      // bytes alone (<0x20) are already filtered in the loop below, but
+      // stripping the whole sequence up front keeps that filter honest.
+      const s = stripEscapeSequences(chunk.toString());
       for (const char of s) {
         if (char === '\r' || char === '\n') {
           cleanup();
@@ -250,7 +293,8 @@ function readOneLine(
           }
           continue;
         }
-        // Ignore other control chars (e.g. stray arrow-key escape seqs).
+        // Any remaining control chars (non-ESC, since ESC sequences
+        // were stripped above) — silently drop.
         if (char.charCodeAt(0) < 0x20) continue;
         input += char;
         stdout.write(mask ? '*' : char);
@@ -260,6 +304,10 @@ function readOneLine(
     const cleanup = () => {
       stdin.off('data', onData);
       if (stdin.setRawMode) stdin.setRawMode(false);
+      // Re-enable bracketed paste for the operator's shell after we
+      // hand control back. (Terminals default to "on" post-shell-init,
+      // so we leave them the way we found them.)
+      stdout.write('\x1b[?2004h');
     };
 
     if (stdin.setRawMode) stdin.setRawMode(true);
