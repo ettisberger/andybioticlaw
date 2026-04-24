@@ -42,6 +42,7 @@ import { createVoiceStateRepo } from './db/repositories/voice-state.js';
 import { createSchedulerEngine } from './scheduler/engine.js';
 import { createDashboard } from './dashboard/server.js';
 import type { DispatchDeps } from './agent/dispatch.js';
+import { chooseModel } from './agent/route.js';
 import type { Logger } from 'pino';
 import { dirname } from 'node:path';
 
@@ -255,6 +256,10 @@ async function main(): Promise<void> {
         memoryAutoAccept: () => config.memory.autoAccept,
         voiceMaxDurationSec: () => config.telegram.voice.maxDurationSec,
         voiceLanguage: () => config.telegram.voice.language,
+        // Route DM prompts to Haiku when the operator has opted in. Reads
+        // the current config on every call so hot-reloads take effect
+        // without reconstructing the telegram service.
+        chooseModel: (userText) => chooseModel(userText, config).model,
       },
       logger,
       audit,
@@ -396,6 +401,7 @@ async function main(): Promise<void> {
     sessions,
     messages,
     memoryManager,
+    memoryRepo,
     skills: skillRegistry,
     schedules: schedulesRepo,
     heartbeats,

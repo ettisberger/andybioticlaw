@@ -36,6 +36,15 @@ function fakeCtx(): SettingsContext {
     configPath: '',
     envPath: '',
     voiceState: {} as never,
+    briefings: {
+      getStatus: () => ({
+        morning: { kind: 'morning', enabled: false, time: '07:30' },
+        evening: { kind: 'evening', enabled: false, time: '18:30' },
+      }),
+      enable: () => {},
+      disable: () => {},
+      setTime: () => {},
+    },
     readYaml: () => '',
     writeYaml: () => {},
     readEnv: () => ({}),

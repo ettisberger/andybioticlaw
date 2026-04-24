@@ -23,6 +23,18 @@ export const SETTINGS_LAYOUT: ReadonlyArray<Section> = [
       'agent.model',
       'service.logLevel',
       'telegram.conversationHistoryLimit',
+      'agent.routing.enabled',
+      'agent.haikuModel',
+      'agent.routing.minCharsForOpus',
+    ],
+  },
+  {
+    title: 'Briefings',
+    settingIds: [
+      'briefings.morning.enabled',
+      'briefings.morning.time',
+      'briefings.evening.enabled',
+      'briefings.evening.time',
     ],
   },
   {

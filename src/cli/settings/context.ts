@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { readEnvFile, writeEnvFileUpdates } from '../../config/env-file.js';
 import type { VoiceStateRepo } from '../../db/repositories/voice-state.js';
+import type { BriefingManager } from '../briefings/manager.js';
 import type { SettingsContext, Stdin } from './types.js';
 
 export interface CreateContextInput {
@@ -9,6 +10,7 @@ export interface CreateContextInput {
   configPath: string;
   envPath: string;
   voiceState: VoiceStateRepo;
+  briefings: BriefingManager;
 }
 
 /**
@@ -30,6 +32,7 @@ export function createSettingsContext(input: CreateContextInput): SettingsContex
     configPath: input.configPath,
     envPath: input.envPath,
     voiceState: input.voiceState,
+    briefings: input.briefings,
     readYaml() {
       return readFileSync(input.configPath, 'utf8');
     },

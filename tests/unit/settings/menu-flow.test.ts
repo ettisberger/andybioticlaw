@@ -99,6 +99,15 @@ function makeCtxForTmp(paths: ReturnType<typeof setupTmpDirs>): SettingsContext 
     configPath: paths.configPath,
     envPath: paths.envPath,
     voiceState: paths.voiceState,
+    briefings: {
+      getStatus: () => ({
+        morning: { kind: 'morning' as const, enabled: false, time: '07:30' },
+        evening: { kind: 'evening' as const, enabled: false, time: '18:30' },
+      }),
+      enable: () => {},
+      disable: () => {},
+      setTime: () => {},
+    },
     readYaml: () => readFileSync(paths.configPath, 'utf8'),
     writeYaml: (body) => writeFileSync(paths.configPath, body),
     readEnv: () => {

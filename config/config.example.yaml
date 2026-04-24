@@ -24,11 +24,20 @@ agent:
   #   claude-sonnet-4-6
   #   claude-haiku-4-5-20251001
   model: claude-opus-4-7
+  # Cheap fallback used by the Opus↔Haiku router when `routing.enabled` is
+  # true. The DM handler picks between `model` and `haikuModel` per message.
+  haikuModel: claude-haiku-4-5-20251001
   credentialsDir: ~/.claude
   streamIdleTimeoutSec: 120
   # Claude-CLI tool permissions. "all" — grant all tools; or comma/space
   # separated list like "Bash,Edit,Read".
   allowedTools: all
+  # Cheap-model router (opt-in). Sends short/simple DMs to `haikuModel`
+  # for a big cost reduction; keeps complex work on `model`. Scheduled
+  # agent-tasks are NOT routed.
+  routing:
+    enabled: false
+    minCharsForOpus: 120
 
 telegram:
   dm:

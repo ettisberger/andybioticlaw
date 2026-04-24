@@ -12,15 +12,35 @@ export const ServiceConfig = z.object({
 
 const ModelIdRegex = /^claude-[a-z]+(?:-\d+)+(?:-\d{8})?$/;
 
+/**
+ * Opt-in cheap-model router. When `routing.enabled`, the DM handler
+ * sends short/simple queries to `haikuModel` (default Haiku) instead
+ * of the primary `model` (default Opus). Heuristic-based — see
+ * `src/agent/route.ts`. Scheduled agent-tasks are NOT routed.
+ */
+export const AgentRoutingConfig = z.object({
+  enabled: z.boolean().default(false),
+  minCharsForOpus: z.number().int().min(0).max(10_000).default(120),
+});
+
 export const AgentConfig = z.object({
   name: z.string().min(1),
   model: z.string().regex(ModelIdRegex, {
     message:
       'model must be a valid Claude model ID like "claude-opus-4-7", "claude-sonnet-4-6", or "claude-haiku-4-5-20251001"',
   }),
+  /** Cheap fallback model used by the router when routing is enabled. */
+  haikuModel: z
+    .string()
+    .regex(ModelIdRegex, {
+      message:
+        'haikuModel must be a valid Claude model ID like "claude-haiku-4-5-20251001"',
+    })
+    .default('claude-haiku-4-5-20251001'),
   credentialsDir: z.string().min(1),
   streamIdleTimeoutSec: z.number().int().positive(),
   allowedTools: z.union([z.literal('all'), z.string().min(1)]),
+  routing: AgentRoutingConfig.default({ enabled: false, minCharsForOpus: 120 }),
 });
 
 export const TelegramDmConfig = z.object({
@@ -136,6 +156,9 @@ export const HOT_RELOADABLE_PATHS: ReadonlyArray<string> = [
   'telegram.streamEditIntervalMs',
   'telegram.longTaskNotifyAfterMs',
   'telegram.conversationHistoryLimit',
+  'agent.haikuModel',
+  'agent.routing.enabled',
+  'agent.routing.minCharsForOpus',
   'observability.heartbeatIntervalSec',
   'observability.heartbeatRetentionDays',
   'observability.errorsToTelegram',

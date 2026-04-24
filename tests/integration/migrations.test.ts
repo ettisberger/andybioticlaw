@@ -18,7 +18,7 @@ describe('migration runner — fresh boot', () => {
     try {
       const { db, close } = openDatabase(dbPath, logger);
 
-      // Expected tables per the current migration set (0001..0005).
+      // Expected tables per the current migration set (0001..0007).
       const tables = db
         .prepare<[], { name: string }>(
           `SELECT name FROM sqlite_master WHERE type='table' ORDER BY name`,
@@ -56,12 +56,20 @@ describe('migration runner — fresh boot', () => {
         .all();
       expect(budgetRows).toEqual([{ id: 1, daily_reset_anchor_ms: null }]);
 
-      // The runner recorded five rows in schema_version.
+      // Migration 0007 added the `last_used_at` + `pinned` columns on memory.
+      const memoryCols = db
+        .prepare<[], { name: string }>(`PRAGMA table_info(memory)`)
+        .all()
+        .map((r) => r.name);
+      expect(memoryCols).toContain('last_used_at');
+      expect(memoryCols).toContain('pinned');
+
+      // The runner recorded one row per applied migration.
       const versions = db
         .prepare<[], { version: number }>('SELECT version FROM schema_version ORDER BY version')
         .all()
         .map((r) => r.version);
-      expect(versions).toEqual([1, 2, 3, 4, 5, 6]);
+      expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7]);
 
       close();
     } finally {
@@ -80,7 +88,7 @@ describe('migration runner — fresh boot', () => {
       const rows = second.db
         .prepare<[], { n: number }>('SELECT COUNT(*) AS n FROM schema_version')
         .all();
-      expect(rows[0]!.n).toBe(6);
+      expect(rows[0]!.n).toBe(7);
       second.close();
     } finally {
       rmSync(dir, { recursive: true, force: true });
