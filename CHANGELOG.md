@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.12.0](https://github.com/ettisberger/andybioticlaw/compare/v0.11.0...v0.12.0) (2026-04-24)
+
+
+### Features
+
+* **telegram:** voice input via groq whisper (menu-togglable) ([2f3c91e](https://github.com/ettisberger/andybioticlaw/commit/2f3c91ee53dc76f995ed5f21036667c45f06678e))
+
 ## [0.11.0](https://github.com/ettisberger/andybioticlaw/compare/v0.10.2...v0.11.0) (2026-04-24)
 
 
