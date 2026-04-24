@@ -3,6 +3,7 @@ import { Bot } from 'lucide-react';
 
 const NAV_ITEMS = [
   { to: '/overview', label: 'Overview' },
+  { to: '/stats', label: 'Stats' },
   { to: '/sessions', label: 'Sessions' },
   { to: '/schedules', label: 'Schedules' },
   { to: '/memory', label: 'Memory' },

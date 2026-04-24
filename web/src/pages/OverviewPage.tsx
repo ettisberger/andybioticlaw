@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { Bot } from 'lucide-react';
 import { apiGet, formatTs } from '../lib/api';
 import { Badge, Card, ErrorBanner } from '../components/ui';
+import { Sparkline } from '../components/charts/Sparkline';
+import { formatUsd } from '../lib/pricing';
 
 interface RateLimitSnapshot {
   observedAt: number;
@@ -39,6 +42,8 @@ interface OverviewData {
   schedules: { total: number; enabled: number };
   recentSessions: Array<{ id: string; status: string; started_at: number; tokens_input: number; tokens_output: number; input_preview: string | null }>;
   recentFailures: Array<{ id: string; error: string | null; started_at: number }>;
+  last14DailyTokens: number[];
+  monthlyProjectionUsd: number | null;
 }
 
 export function OverviewPage() {
@@ -119,6 +124,30 @@ export function OverviewPage() {
         <LocalBudgetCard budget={data.budget} now={now} />
         <SubscriptionWindowCard rateLimit={data.rateLimit} now={now} />
       </div>
+
+      {/* Usage teaser — sparkline + monthly projection. Links to /stats
+          for the full breakdown. */}
+      <Link to="/stats" className="mb-5 block">
+        <Card className="transition-colors hover:bg-surface-muted/40">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <div className="text-sm font-semibold text-ink">Usage (14 days)</div>
+              <div className="mt-0.5 text-xs text-ink-faint">
+                Est. monthly API-list-price equivalent:{' '}
+                <span className="font-medium text-ink">
+                  {formatUsd(data.monthlyProjectionUsd)}
+                </span>
+                <span className="ml-2 text-ink-faint">
+                  → see Stats for the full breakdown
+                </span>
+              </div>
+            </div>
+            <div className="shrink-0">
+              <Sparkline data={data.last14DailyTokens} height={48} width={280} />
+            </div>
+          </div>
+        </Card>
+      </Link>
 
       {/* Recent activity */}
       <div className="grid grid-cols-2 gap-4">

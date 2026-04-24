@@ -86,6 +86,87 @@ describe('SessionsRepo', () => {
     expect(repo.tokensUsedBetween(now - 60_000, now + 60_000)).toBe(150);
     expect(repo.tokensUsedBetween(now + 10_000, now + 60_000)).toBe(0);
   });
+
+  it('dailyRaw returns only rows within the window', () => {
+    const repo = createSessionsRepo(db);
+    repo.create({
+      id: 'in',
+      source: 'dm',
+      source_ref: 'c1',
+      status: 'completed',
+      input_preview: '',
+      model: 'claude-opus-4-7',
+    });
+    repo.update('in', { tokens_input: 10, tokens_output: 5 });
+
+    const now = Date.now();
+    const rows = repo.dailyRaw(now - 60_000, now + 60_000);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.tokens).toBe(15);
+    expect(rows[0]!.model).toBe('claude-opus-4-7');
+
+    // Window that starts in the future → empty result.
+    expect(repo.dailyRaw(now + 10_000, now + 60_000)).toHaveLength(0);
+  });
+
+  it('perModelTotals buckets by model, preserves null as its own bucket', () => {
+    const repo = createSessionsRepo(db);
+    repo.create({
+      id: 'opus-1',
+      source: 'dm', source_ref: 'c1', status: 'completed',
+      input_preview: '', model: 'claude-opus-4-7',
+    });
+    repo.update('opus-1', { tokens_input: 100, tokens_output: 20 });
+
+    repo.create({
+      id: 'opus-2',
+      source: 'dm', source_ref: 'c1', status: 'completed',
+      input_preview: '', model: 'claude-opus-4-7',
+    });
+    repo.update('opus-2', { tokens_input: 50, tokens_output: 10 });
+
+    repo.create({
+      id: 'haiku-1',
+      source: 'dm', source_ref: 'c1', status: 'completed',
+      input_preview: '', model: 'claude-haiku-4-5',
+    });
+    repo.update('haiku-1', { tokens_input: 30, tokens_output: 5 });
+
+    const totals = repo.perModelTotals(0);
+    const byModel = Object.fromEntries(totals.map((t) => [t.model, t]));
+    expect(byModel['claude-opus-4-7']!.tokensIn).toBe(150);
+    expect(byModel['claude-opus-4-7']!.tokensOut).toBe(30);
+    expect(byModel['claude-opus-4-7']!.sessions).toBe(2);
+    expect(byModel['claude-haiku-4-5']!.sessions).toBe(1);
+    // Descending by total tokens (opus > haiku).
+    expect(totals[0]!.model).toBe('claude-opus-4-7');
+  });
+
+  it('totalsBetween returns tokens + session count as separate fields', () => {
+    const repo = createSessionsRepo(db);
+    repo.create({
+      id: 'a',
+      source: 'dm', source_ref: 'c1', status: 'completed',
+      input_preview: '', model: 'claude-opus-4-7',
+    });
+    repo.update('a', { tokens_input: 100, tokens_output: 50 });
+    repo.create({
+      id: 'b',
+      source: 'dm', source_ref: 'c1', status: 'completed',
+      input_preview: '', model: 'claude-opus-4-7',
+    });
+    repo.update('b', { tokens_input: 10, tokens_output: 5 });
+
+    const now = Date.now();
+    const t = repo.totalsBetween(now - 60_000, now + 60_000);
+    expect(t.tokensIn).toBe(110);
+    expect(t.tokensOut).toBe(55);
+    expect(t.sessions).toBe(2);
+
+    // Empty window.
+    const empty = repo.totalsBetween(now + 10_000, now + 60_000);
+    expect(empty).toEqual({ tokensIn: 0, tokensOut: 0, sessions: 0 });
+  });
 });
 
 describe('MessagesRepo', () => {

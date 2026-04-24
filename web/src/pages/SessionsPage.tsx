@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiGet, apiPost, formatTs, truncate } from '../lib/api';
 import { Badge, Button, ErrorBanner, PageTitle, Table, Td, Th, Empty } from '../components/ui';
+import { estimateUsd, formatUsd } from '../lib/pricing';
 
 interface SessionRow {
   id: string;
@@ -105,6 +106,7 @@ export function SessionsPage() {
               <Th>Id</Th>
               <Th>Started</Th>
               <Th>Tokens</Th>
+              <Th>Est. cost</Th>
               <Th>Input</Th>
               <Th>Actions</Th>
             </tr>
@@ -125,6 +127,9 @@ export function SessionsPage() {
                   <Td className="text-xs text-ink-dim">{formatTs(s.started_at)}</Td>
                   <Td className="text-xs">
                     {s.tokens_input.toLocaleString()}/{s.tokens_output.toLocaleString()}
+                  </Td>
+                  <Td className="text-xs text-ink-dim">
+                    {formatUsd(estimateUsd(s.model, s.tokens_input, s.tokens_output))}
                   </Td>
                   <Td className="text-xs text-ink">{truncate(s.input_preview, 80)}</Td>
                   <Td>

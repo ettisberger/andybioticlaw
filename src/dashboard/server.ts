@@ -32,6 +32,7 @@ import { configRoutes } from './routes/config.js';
 import { auditRoutes } from './routes/audit.js';
 import { logsRoutes } from './routes/logs.js';
 import { agentRoutes } from './routes/agent.js';
+import { statsRoutes } from './routes/stats.js';
 import { createLogBroadcaster } from './log-broadcaster.js';
 import type { BotProfile } from '../telegram/bot.js';
 import type { AuthMethod } from '../agent/credentials.js';
@@ -223,6 +224,13 @@ export function createDashboard(deps: DashboardDeps): DashboardService {
   );
 
   app.register(agentRoutes({ botProfile: deps.botProfile }));
+
+  app.register(
+    statsRoutes({
+      sessions: deps.sessions,
+      timezone: deps.timezone,
+    }),
+  );
 
   app.register(
     sessionsRoutes({

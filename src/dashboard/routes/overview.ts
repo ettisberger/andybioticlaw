@@ -12,6 +12,8 @@ import type {
 import type { RateLimitTracker } from '../../agent/rate-limit-tracker.js';
 import type { BotProfile } from '../../telegram/bot.js';
 import type { AuthMethod } from '../../agent/credentials.js';
+import { bucketByTz, projectMonthlyUsd } from './_stats-shared.js';
+import { estimateUsd } from '../../agent/pricing.js';
 
 export interface OverviewDeps {
   sessions: SessionsRepo;
@@ -50,6 +52,25 @@ export const overviewRoutes =
       const rollingFiveHourTokens = deps.sessions.tokensUsedSince(
         Date.now() - FIVE_HOURS_MS,
       );
+
+      // Teaser stats for the Overview sparkline + monthly-spend estimate.
+      // Larger drill-down lives under /stats.
+      const now = Date.now();
+      const last14Raw = deps.sessions.dailyRaw(now - 14 * 86_400_000, now);
+      const last14Buckets = bucketByTz(last14Raw, deps.timezone, 14, now);
+      const last14DailyTokens = last14Buckets.map((b) => b.tokens);
+
+      // Per-model last-7-day costs → monthly projection. Using perModelTotals
+      // rather than summing dailyRaw is both cheaper (pre-aggregated in SQL)
+      // and more accurate (preserves the input/output split for pricing).
+      const last7PerModel = deps.sessions.perModelTotals(now - 7 * 86_400_000);
+      const last7Usd = last7PerModel.reduce((acc, row) => {
+        const usd = estimateUsd(row.model, row.tokensIn, row.tokensOut);
+        return acc + (usd ?? 0);
+      }, 0);
+      // Earliest session — null when the sessions table is empty → projection is null.
+      const earliest = last14Raw[0]?.started_at ?? null;
+      const monthlyProjectionUsd = projectMonthlyUsd(last7Usd, earliest, now);
 
       const bp = deps.botProfile();
       return {
@@ -90,6 +111,8 @@ export const overviewRoutes =
         },
         recentSessions: recent,
         recentFailures: failed,
+        last14DailyTokens,
+        monthlyProjectionUsd,
       };
     });
   };

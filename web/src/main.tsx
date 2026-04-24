@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { App } from './App';
@@ -13,6 +13,13 @@ import { ConfigPage } from './pages/ConfigPage';
 import { AuditPage } from './pages/AuditPage';
 import './index.css';
 
+// Lazy-load StatsPage so Recharts (the heaviest dep in this app) ships in
+// its own chunk, only fetched when someone actually opens /stats. Keeps
+// the initial Overview load light.
+const StatsPage = lazy(() =>
+  import('./pages/StatsPage').then((m) => ({ default: m.StatsPage })),
+);
+
 const root = document.getElementById('root');
 if (!root) throw new Error('#root not found');
 
@@ -23,6 +30,14 @@ ReactDOM.createRoot(root).render(
         <Route element={<App />}>
           <Route index element={<Navigate to="/overview" replace />} />
           <Route path="/overview" element={<OverviewPage />} />
+          <Route
+            path="/stats"
+            element={
+              <Suspense fallback={<div className="text-ink-dim">loading charts…</div>}>
+                <StatsPage />
+              </Suspense>
+            }
+          />
           <Route path="/sessions" element={<SessionsPage />} />
           <Route path="/sessions/:id" element={<SessionDetailPage />} />
           <Route path="/schedules" element={<SchedulesPage />} />

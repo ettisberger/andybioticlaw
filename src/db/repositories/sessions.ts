@@ -54,6 +54,23 @@ const ALLOWED_SESSION_UPDATE_KEYS: readonly (keyof UpdateSessionInput)[] = [
   'ended_at',
 ];
 
+export interface DailyRawRow {
+  /** Epoch ms, session start. Use this to bucket by the operator's tz in JS. */
+  started_at: number;
+  /** `tokens_input + tokens_output` as one scalar (frontend rarely needs the split). */
+  tokens: number;
+  /** Nullable per migration 0001; `null` → "unknown" bucket. */
+  model: string | null;
+}
+
+export interface PerModelTotals {
+  /** `null` when the session record has no model recorded. */
+  model: string | null;
+  tokensIn: number;
+  tokensOut: number;
+  sessions: number;
+}
+
 export interface SessionsRepo {
   create(input: CreateSessionInput): void;
   update(id: string, patch: UpdateSessionInput): void;
@@ -63,6 +80,19 @@ export interface SessionsRepo {
   tokensUsedBetween(fromMs: number, toMs: number): number;
   /** Sum of `tokens_input + tokens_output` for sessions started since `fromMs`. */
   tokensUsedSince(fromMs: number): number;
+  /**
+   * Per-session raw rows in a window — used by the dashboard stats endpoint
+   * for JS-side timezone bucketing. 30 days × ~200 sessions/day = tiny
+   * payload; no need for pre-aggregation here.
+   */
+  dailyRaw(fromMs: number, toMs: number): DailyRawRow[];
+  /** Per-model token totals + session counts for sessions started since `fromMs`. */
+  perModelTotals(fromMs: number): PerModelTotals[];
+  /** Aggregate totals (input, output, session count) in a window. */
+  totalsBetween(
+    fromMs: number,
+    toMs: number,
+  ): { tokensIn: number; tokensOut: number; sessions: number };
 }
 
 export function createSessionsRepo(db: Database): SessionsRepo {
@@ -96,6 +126,46 @@ export function createSessionsRepo(db: Database): SessionsRepo {
     { total: number | null }
   >(
     `SELECT COALESCE(SUM(tokens_input + tokens_output), 0) AS total FROM sessions WHERE started_at >= @from AND started_at < @to`,
+  );
+
+  const dailyRawStmt = db.prepare<
+    { from: number; to: number },
+    { started_at: number; tokens: number; model: string | null }
+  >(
+    `SELECT started_at, (tokens_input + tokens_output) AS tokens, model
+     FROM sessions
+     WHERE started_at >= @from AND started_at < @to
+     ORDER BY started_at ASC`,
+  );
+
+  const perModelStmt = db.prepare<
+    { from: number },
+    {
+      model: string | null;
+      tokensIn: number;
+      tokensOut: number;
+      sessions: number;
+    }
+  >(
+    `SELECT model,
+            COALESCE(SUM(tokens_input), 0) AS tokensIn,
+            COALESCE(SUM(tokens_output), 0) AS tokensOut,
+            COUNT(*) AS sessions
+     FROM sessions
+     WHERE started_at >= @from
+     GROUP BY model
+     ORDER BY (COALESCE(SUM(tokens_input), 0) + COALESCE(SUM(tokens_output), 0)) DESC`,
+  );
+
+  const totalsBetweenStmt = db.prepare<
+    { from: number; to: number },
+    { tokensIn: number; tokensOut: number; sessions: number }
+  >(
+    `SELECT COALESCE(SUM(tokens_input), 0)  AS tokensIn,
+            COALESCE(SUM(tokens_output), 0) AS tokensOut,
+            COUNT(*) AS sessions
+     FROM sessions
+     WHERE started_at >= @from AND started_at < @to`,
   );
 
   return {
@@ -151,6 +221,21 @@ export function createSessionsRepo(db: Database): SessionsRepo {
     tokensUsedSince(fromMs) {
       const row = tokensSum.get({ from: fromMs, to: Number.MAX_SAFE_INTEGER });
       return row?.total ?? 0;
+    },
+    dailyRaw(fromMs, toMs) {
+      return dailyRawStmt.all({ from: fromMs, to: toMs });
+    },
+    perModelTotals(fromMs) {
+      return perModelStmt.all({ from: fromMs });
+    },
+    totalsBetween(fromMs, toMs) {
+      return (
+        totalsBetweenStmt.get({ from: fromMs, to: toMs }) ?? {
+          tokensIn: 0,
+          tokensOut: 0,
+          sessions: 0,
+        }
+      );
     },
   };
 }
