@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.5.3](https://github.com/ettisberger/andybioticlaw/compare/v0.5.2...v0.5.3) (2026-04-24)
+
+
+### Bug Fixes
+
+* **google-calendar:** tolerate pretty-printed JSON in install.sh ([a60c449](https://github.com/ettisberger/andybioticlaw/commit/a60c449e0841d73cf06aa930c324a7d73c0cdd31))
+
 ## [0.5.2](https://github.com/ettisberger/andybioticlaw/compare/v0.5.1...v0.5.2) (2026-04-24)
 
 
