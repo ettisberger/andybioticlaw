@@ -79,10 +79,15 @@ export function createMemoryManager(deps: MemoryManagerDeps): MemoryManager {
     resolveActiveScopes,
     snapshot(input, maxEntries = 50) {
       const scopes = resolveActiveScopes(input);
-      const all = deps.repo.listActive(scopes, now());
+      const ts = now();
+      const all = deps.repo.listActive(scopes, ts);
+      const entries = all.slice(0, maxEntries);
+      // Bump last_used_at for the entries that actually made it into
+      // the snapshot — one batched UPDATE per call, not per row.
+      if (entries.length > 0) deps.repo.bumpLastUsed(entries.map((e) => e.id), ts);
       const truncated = Math.max(0, all.length - maxEntries);
       return {
-        entries: all.slice(0, maxEntries),
+        entries,
         scopes,
         truncated,
       };

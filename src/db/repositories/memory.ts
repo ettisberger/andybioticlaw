@@ -11,6 +11,10 @@ export interface MemoryRecord {
   ttl_at: number | null;
   created_at: number;
   updated_at: number;
+  /** Last time this entry was pulled into Emma's context. null = never. */
+  last_used_at: number | null;
+  /** Operator-set protection flag (0/1 in SQLite). */
+  pinned: number;
 }
 
 export interface CreateMemoryInput {
@@ -54,6 +58,10 @@ export interface MemoryRepo {
   list(opts?: { scope?: string; limit?: number }): MemoryRecord[];
   listActive(scopes: string[], now?: number): MemoryRecord[];
   deleteExpired(now: number): number;
+  /** Bump `last_used_at` for the given ids. No-op on empty list. */
+  bumpLastUsed(ids: number[], now: number): void;
+  /** Flip the pinned flag. Returns true if a row was updated. */
+  setPinned(id: number, pinned: boolean): boolean;
 
   proposalCreate(input: CreateProposalInput): ProposalRecord;
   proposalGet(id: number): ProposalRecord | null;
@@ -182,6 +190,25 @@ export function createMemoryRepo(db: Database): MemoryRepo {
     },
     deleteExpired(now) {
       return deleteExpired.run({ now }).changes;
+    },
+    bumpLastUsed(ids, now) {
+      if (ids.length === 0) return;
+      const placeholders = ids.map((_, i) => `@id${i}`).join(',');
+      const params: Record<string, unknown> = { now };
+      ids.forEach((id, i) => {
+        params[`id${i}`] = id;
+      });
+      db.prepare(
+        `UPDATE memory SET last_used_at = @now WHERE id IN (${placeholders})`,
+      ).run(params);
+    },
+    setPinned(id, pinned) {
+      const result = db
+        .prepare<{ id: number; pinned: number }>(
+          `UPDATE memory SET pinned = @pinned WHERE id = @id`,
+        )
+        .run({ id, pinned: pinned ? 1 : 0 });
+      return result.changes > 0;
     },
     proposalCreate(input) {
       const now = Date.now();

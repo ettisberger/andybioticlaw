@@ -42,6 +42,8 @@ export interface BotConfigView {
   voiceMaxDurationSec(): number;
   /** Language hint for voice transcription; 'auto' lets the model detect. */
   voiceLanguage(): string;
+  /** Per-message model chooser for DMs. If absent, `model` is used. */
+  chooseModel?(userText: string): string;
 }
 
 export interface BotDeps {
@@ -188,6 +190,7 @@ export function createTelegramService(deps: BotDeps): TelegramService {
     cwd: deps.config.cwd,
     agentName: deps.config.agentName,
     model: deps.config.model,
+    ...(deps.config.chooseModel ? { chooseModel: deps.config.chooseModel } : {}),
     timezone: deps.config.timezone,
     principalUserId: deps.principalChatId,
     memoryAutoAccept: () => deps.config.memoryAutoAccept(),

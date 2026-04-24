@@ -50,6 +50,8 @@ export interface DmHandlerDeps {
   cwd: string;
   agentName: string;
   model: string;
+  /** Opt-in per-message router (Opus↔Haiku). If absent, `model` is always used. */
+  chooseModel?: (userText: string) => string;
   timezone: string;
   principalUserId: number | null;
   memoryAutoAccept: () => boolean;
@@ -87,6 +89,7 @@ function dispatchDepsFromHandler(deps: DmHandlerDeps): DispatchDeps {
     cwd: deps.cwd,
     agentName: deps.agentName,
     model: deps.model,
+    ...(deps.chooseModel ? { chooseModel: deps.chooseModel } : {}),
     timezone: deps.timezone,
     memoryAutoAccept: deps.memoryAutoAccept,
     streamIdleTimeoutMs: deps.streamIdleTimeoutMs,

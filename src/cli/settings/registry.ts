@@ -10,6 +10,7 @@ import { IntegerSetting } from './components/integer-setting.js';
 import { IntegerOrNullSetting } from './components/integer-or-null-setting.js';
 import { ListSetting } from './components/list-setting.js';
 import { SecretSetting, hashArgon2 } from './components/secret-setting.js';
+import { TimeSetting } from './components/time-setting.js';
 import {
   matchBool,
   matchInt,
@@ -96,6 +97,63 @@ export function buildSettingsRegistry(): Map<string, SettingComponent> {
       patchRegex: /^(\s+conversationHistoryLimit:\s*)\d+\s*$/m,
       bounds: { min: 0, max: 500 },
       format: (n) => `${n} msgs`,
+    }),
+  );
+  registry.set(
+    'agent.haikuModel',
+    new EnumSetting({
+      id: 'agent.haikuModel',
+      label: 'Cheap model (router)',
+      pathLabel: 'agent.haikuModel',
+      restart: false,
+      read: (ctx) =>
+        matchString(
+          ctx.readYaml(),
+          /^\s+haikuModel:\s*(\S+)\s*$/m,
+          'claude-haiku-4-5-20251001',
+        ),
+      patchRegex: /^(\s+haikuModel:\s*).*$/m,
+      options: [
+        { value: 'claude-haiku-4-5-20251001', label: 'claude-haiku-4-5  (cheapest)' },
+        { value: 'claude-sonnet-4-6', label: 'claude-sonnet-4-6  (mid-tier)' },
+      ],
+    }),
+  );
+  registry.set(
+    'agent.routing.enabled',
+    new BooleanSetting({
+      id: 'agent.routing.enabled',
+      label: 'Cheap-model router',
+      restart: false,
+      read: (ctx) =>
+        matchBool(
+          ctx.readYaml(),
+          /^  routing:\s*\n    enabled:\s*(true|false)\s*$/m,
+          false,
+        ),
+      write: (ctx, next) => {
+        const body = ctx.readYaml();
+        ctx.writeYaml(
+          body.replace(
+            /^(  routing:\s*\n    enabled:\s*)(true|false)\s*$/m,
+            `$1${next}`,
+          ),
+        );
+      },
+    }),
+  );
+  registry.set(
+    'agent.routing.minCharsForOpus',
+    new IntegerSetting({
+      id: 'agent.routing.minCharsForOpus',
+      label: 'Min chars → Opus',
+      pathLabel: 'agent.routing.minCharsForOpus',
+      restart: false,
+      read: (ctx) =>
+        matchInt(ctx.readYaml(), /^\s+minCharsForOpus:\s*(\d+)\s*$/m, 120),
+      patchRegex: /^(\s+minCharsForOpus:\s*)\d+\s*$/m,
+      bounds: { min: 0, max: 10_000 },
+      format: (n) => `${n} chars`,
     }),
   );
 
@@ -185,6 +243,56 @@ export function buildSettingsRegistry(): Map<string, SettingComponent> {
         return key ? '(upload a local audio file)' : '(set API key first)';
       },
       action: runVoiceTest,
+    }),
+  );
+
+  // --- Briefings -------------------------------------------------------
+  registry.set(
+    'briefings.morning.enabled',
+    new BooleanSetting({
+      id: 'briefings.morning.enabled',
+      label: 'Morning briefing',
+      restart: false,
+      read: (ctx) => ctx.briefings.getStatus().morning.enabled,
+      write: (ctx, next) => {
+        const cur = ctx.briefings.getStatus().morning;
+        if (next) ctx.briefings.enable('morning', cur.time);
+        else ctx.briefings.disable('morning');
+      },
+    }),
+  );
+  registry.set(
+    'briefings.morning.time',
+    new TimeSetting({
+      id: 'briefings.morning.time',
+      label: 'Morning time',
+      restart: false,
+      read: (ctx) => ctx.briefings.getStatus().morning.time,
+      write: (ctx, next) => ctx.briefings.setTime('morning', next),
+    }),
+  );
+  registry.set(
+    'briefings.evening.enabled',
+    new BooleanSetting({
+      id: 'briefings.evening.enabled',
+      label: 'Evening briefing',
+      restart: false,
+      read: (ctx) => ctx.briefings.getStatus().evening.enabled,
+      write: (ctx, next) => {
+        const cur = ctx.briefings.getStatus().evening;
+        if (next) ctx.briefings.enable('evening', cur.time);
+        else ctx.briefings.disable('evening');
+      },
+    }),
+  );
+  registry.set(
+    'briefings.evening.time',
+    new TimeSetting({
+      id: 'briefings.evening.time',
+      label: 'Evening time',
+      restart: false,
+      read: (ctx) => ctx.briefings.getStatus().evening.time,
+      write: (ctx, next) => ctx.briefings.setTime('evening', next),
     }),
   );
 

@@ -28,6 +28,12 @@ export interface DispatchDeps {
   cwd: string;
   agentName: string;
   model: string;
+  /**
+   * Optional per-message model chooser. When set, called with the user's
+   * prompt text to pick a model id. When absent, `model` is used.
+   * Used by the opt-in Opus↔Haiku router (see `src/agent/route.ts`).
+   */
+  chooseModel?: (userText: string) => string;
   timezone: string;
   memoryAutoAccept: () => boolean;
   streamIdleTimeoutMs: () => number;
@@ -170,7 +176,7 @@ export async function dispatchUserPrompt(
     principalLabel: req.fromUserId
       ? `Telegram user ${req.fromUserId}`
       : `${req.origin} (principal)`,
-    model: deps.model,
+    model: deps.chooseModel ? deps.chooseModel(req.userText) : deps.model,
     timezone: deps.timezone,
     agentName: deps.agentName,
     allowedTools: deps.allowedTools(),

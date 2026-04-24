@@ -15,6 +15,7 @@ function makeCtx(initial: { yaml?: string; env?: Record<string, string> } = {}):
     configPath: '/tmp/config.yaml',
     envPath: '/tmp/.env',
     voiceState: {} as never,
+    briefings: {} as never,
     readYaml: () => yaml,
     writeYaml: (next: string) => {
       yaml = next;

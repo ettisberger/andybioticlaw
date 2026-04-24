@@ -28,6 +28,12 @@ function makeDb() {
       'utf8',
     ),
   );
+  db.exec(
+    readFileSync(
+      resolve(__dirname, '..', '..', 'src', 'db', 'migrations', '0007_memory_hygiene.sql'),
+      'utf8',
+    ),
+  );
   return db;
 }
 
