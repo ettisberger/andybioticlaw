@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.4.0](https://github.com/ettisberger/andybioticlaw/compare/v0.3.2...v0.4.0) (2026-04-24)
+
+
+### Features
+
+* cost + usage insights dashboard ([f78dcb4](https://github.com/ettisberger/andybioticlaw/commit/f78dcb4638e9fab56ffe92a5193eff270d11fab9))
+
 ## [0.3.2](https://github.com/ettisberger/andybioticlaw/compare/v0.3.1...v0.3.2) (2026-04-23)
 
 
