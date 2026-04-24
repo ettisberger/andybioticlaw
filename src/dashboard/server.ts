@@ -23,6 +23,7 @@ import type {
 import type { Config } from '../config/schema.js';
 import type { DispatchDeps } from '../agent/dispatch.js';
 import type { RateLimitTracker } from '../agent/rate-limit-tracker.js';
+import type { LiveSessionsTracker } from '../observability/live-sessions.js';
 import { overviewRoutes } from './routes/overview.js';
 import { sessionsRoutes } from './routes/sessions.js';
 import { schedulesRoutes } from './routes/schedules.js';
@@ -64,6 +65,7 @@ export interface DashboardDeps {
   /** Called when the scheduler should re-read DB state (after API mutations). */
   onSchedulesChanged: () => void;
   rateLimitTracker: RateLimitTracker;
+  liveSessions: LiveSessionsTracker;
   /** Returns the cached Telegram bot profile (username, avatar bytes), or
    *  `null` if the bot isn't running / the profile hasn't been fetched yet.
    *  Populated at telegram.start() + on-demand. */
@@ -238,6 +240,7 @@ export function createDashboard(deps: DashboardDeps): DashboardService {
       messages: deps.messages,
       dispatch: deps.dispatch,
       principalUserId: deps.principalUserId,
+      liveSessions: deps.liveSessions,
     }),
   );
 

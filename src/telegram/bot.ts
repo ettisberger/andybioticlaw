@@ -17,6 +17,7 @@ import type {
 import type { SkillRegistry } from '../skills/registry.js';
 import { createChatRunner, createQueueManager } from '../agent/queue.js';
 import type { RateLimitTracker } from '../agent/rate-limit-tracker.js';
+import type { LiveSessionsTracker } from '../observability/live-sessions.js';
 import { executeSession } from '../agent/session.js';
 import { registerCommands } from './handlers/commands.js';
 import { registerDmHandler } from './handlers/dm.js';
@@ -62,6 +63,8 @@ export interface BotDeps {
   resolveSkillSecret: (skillName: string, secretName: string) => string | undefined;
   /** Rate-limit tracker — captures CLI `rate_limit_event` payloads for dashboard. */
   rateLimitTracker?: RateLimitTracker;
+  /** In-flight session state for the dashboard's live view. */
+  liveSessions?: LiveSessionsTracker;
 }
 
 export interface BotProfile {
@@ -131,6 +134,7 @@ export function createTelegramService(deps: BotDeps): TelegramService {
             resolveSkillSecret: deps.resolveSkillSecret,
             logger: deps.logger,
             ...(deps.rateLimitTracker ? { rateLimitTracker: deps.rateLimitTracker } : {}),
+            ...(deps.liveSessions ? { liveSessions: deps.liveSessions } : {}),
           });
         },
         onDrop: (req) => {

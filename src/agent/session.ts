@@ -15,6 +15,7 @@ import type { ContextAssemblyInput, SkillPromptSnapshot } from './context.js';
 import { runClaude } from './runner.js';
 import type { RunClaudeResult } from './runner.js';
 import type { RateLimitTracker } from './rate-limit-tracker.js';
+import type { LiveSessionsTracker } from '../observability/live-sessions.js';
 import { readFileSync } from 'node:fs';
 
 export interface StreamSink {
@@ -65,6 +66,12 @@ export interface SessionExecuteDeps {
    * wrap the scoped secrets manager so a scope violation throws and audits.
    */
   resolveSkillSecret: (skillName: string, secretName: string) => string | undefined;
+  /**
+   * Optional dashboard live-session tracker. When present, start/onDelta/
+   * onToolUse/end are called so the `/api/sessions/live` endpoints see
+   * in-flight state. Omitted in tests.
+   */
+  liveSessions?: LiveSessionsTracker;
 }
 
 export interface SessionExecuteResult {
@@ -107,6 +114,24 @@ export async function executeSession(
     model: input.model,
   });
 
+  deps.liveSessions?.start({
+    sessionId,
+    chatId: input.chatId,
+    source: input.source,
+  });
+
+  try {
+    return await runOne(sessionId, input, deps);
+  } finally {
+    deps.liveSessions?.end(sessionId);
+  }
+}
+
+async function runOne(
+  sessionId: string,
+  input: SessionExecuteInput,
+  deps: SessionExecuteDeps,
+): Promise<SessionExecuteResult> {
   deps.messages.insert({
     session_id: sessionId,
     chat_id: input.chatId,
@@ -234,6 +259,7 @@ export async function executeSession(
       } catch (e) {
         deps.logger.warn({ err: (e as Error).message }, 'sink.onDelta threw');
       }
+      deps.liveSessions?.onDelta(sessionId, t);
     },
     onRateLimit: (info) => {
       deps.logger.debug({ info }, 'rate-limit event from claude');
@@ -241,6 +267,7 @@ export async function executeSession(
     },
     onToolUse: (name) => {
       deps.logger.debug({ tool: name }, 'tool use observed');
+      deps.liveSessions?.onToolUse(sessionId, name);
     },
     logger: deps.logger,
   });

@@ -33,6 +33,7 @@ import { loadSkills } from './skills/loader.js';
 import { createSkillRegistry } from './skills/registry.js';
 import { createBudgetTracker } from './agent/budget.js';
 import { createRateLimitTracker } from './agent/rate-limit-tracker.js';
+import { createLiveSessionsTracker } from './observability/live-sessions.js';
 import { createAuthChecker } from './telegram/auth.js';
 import { createTelegramService } from './telegram/bot.js';
 import { createSchedulesRepo } from './db/repositories/schedules.js';
@@ -186,6 +187,7 @@ async function main(): Promise<void> {
   memoryTtl.start();
 
   const rateLimitTracker = createRateLimitTracker();
+  const liveSessions = createLiveSessionsTracker();
 
   const budget = createBudgetTracker(
     sessions,
@@ -268,6 +270,7 @@ async function main(): Promise<void> {
       resolveSkillSecret: (skillName, secretName) =>
         secrets.getSecret(secretName, { skill: skillName }),
       rateLimitTracker,
+      liveSessions,
     });
     telegramQueueDepths = () => telegram!.queue.depths();
 
@@ -405,6 +408,7 @@ async function main(): Promise<void> {
     frontendDistDir: resolve(projectRoot(), 'web', 'dist'),
     onSchedulesChanged: () => scheduler?.refresh(),
     rateLimitTracker,
+    liveSessions,
     botProfile: () => telegram?.profile() ?? null,
     dbPing: () => {
       try {

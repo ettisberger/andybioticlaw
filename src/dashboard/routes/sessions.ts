@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import type { SessionsRepo, SessionStatus } from '../../db/repositories/sessions.js';
 import type { MessagesRepo } from '../../db/repositories/messages.js';
 import type { DispatchDeps } from '../../agent/dispatch.js';
+import type { LiveSessionsTracker } from '../../observability/live-sessions.js';
 import { dispatchUserPrompt } from '../../agent/dispatch.js';
 
 export interface SessionsRoutesDeps {
@@ -10,6 +11,7 @@ export interface SessionsRoutesDeps {
   /** Null when the bot is disabled — retry endpoint returns 503. */
   dispatch: DispatchDeps | null;
   principalUserId: number | null;
+  liveSessions: LiveSessionsTracker;
 }
 
 export const sessionsRoutes =
@@ -23,6 +25,21 @@ export const sessionsRoutes =
       const opts: { status?: SessionStatus; limit?: number } = { limit };
       if (statusStr) opts.status = statusStr;
       return { sessions: deps.sessions.list(opts) };
+    });
+
+    // `/api/sessions/live` MUST be declared before the `/:id` route so
+    // Fastify doesn't try to look up a session with id="live".
+    app.get('/api/sessions/live', async () => {
+      return { live: deps.liveSessions.snapshot() };
+    });
+
+    app.get<{ Params: { id: string } }>('/api/sessions/:id/live', async (req, reply) => {
+      const live = deps.liveSessions.snapshotOne(req.params.id);
+      if (!live) {
+        reply.code(404);
+        return { error: `no live session with id ${req.params.id}` };
+      }
+      return { live };
     });
 
     app.get<{ Params: { id: string } }>('/api/sessions/:id', async (req, reply) => {
