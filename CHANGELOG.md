@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.5.2](https://github.com/ettisberger/andybioticlaw/compare/v0.5.1...v0.5.2) (2026-04-24)
+
+
+### Bug Fixes
+
+* **google-calendar:** tolerate no-match grep in install.sh error-check ([8b08ba1](https://github.com/ettisberger/andybioticlaw/commit/8b08ba16413f1d7ee9ae80064c6448e351b53184))
+
 ## [0.5.1](https://github.com/ettisberger/andybioticlaw/compare/v0.5.0...v0.5.1) (2026-04-24)
 
 
