@@ -1,14 +1,28 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import pino from 'pino';
 import argon2 from 'argon2';
 import { loadConfig, projectRoot } from '../config/load.js';
-import { defaultConfigPath, pidFilePath, expandPath } from '../config/paths.js';
+import {
+  defaultConfigPath,
+  defaultEnvPath,
+  expandPath,
+  pidFilePath,
+  sqliteDbPath,
+} from '../config/paths.js';
 import { bold, cyan, dim, green, lavender, sage, yellow } from './ansi.js';
 import {
   arrowPicker,
   askInteger,
+  askLine,
   askSecret,
   releaseStdin,
 } from './prompt-helpers.js';
+import { readEnvFile, writeEnvFileUpdates } from '../config/env-file.js';
+import { openDatabase } from '../db/index.js';
+import { createVoiceStateRepo } from '../db/repositories/voice-state.js';
+import { transcribeWithGroq } from '../telegram/voice.js';
+import type { PickerItem } from './prompt-helpers.js';
 
 /**
  * Interactive editor for the most-tweaked subset of `config.yaml`.
@@ -68,253 +82,532 @@ export async function runEditConfigCommand(): Promise<void> {
   }
 
   stdout.write(
-    `\n${bold(lavender('andybioticlaw'))} ${dim('— edit settings')}\n` +
-      dim(`  patches ${configPath} (preserves comments)\n`) +
-      dim(`  Ctrl-C / pick "Done" to leave\n\n`),
+    `\n${bold(lavender('andybioticlaw'))} ${dim('— Settings')}\n` +
+      dim(`  toggle booleans in place · Enter a value row to edit\n`) +
+      dim(`  Ctrl-C / q to exit\n`),
   );
 
+  // Open SQLite + .env once so voice_state toggles + key reads are fast
+  // and consistent across redraws.
+  const loaded = loadConfig();
+  const dataDir = expandPath(loaded.config.service.dataDir, projectRoot());
+  const logger = pino({ level: 'warn' });
+  const dbHandle = openDatabase(sqliteDbPath(dataDir), logger);
+  const voiceState = createVoiceStateRepo(dbHandle.db);
+  const envPath = defaultEnvPath(projectRoot());
+
+  // Track restart-tagged changes made in THIS session so we can show a
+  // persistent "⚠ restart required" footer. A "session" here is one
+  // run of runEditConfigCommand — the counter resets between menu
+  // entries, which is the right mental model (the banner reminds you
+  // of changes you just made, not historical ones).
+  let restartPending = 0;
+  const markRestart = () => {
+    restartPending += 1;
+  };
+
   try {
+    // Build the settings descriptors once per iteration — each descriptor
+    // owns its own "read current value" and "flip / edit" callbacks so
+    // the outer picker is pure rendering. `rows` is rebuilt inside the
+    // items thunk on every redraw to pick up new state after a toggle.
+    const describe = (): Setting[] =>
+      buildSettings({
+        configPath,
+        envPath,
+        cur: readCurrent(configPath),
+        envValues: readEnvFile(envPath).values,
+        voiceEnabled: voiceState.getEnabled(),
+        stdin,
+        stdout,
+        voiceState,
+      });
+
+    // Pump the picker until the operator hits q. Non-toggle rows resolve
+    // the picker with their index; we route to the descriptor's `edit`.
+    // After each edit we loop back and re-enter the picker.
     while (true) {
-      const cur = readCurrent(configPath);
-      const choice = await pickField(stdin, stdout, cur);
-      if (choice === null || choice === 'done') {
+      const snapshotRows = describe();
+      const idx = await arrowPicker(stdin, stdout, {
+        title: 'Settings',
+        helpLine: '↑/↓ move · Enter toggle or edit · q back',
+        items: () => toPickerItems(describe()),
+        footer: () =>
+          restartPending > 0
+            ? yellow(
+                `⚠ restart required — ${restartPending} change${
+                  restartPending === 1 ? '' : 's'
+                } pending — ${cyan('sudo systemctl restart andybioticlaw')}`,
+              )
+            : undefined,
+        onToggle: async (i) => {
+          const row = describe()[i];
+          if (row && row.kind === 'boolean') {
+            await row.flip();
+            if (row.restart) markRestart();
+          }
+        },
+      });
+      if (idx < 0) {
         stdout.write(`\n${dim('bye.')}\n\n`);
         return;
       }
+      const row = snapshotRows[idx];
+      if (!row) continue;
+      if (row.kind === 'boolean') {
+        // Shouldn't happen — toggles are handled by onToggle. Defensive.
+        continue;
+      }
       try {
-        await editOne(stdin, stdout, configPath, choice, cur);
+        await row.edit();
+        if (row.restart) markRestart();
       } catch (e) {
         stdout.write(`\n  ${yellow('!')} ${dim((e as Error).message)}\n`);
       }
     }
   } finally {
-    // Pause stdin so the CLI process can exit when this function
-    // returns — the prompt helpers resume stdin on entry but never
-    // pause it, which would otherwise leave node's event loop alive.
+    dbHandle.close();
     releaseStdin();
   }
 }
 
-// --- field picker -----------------------------------------------------
+// --- descriptor-driven settings list ----------------------------------
 
-type FieldKey =
-  | 'model'
-  | 'dailyTokenLimit'
-  | 'perSessionTokenLimit'
-  | 'autoAccept'
-  | 'retentionDays'
-  | 'logLevel'
-  | 'conversationHistoryLimit'
-  | 'allowedUserIds'
-  | 'dashboardEnabled'
-  | 'dashboardAuthEnabled'
-  | 'passwordHash';
+interface SettingBase {
+  key: string;
+  section: string;
+  label: string;
+  /** Whether flipping or editing this requires `systemctl restart`. */
+  restart: boolean;
+}
 
-async function pickField(
-  stdin: Stdin,
-  stdout: NodeJS.WritableStream,
-  cur: CurrentValues,
-): Promise<FieldKey | 'done' | null> {
-  const fields: Array<{
-    key: FieldKey | 'done';
-    label: string;
-    current: string;
-    restart?: boolean;
-  }> = [
-    { key: 'model', label: 'Agent model', current: cur.model, restart: true },
+interface BooleanSetting extends SettingBase {
+  kind: 'boolean';
+  checked: boolean;
+  flip: () => void | Promise<void>;
+}
+
+interface ValueSetting extends SettingBase {
+  kind: 'value';
+  /** Rendered in the meta column (current value or `not set`). */
+  value: string;
+  edit: () => Promise<void>;
+}
+
+type Setting = BooleanSetting | ValueSetting;
+
+interface BuildSettingsInput {
+  configPath: string;
+  envPath: string;
+  cur: CurrentValues;
+  envValues: Record<string, string>;
+  voiceEnabled: boolean;
+  stdin: Stdin;
+  stdout: NodeJS.WritableStream;
+  voiceState: ReturnType<typeof createVoiceStateRepo>;
+}
+
+function buildSettings(input: BuildSettingsInput): Setting[] {
+  const { configPath, envPath, cur, envValues, voiceEnabled, stdin, stdout, voiceState } = input;
+  const groqKey = envValues.GROQ_API_KEY?.trim() ?? '';
+  const hasGroqKey = groqKey !== '';
+
+  return [
+    // -- General --
+    {
+      key: 'autoAccept',
+      section: 'General',
+      kind: 'boolean',
+      label: 'Memory auto-accept',
+      checked: cur.autoAccept,
+      restart: false,
+      async flip() {
+        await editBooleanSilent(
+          configPath,
+          cur.autoAccept,
+          /^(\s+autoAccept:\s*)(true|false)\s*$/m,
+          'memory.autoAccept',
+          false,
+          stdout,
+        );
+      },
+    },
+    // -- Agent --
+    {
+      key: 'model',
+      section: 'Agent',
+      kind: 'value',
+      label: 'Model',
+      value: cur.model,
+      restart: true,
+      async edit() {
+        await editEnum(
+          stdin,
+          stdout,
+          configPath,
+          'agent.model',
+          cur.model,
+          MODELS,
+          /^(\s+model:\s*).*$/m,
+          true,
+        );
+      },
+    },
+    {
+      key: 'logLevel',
+      section: 'Agent',
+      kind: 'value',
+      label: 'Log level',
+      value: cur.logLevel,
+      restart: false,
+      async edit() {
+        await editEnum(
+          stdin,
+          stdout,
+          configPath,
+          'service.logLevel',
+          cur.logLevel,
+          LOG_LEVELS,
+          /^(\s+logLevel:\s*)\w+\s*$/m,
+          false,
+        );
+      },
+    },
+    {
+      key: 'conversationHistoryLimit',
+      section: 'Agent',
+      kind: 'value',
+      label: 'Conversation history',
+      value: `${cur.conversationHistoryLimit} msgs`,
+      restart: false,
+      async edit() {
+        await editInteger(
+          stdin,
+          stdout,
+          configPath,
+          'telegram.conversationHistoryLimit',
+          cur.conversationHistoryLimit,
+          /^(\s+conversationHistoryLimit:\s*)\d+\s*$/m,
+          { min: 0, max: 500 },
+          false,
+        );
+      },
+    },
+    // -- Budget --
     {
       key: 'dailyTokenLimit',
+      section: 'Budget',
+      kind: 'value',
       label: 'Daily token budget',
-      current: cur.dailyTokenLimit.toLocaleString(),
+      value: cur.dailyTokenLimit.toLocaleString(),
+      restart: false,
+      async edit() {
+        await editInteger(
+          stdin,
+          stdout,
+          configPath,
+          'budget.dailyTokenLimit',
+          cur.dailyTokenLimit,
+          /^(\s+dailyTokenLimit:\s*)\d+\s*$/m,
+          { min: 0 },
+          false,
+        );
+      },
     },
     {
       key: 'perSessionTokenLimit',
-      label: 'Per-session token limit',
-      current: cur.perSessionTokenLimit.toLocaleString(),
+      section: 'Budget',
+      kind: 'value',
+      label: 'Per-session limit',
+      value: cur.perSessionTokenLimit.toLocaleString(),
+      restart: false,
+      async edit() {
+        await editInteger(
+          stdin,
+          stdout,
+          configPath,
+          'budget.perSessionTokenLimit',
+          cur.perSessionTokenLimit,
+          /^(\s+perSessionTokenLimit:\s*)\d+\s*$/m,
+          { min: 0 },
+          false,
+        );
+      },
     },
-    { key: 'autoAccept', label: 'Memory auto-accept', current: cur.autoAccept ? 'ON' : 'OFF' },
     {
       key: 'retentionDays',
-      label: 'Message retention days',
-      current: cur.retentionDays === null ? 'forever' : `${cur.retentionDays} days`,
+      section: 'Budget',
+      kind: 'value',
+      label: 'Message retention',
+      value: cur.retentionDays === null ? 'forever' : `${cur.retentionDays} days`,
+      restart: false,
+      async edit() {
+        await editIntegerOrNull(
+          stdin,
+          stdout,
+          configPath,
+          'messages.retentionDays',
+          cur.retentionDays,
+          /^(\s+retentionDays:\s*)(null|\d+)\s*$/m,
+          { min: 1 },
+          false,
+        );
+      },
     },
-    { key: 'logLevel', label: 'Log level', current: cur.logLevel },
-    {
-      key: 'conversationHistoryLimit',
-      label: 'Conversation history limit',
-      current: `${cur.conversationHistoryLimit} msgs`,
-    },
+    // -- Telegram --
     {
       key: 'allowedUserIds',
-      label: 'Allowed Telegram users',
-      current:
+      section: 'Telegram',
+      kind: 'value',
+      label: 'Allowed users',
+      value:
         cur.allowedUserIds.length === 0
-          ? '(none — bot will reject all DMs)'
+          ? '(none — bot rejects all DMs)'
           : `${cur.allowedUserIds.length}: ${cur.allowedUserIds.join(', ')}`,
       restart: true,
+      async edit() {
+        await editAllowedUsers(stdin, stdout, configPath, cur.allowedUserIds);
+      },
     },
+    // -- Dashboard --
     {
       key: 'dashboardEnabled',
+      section: 'Dashboard',
+      kind: 'boolean',
       label: 'Dashboard (web UI)',
-      current: cur.dashboardEnabled ? 'ON' : 'OFF',
+      checked: cur.dashboardEnabled,
       restart: true,
+      async flip() {
+        await editBooleanSilent(
+          configPath,
+          cur.dashboardEnabled,
+          /^(dashboard:\s*\n  enabled:\s*)(true|false)\s*$/m,
+          'dashboard.enabled',
+          true,
+          stdout,
+        );
+      },
     },
     {
       key: 'dashboardAuthEnabled',
-      label: 'Dashboard basic-auth',
-      current: cur.dashboardAuthEnabled ? 'ON' : 'OFF',
+      section: 'Dashboard',
+      kind: 'boolean',
+      label: 'Basic-auth protection',
+      checked: cur.dashboardAuthEnabled,
       restart: true,
+      async flip() {
+        await editBooleanSilent(
+          configPath,
+          cur.dashboardAuthEnabled,
+          /^(  basicAuth:\s*\n    enabled:\s*)(true|false)\s*$/m,
+          'dashboard.basicAuth.enabled',
+          true,
+          stdout,
+        );
+      },
     },
     {
       key: 'passwordHash',
+      section: 'Dashboard',
+      kind: 'value',
       label: 'Dashboard password',
-      current: cur.passwordHashSet ? 'set' : 'not set',
+      value: cur.passwordHashSet ? '•••••• (set)' : 'not set',
       restart: true,
+      async edit() {
+        await editPassword(stdin, stdout, configPath);
+      },
     },
-    { key: 'done', label: 'Done — back to shell', current: '' },
+    // -- Voice input --
+    {
+      key: 'voiceEnabled',
+      section: 'Voice input',
+      kind: 'boolean',
+      label: 'Voice input',
+      checked: voiceEnabled,
+      restart: false,
+      flip() {
+        if (!voiceEnabled && !hasGroqKey) {
+          stdout.write(
+            `\n  ${yellow('!')} ${dim('set the Groq API key first, then enable.')}\n`,
+          );
+          return;
+        }
+        voiceState.setEnabled(!voiceEnabled);
+      },
+    },
+    {
+      key: 'groqKey',
+      section: 'Voice input',
+      kind: 'value',
+      label: 'Groq API key',
+      value: hasGroqKey ? maskKey(groqKey) : 'not set',
+      restart: true,
+      async edit() {
+        await editGroqKey(stdin, stdout, envPath, hasGroqKey, voiceState);
+      },
+    },
+    {
+      key: 'voiceTest',
+      section: 'Voice input',
+      kind: 'value',
+      label: 'Test transcription…',
+      value: hasGroqKey ? '(upload a local audio file)' : '(set API key first)',
+      restart: false,
+      async edit() {
+        if (!hasGroqKey) {
+          stdout.write(
+            `\n  ${yellow('!')} ${dim('no Groq API key set — configure it first.')}\n`,
+          );
+          return;
+        }
+        await runVoiceTest(stdin, stdout, groqKey);
+      },
+    },
   ];
-
-  const idx = await arrowPicker(stdin, stdout, {
-    title: 'Edit settings',
-    helpLine: '↑/↓ move · Enter select · q quit',
-    items: fields.map((f) => ({
-      label: f.label,
-      meta: f.current,
-      tag: f.key === 'done' ? '' : f.restart ? ' (restart)' : ' (live)',
-    })),
-  });
-  if (idx < 0) return null;
-  return fields[idx]!.key;
 }
 
-// --- per-field edit dispatch -----------------------------------------
+function toPickerItems(settings: Setting[]): PickerItem[] {
+  const items: PickerItem[] = [];
+  let lastSection = '';
+  for (const s of settings) {
+    if (s.section !== lastSection) {
+      items.push({ kind: 'header', label: s.section });
+      lastSection = s.section;
+    }
+    const tag = s.restart ? yellow('restart') : green('live');
+    if (s.kind === 'boolean') {
+      items.push({ label: s.label, checked: s.checked, tag });
+    } else {
+      items.push({ label: s.label, meta: s.value, tag });
+    }
+  }
+  return items;
+}
 
-async function editOne(
+function maskKey(key: string): string {
+  if (key.length <= 12) return '••••';
+  return `${key.slice(0, 6)}${'•'.repeat(6)}${key.slice(-4)}`;
+}
+
+async function editBooleanSilent(
+  configPath: string,
+  current: boolean,
+  regex: RegExp,
+  pathLabel: string,
+  restart: boolean,
+  stdout: NodeJS.WritableStream,
+): Promise<void> {
+  // In the new unified picker booleans flip in place — no sub-picker,
+  // no confirmation. This helper just applies the patch + prints the
+  // one-line "✓ updated" status. The caller's redraw picks up the new
+  // value on the next tick.
+  const next = !current;
+  patchAndAnnounce(
+    configPath,
+    regex,
+    `$1${next}`,
+    pathLabel,
+    current ? 'ON' : 'OFF',
+    next ? 'ON' : 'OFF',
+    restart,
+    stdout,
+  );
+}
+
+async function editGroqKey(
   stdin: Stdin,
   stdout: NodeJS.WritableStream,
-  configPath: string,
-  key: FieldKey,
-  cur: CurrentValues,
+  envPath: string,
+  hasKey: boolean,
+  voiceState: ReturnType<typeof createVoiceStateRepo>,
 ): Promise<void> {
-  switch (key) {
-    case 'model':
-      await editEnum(
-        stdin,
-        stdout,
-        configPath,
-        'agent.model',
-        cur.model,
-        MODELS,
-        /^(\s+model:\s*).*$/m,
-        true, // restart
+  // Sub-picker so the operator can explicitly choose "remove" — we
+  // don't want Enter on the row to open a destructive unset flow.
+  const actionIdx = await arrowPicker(stdin, stdout, {
+    title: 'Groq API key',
+    helpLine: '↑/↓ move · Enter select · q cancel',
+    items: [
+      { label: hasKey ? 'Update key' : 'Set key' },
+      ...(hasKey ? [{ label: 'Remove key' }] : []),
+      { label: 'Cancel' },
+    ],
+  });
+  if (actionIdx < 0) return;
+  if (hasKey && actionIdx === 1) {
+    writeEnvFileUpdates(envPath, { GROQ_API_KEY: '' });
+    voiceState.setEnabled(false);
+    stdout.write(
+      `\n  ${sage('✓')} ${dim('key cleared + voice disabled.')} ` +
+        `${yellow('⚠ restart required')} ${dim('to purge it from process env.')}\n`,
+    );
+    return;
+  }
+  if ((hasKey && actionIdx === 2) || (!hasKey && actionIdx === 1)) {
+    return; // Cancel
+  }
+  // Set or update.
+  const value = await askSecret(
+    stdin,
+    stdout,
+    `\n  ${lavender('?')} Groq API key${dim(' (hidden input):')} `,
+  );
+  if (value === null) return;
+  const trimmed = value.trim();
+  if (!trimmed) {
+    stdout.write(`\n  ${dim('(empty — no change)')}\n`);
+    return;
+  }
+  writeEnvFileUpdates(envPath, { GROQ_API_KEY: trimmed });
+  stdout.write(
+    `\n  ${sage('✓')} ${dim('key saved to .env.')} ${yellow('⚠ restart required')} ${dim('to pick it up.')}\n`,
+  );
+}
+
+async function runVoiceTest(
+  stdin: Stdin,
+  stdout: NodeJS.WritableStream,
+  apiKey: string,
+): Promise<void> {
+  const pathInput = await askLine(
+    stdin,
+    stdout,
+    `\n  ${lavender('?')} Path to a local audio file (ogg / mp3 / m4a / wav)${dim(':')} `,
+  );
+  if (pathInput === null || pathInput.trim() === '') {
+    stdout.write(`\n  ${dim('(aborted)')}\n`);
+    return;
+  }
+  const absPath = resolve(pathInput.trim());
+  let buf: Buffer;
+  try {
+    buf = readFileSync(absPath);
+  } catch (e) {
+    stdout.write(
+      `\n  ${yellow('!')} ${dim(`could not read ${absPath}: ${(e as Error).message}`)}\n`,
+    );
+    return;
+  }
+  stdout.write(
+    `\n  ${dim('▸ uploading')} ${cyan(`${(buf.length / 1024).toFixed(1)} KB`)}${dim(' to Groq…')}\n`,
+  );
+  try {
+    const { text, durationSec } = await transcribeWithGroq(buf, { apiKey });
+    if (!text) {
+      stdout.write(
+        `\n  ${yellow('!')} ${dim('Groq returned no transcript (silent audio?)')}\n`,
       );
       return;
-    case 'dailyTokenLimit':
-      await editInteger(
-        stdin,
-        stdout,
-        configPath,
-        'budget.dailyTokenLimit',
-        cur.dailyTokenLimit,
-        /^(\s+dailyTokenLimit:\s*)\d+\s*$/m,
-        { min: 0 },
-        false,
-      );
-      return;
-    case 'perSessionTokenLimit':
-      await editInteger(
-        stdin,
-        stdout,
-        configPath,
-        'budget.perSessionTokenLimit',
-        cur.perSessionTokenLimit,
-        /^(\s+perSessionTokenLimit:\s*)\d+\s*$/m,
-        { min: 0 },
-        false,
-      );
-      return;
-    case 'autoAccept':
-      await editBoolean(
-        stdin,
-        stdout,
-        configPath,
-        'memory.autoAccept',
-        cur.autoAccept,
-        /^(\s+autoAccept:\s*)(true|false)\s*$/m,
-        false,
-      );
-      return;
-    case 'retentionDays':
-      await editIntegerOrNull(
-        stdin,
-        stdout,
-        configPath,
-        'messages.retentionDays',
-        cur.retentionDays,
-        /^(\s+retentionDays:\s*)(null|\d+)\s*$/m,
-        { min: 1 },
-        false,
-      );
-      return;
-    case 'logLevel':
-      await editEnum(
-        stdin,
-        stdout,
-        configPath,
-        'service.logLevel',
-        cur.logLevel,
-        LOG_LEVELS,
-        /^(\s+logLevel:\s*)\w+\s*$/m,
-        false,
-      );
-      return;
-    case 'conversationHistoryLimit':
-      await editInteger(
-        stdin,
-        stdout,
-        configPath,
-        'telegram.conversationHistoryLimit',
-        cur.conversationHistoryLimit,
-        /^(\s+conversationHistoryLimit:\s*)\d+\s*$/m,
-        { min: 0, max: 500 },
-        false,
-      );
-      return;
-    case 'allowedUserIds':
-      await editAllowedUsers(stdin, stdout, configPath, cur.allowedUserIds);
-      return;
-    case 'dashboardEnabled':
-      await editBoolean(
-        stdin,
-        stdout,
-        configPath,
-        'dashboard.enabled',
-        cur.dashboardEnabled,
-        // Targets the 2-space-indented `enabled:` line that immediately
-        // follows `dashboard:` — deliberately anchored to the top-level
-        // key so it can't match `dashboard.basicAuth.enabled` (4-space
-        // indent, further down).
-        /^(dashboard:\s*\n  enabled:\s*)(true|false)\s*$/m,
-        true, // restart (Fastify binds the HTTP listener at boot)
-      );
-      return;
-    case 'dashboardAuthEnabled':
-      await editBoolean(
-        stdin,
-        stdout,
-        configPath,
-        'dashboard.basicAuth.enabled',
-        cur.dashboardAuthEnabled,
-        // Targets the 4-space-indented `enabled:` line that immediately
-        // follows `  basicAuth:` — anchored so it can't confuse itself
-        // with the top-level `dashboard.enabled` (2-space indent).
-        /^(  basicAuth:\s*\n    enabled:\s*)(true|false)\s*$/m,
-        true, // restart (Fastify registers the basic-auth plugin at boot)
-      );
-      return;
-    case 'passwordHash':
-      await editPassword(stdin, stdout, configPath);
-      return;
+    }
+    stdout.write(
+      `\n  ${sage('✓')} ${dim('transcript')}${
+        durationSec ? dim(` (~${durationSec.toFixed(1)}s audio)`) : ''
+      }${dim(':')}\n\n`,
+    );
+    stdout.write(`  ${text}\n\n`);
+  } catch (e) {
+    stdout.write(
+      `\n  ${yellow('!')} ${dim(`transcription failed: ${(e as Error).message}`)}\n`,
+    );
   }
 }
 
@@ -417,45 +710,6 @@ async function editIntegerOrNull(
   const replacement = `$1${next === null ? 'null' : next}`;
   const nextStr = next === null ? 'forever' : `${next} days`;
   patchAndAnnounce(configPath, regex, replacement, pathLabel, curStr, nextStr, restart, stdout);
-}
-
-async function editBoolean(
-  stdin: Stdin,
-  stdout: NodeJS.WritableStream,
-  configPath: string,
-  pathLabel: string,
-  current: boolean,
-  regex: RegExp,
-  restart: boolean,
-): Promise<void> {
-  const idx = await arrowPicker(stdin, stdout, {
-    title: `${pathLabel}  ${dim(`(current: ${current ? 'ON' : 'OFF'})`)}`,
-    helpLine: '↑/↓ move · Enter select · q keep current',
-    items: [
-      { label: 'ON', meta: current ? ' ← current' : '' },
-      { label: 'OFF', meta: !current ? ' ← current' : '' },
-    ],
-    initialIndex: current ? 0 : 1,
-  });
-  if (idx < 0) {
-    stdout.write(`  ${dim('unchanged.')}\n\n`);
-    return;
-  }
-  const next = idx === 0;
-  if (next === current) {
-    stdout.write(`  ${dim('unchanged.')}\n\n`);
-    return;
-  }
-  patchAndAnnounce(
-    configPath,
-    regex,
-    `$1${next}`,
-    pathLabel,
-    current ? 'ON' : 'OFF',
-    next ? 'ON' : 'OFF',
-    restart,
-    stdout,
-  );
 }
 
 async function editAllowedUsers(

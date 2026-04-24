@@ -1,4 +1,4 @@
-import { yellow, dim, pink, bold } from './ansi.js';
+import { yellow, dim, pink, bold, sage } from './ansi.js';
 
 /**
  * Shared raw-mode prompt helpers used by `init`, `edit-config`, and any
@@ -251,19 +251,45 @@ export interface PickerItem {
   meta?: string;
   /** Optional trailing tag rendered after `meta`, e.g. " (live)" / " (restart)". */
   tag?: string;
+  /**
+   * If defined, the item is a toggleable checkbox: renders ☑ (green) when
+   * true / ☐ (dim) when false. Enter on such a row calls
+   * {@link PickerOptions.onToggle} if set, then continues the picker —
+   * the user stays on the row and can watch it flip. Used by the
+   * Settings menu to make every boolean setting feel the same.
+   */
+  checked?: boolean;
+  /**
+   * 'header' rows render as a dim section divider (e.g. "── General ──")
+   * and are SKIPPED by arrow navigation and cannot be selected. 'item'
+   * is the default.
+   */
+  kind?: 'header' | 'item';
 }
 
 export interface PickerOptions {
-  /** Items to choose from. */
-  items: ReadonlyArray<PickerItem>;
+  /** Items to choose from. May be a static array OR a thunk — the thunk
+   *  is re-invoked on every redraw, which is what makes in-place toggles
+   *  work: caller mutates external state in `onToggle`, picker redraws,
+   *  thunk produces fresh items with the updated `checked`. */
+  items: ReadonlyArray<PickerItem> | (() => ReadonlyArray<PickerItem>);
   /** Title rendered above the list. */
   title?: string;
-  /** Index that's highlighted on first render (default 0). */
+  /** Index that's highlighted on first render (default: first non-header). */
   initialIndex?: number;
   /** Help line shown below the title (default: arrow / enter / quit hint). */
   helpLine?: string;
-  /** Optional footer printed below the list. */
-  footer?: string;
+  /** Optional footer printed below the list — thunk so it can update
+   *  between redraws (e.g. "⚠ 2 changes pending restart"). */
+  footer?: string | (() => string | undefined);
+  /**
+   * Called when Enter is pressed on a row whose `checked` is defined.
+   * Receives the row's current index. Caller is expected to flip
+   * external state; the picker then redraws (via the items thunk) so
+   * the new checked value is visible, and stays open. Non-toggle rows
+   * (checked undefined) resolve the picker as normal with the idx.
+   */
+  onToggle?: (idx: number) => void | Promise<void>;
 }
 
 /**
@@ -278,67 +304,123 @@ export function arrowPicker(
   stdout: NodeJS.WritableStream,
   opts: PickerOptions,
 ): Promise<number> {
-  const items = opts.items;
-  if (items.length === 0) return Promise.resolve(-1);
+  const getItems = (): ReadonlyArray<PickerItem> =>
+    typeof opts.items === 'function' ? opts.items() : opts.items;
+  const getFooter = (): string | undefined =>
+    typeof opts.footer === 'function' ? opts.footer() : opts.footer;
+
+  if (getItems().length === 0) return Promise.resolve(-1);
 
   return new Promise((resolve) => {
     if (!stdin.setRawMode) {
-      // Non-TTY (e.g. piped / scripted): auto-select first item.
-      resolve(0);
+      // Non-TTY (e.g. piped / scripted): auto-select the first
+      // selectable (non-header) item.
+      const firstSelectable = getItems().findIndex(
+        (it) => (it.kind ?? 'item') !== 'header',
+      );
+      resolve(firstSelectable >= 0 ? firstSelectable : 0);
       return;
     }
 
-    let index = Math.max(0, Math.min(opts.initialIndex ?? 0, items.length - 1));
+    // Start on the first SELECTABLE row, honouring initialIndex if it
+    // points at one.
+    let items = getItems();
+    const indexIsSelectable = (i: number) =>
+      i >= 0 && i < items.length && (items[i]!.kind ?? 'item') !== 'header';
+    let index =
+      opts.initialIndex !== undefined && indexIsSelectable(opts.initialIndex)
+        ? opts.initialIndex
+        : items.findIndex((it) => (it.kind ?? 'item') !== 'header');
+    if (index < 0) index = 0;
+
     let firstDraw = true;
-    const labelWidth = items.reduce((m, it) => Math.max(m, it.label.length), 0);
-    // Total vertical lines consumed by one redraw — used both to rewind
-    // the cursor between redraws and to wipe the rendered region on exit.
-    const totalLines =
-      (opts.title ? 2 : 0) + (opts.helpLine ? 2 : 0) + items.length + (opts.footer ? 2 : 0) + 1;
+    // Last redraw's line count, so cleanup / next redraw can rewind.
+    let lastLines = 0;
 
     const redraw = (): void => {
+      items = getItems();
+      // Clamp index if the items thunk shrunk the list.
+      if (index >= items.length) index = items.length - 1;
+      if (!indexIsSelectable(index)) {
+        const next = items.findIndex(
+          (it, i) => i >= index && (it.kind ?? 'item') !== 'header',
+        );
+        index = next >= 0 ? next : items.findIndex((it) => (it.kind ?? 'item') !== 'header');
+        if (index < 0) index = 0;
+      }
+
+      const labelWidth = items
+        .filter((it) => (it.kind ?? 'item') !== 'header')
+        .reduce((m, it) => Math.max(m, visibleLength(it.label) + 4), 0);
+      const footer = getFooter();
+
       if (!firstDraw) {
-        // Move cursor up to the start of the previously-printed block,
-        // then clear from there to end of screen — keeps shell history
-        // above intact.
-        stdout.write(`\x1b[${totalLines}A\x1b[J`);
+        stdout.write(`\x1b[${lastLines}A\x1b[J`);
       }
       firstDraw = false;
-      stdout.write('\n');
+
+      const lines: string[] = [];
+      lines.push('');
       if (opts.title) {
-        stdout.write(`  ${bold(opts.title)}\n\n`);
+        lines.push(`  ${bold(opts.title)}`);
+        lines.push('');
       }
       if (opts.helpLine) {
-        stdout.write(`  ${dim(opts.helpLine)}\n\n`);
+        lines.push(`  ${dim(opts.helpLine)}`);
+        lines.push('');
       }
       items.forEach((it, i) => {
+        const kind = it.kind ?? 'item';
+        if (kind === 'header') {
+          lines.push(`  ${dim(`── ${it.label} ──`)}`);
+          return;
+        }
         const selected = i === index;
         const arrow = selected ? pink('▸ ') : '  ';
-        const label = it.label.padEnd(labelWidth);
-        const labelPainted = selected ? pink(bold(label)) : dim(label);
+        const checkbox =
+          it.checked === undefined
+            ? '   '
+            : it.checked
+              ? `${sage('☑')}  `
+              : `${dim('☐')}  `;
+        const paddedLabel = it.label.padEnd(
+          Math.max(labelWidth - 4, it.label.length),
+        );
+        const labelPainted = selected ? pink(bold(paddedLabel)) : dim(paddedLabel);
         const meta = it.meta ? `  ${selected ? pink(it.meta) : dim(it.meta)}` : '';
-        const tag = it.tag ? `${selected ? pink(it.tag) : dim(it.tag)}` : '';
-        stdout.write(`  ${arrow}${labelPainted}${meta}${tag}\n`);
+        const tag = it.tag ? ` ${selected ? pink(it.tag) : dim(it.tag)}` : '';
+        lines.push(`  ${arrow}${checkbox}${labelPainted}${meta}${tag}`);
       });
-      if (opts.footer) {
-        stdout.write(`\n  ${dim(opts.footer)}\n`);
+      if (footer) {
+        lines.push('');
+        lines.push(`  ${footer}`);
       }
+      lines.push('');
+
+      stdout.write(lines.join('\n') + '\n');
+      lastLines = lines.length;
     };
 
     const cleanup = (): void => {
       stdin.off('data', onData);
       if (stdin.setRawMode) stdin.setRawMode(false);
-      // Wipe the rendered menu so the next output (or the shell prompt)
-      // lands at the original cursor position. Without this wipe the
-      // menu lingers on screen — the user is visually "in the menu"
-      // even though the picker has already resolved.
-      if (!firstDraw) {
-        stdout.write(`\x1b[${totalLines}A\x1b[J`);
+      if (!firstDraw && lastLines > 0) {
+        stdout.write(`\x1b[${lastLines}A\x1b[J`);
       }
       stdout.write(SHOW_CURSOR);
     };
 
-    const onData = (chunk: Buffer): void => {
+    const step = (dir: 1 | -1): void => {
+      // Skip header rows while navigating.
+      const n = items.length;
+      for (let k = 0; k < n; k += 1) {
+        index = (index + dir + n) % n;
+        if (indexIsSelectable(index)) break;
+      }
+      redraw();
+    };
+
+    const onData = async (chunk: Buffer): Promise<void> => {
       const s = chunk.toString();
       if (s === '\x03' || s === 'q' || s === 'Q') {
         cleanup();
@@ -346,24 +428,37 @@ export function arrowPicker(
         return;
       }
       if (s === '\r' || s === '\n') {
+        const current = items[index];
+        if (current && current.checked !== undefined && opts.onToggle) {
+          // Toggle in place — caller flips state, we redraw and stay open.
+          // `await` so any async I/O (DB write, .env write) completes
+          // before we reread items via the thunk.
+          await opts.onToggle(index);
+          redraw();
+          return;
+        }
         cleanup();
         resolve(index);
         return;
       }
       if (s === ESC_UP || s === 'k') {
-        index = (index - 1 + items.length) % items.length;
-        redraw();
+        step(-1);
         return;
       }
       if (s === ESC_DOWN || s === 'j') {
-        index = (index + 1) % items.length;
-        redraw();
+        step(+1);
         return;
       }
-      // Number shortcut 1..9
       if (/^[1-9]$/.test(s)) {
         const n = Number(s) - 1;
-        if (n < items.length) {
+        if (n < items.length && indexIsSelectable(n)) {
+          const target = items[n]!;
+          if (target.checked !== undefined && opts.onToggle) {
+            index = n;
+            await opts.onToggle(n);
+            redraw();
+            return;
+          }
           cleanup();
           resolve(n);
           return;
@@ -377,4 +472,12 @@ export function arrowPicker(
     stdin.on('data', onData);
     redraw();
   });
+}
+
+/**
+ * Strip ANSI escape sequences when measuring label width — keeps the
+ * right-aligned meta column lined up even when labels contain colours.
+ */
+function visibleLength(s: string): number {
+  return s.replace(/\x1b\[[\d;]*m/g, '').length;
 }

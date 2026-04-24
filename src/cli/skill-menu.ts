@@ -11,7 +11,7 @@ import { createSkillRegistry } from '../skills/registry.js';
 import type { SkillRecord } from '../skills/registry.js';
 import { loadSkills } from '../skills/loader.js';
 import { arrowPicker, releaseStdin } from './prompt-helpers.js';
-import { dim, green, sage, yellow } from './ansi.js';
+import { dim, green, yellow } from './ansi.js';
 import { runSkillSetup, SkillSetupError } from './skill-setup.js';
 import { section } from './section.js';
 
@@ -63,9 +63,21 @@ export async function runSkillMenuCommand(): Promise<void> {
         return;
       }
 
-      const items = skills.map((s) => ({
+      // Skills use the same ☑/☐ visual as the Settings menu for
+      // consistency. Selecting a skill STILL opens the setup wizard —
+      // skills have more state than just a boolean flag (manifest,
+      // install.sh, wizard-collected secrets, MCP server), so the
+      // checkbox is informational here, not a toggle target. The
+      // picker treats them as plain items (no onToggle wired) so Enter
+      // resolves normally.
+      const items: Array<{
+        label: string;
+        checked?: boolean;
+        meta: string;
+      }> = skills.map((s) => ({
         label: s.name,
-        meta: ` ${describeStatus(s)}`,
+        checked: s.enabled,
+        meta: describeSecretStatus(s),
       }));
       items.push({ label: 'Back', meta: '' });
 
@@ -117,23 +129,21 @@ export async function runSkillMenuCommand(): Promise<void> {
 }
 
 /**
- * Human-readable status line for the skill picker. Shows enabled state +
- * secret presence so the operator can tell at a glance whether a skill is
- * ready or still needs configuration.
+ * Compact secret / wizard status for a skill row. The ☑/☐ in front of
+ * the label already tells the operator enabled vs disabled — this adds
+ * the "ready or still needs configuration" signal.
  */
-function describeStatus(skill: SkillRecord): string {
+function describeSecretStatus(skill: SkillRecord): string {
   const missing = skill.requiredSecrets.filter((n) => {
     const v = process.env[n];
     return typeof v !== 'string' || v.trim() === '';
   });
   const parts: string[] = [];
-  if (skill.enabled) parts.push(sage('enabled'));
-  else parts.push(dim('disabled'));
   if (missing.length > 0) {
     parts.push(yellow(`${missing.length} secret${missing.length > 1 ? 's' : ''} missing`));
   } else if (skill.requiredSecrets.length > 0) {
     parts.push(green('configured'));
   }
   if (!skill.setupWizard) parts.push(dim('no wizard'));
-  return parts.join(dim(' · '));
+  return parts.length > 0 ? parts.join(dim(' · ')) : '';
 }

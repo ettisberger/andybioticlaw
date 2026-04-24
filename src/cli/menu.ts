@@ -55,24 +55,17 @@ export async function runInteractiveMenu(): Promise<void> {
       ];
       if (setupDone) {
         items.push({
-          label: 'Edit settings — model, budget, memory, retention, …',
+          label: 'Settings — model, budget, dashboard, voice, …',
           handler: async () => {
             const { runEditConfigCommand } = await import('./edit-config.js');
             await runEditConfigCommand();
           },
         });
         items.push({
-          label: 'Add / configure skills — install-wizard + secrets',
+          label: 'Skills — install-wizard + per-skill secrets',
           handler: async () => {
             const { runSkillMenuCommand } = await import('./skill-menu.js');
             await runSkillMenuCommand();
-          },
-        });
-        items.push({
-          label: 'Configure voice input — Groq API key + enable/disable',
-          handler: async () => {
-            const { runVoiceMenuCommand } = await import('./voice-menu.js');
-            await runVoiceMenuCommand();
           },
         });
         items.push({
