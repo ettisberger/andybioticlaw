@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.10.0](https://github.com/ettisberger/andybioticlaw/compare/v0.9.0...v0.10.0) (2026-04-24)
+
+
+### Features
+
+* **dashboard:** default to light theme, ignore system preference ([549527f](https://github.com/ettisberger/andybioticlaw/commit/549527feb46892c05c0b2b7c65858142baf3b3d2))
+* **skills:** add hue (philips) skill via the Remote API ([e42077c](https://github.com/ettisberger/andybioticlaw/commit/e42077ce6825c2bdf686540ba4815f99ecb94c39))
+
 ## [0.9.0](https://github.com/ettisberger/andybioticlaw/compare/v0.8.0...v0.9.0) (2026-04-24)
 
 
