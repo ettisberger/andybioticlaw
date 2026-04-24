@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.10.1](https://github.com/ettisberger/andybioticlaw/compare/v0.10.0...v0.10.1) (2026-04-24)
+
+
+### Bug Fixes
+
+* **wizard:** strip ANSI escape sequences so pasted secrets land clean ([c50b907](https://github.com/ettisberger/andybioticlaw/commit/c50b907c29a330841c9b9c2c30b6472d974c4094))
+
 ## [0.10.0](https://github.com/ettisberger/andybioticlaw/compare/v0.9.0...v0.10.0) (2026-04-24)
 
 
