@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.18.0](https://github.com/ettisberger/andybioticlaw/compare/v0.17.1...v0.18.0) (2026-04-24)
+
+
+### Features
+
+* proactive briefings + model routing + memory hygiene + roadmap ([818bb65](https://github.com/ettisberger/andybioticlaw/commit/818bb656300dad0e1ec09e08937a7e302d9f9759))
+* proactive briefings + model routing + memory hygiene + roadmap ([2d9a911](https://github.com/ettisberger/andybioticlaw/commit/2d9a911701f1f48b15dd62a02e5a73396689f1d7))
+
 ## [0.17.1](https://github.com/ettisberger/andybioticlaw/compare/v0.17.0...v0.17.1) (2026-04-24)
 
 
