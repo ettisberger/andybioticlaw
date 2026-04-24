@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.16.0](https://github.com/ettisberger/andybioticlaw/compare/v0.15.0...v0.16.0) (2026-04-24)
+
+
+### Features
+
+* **security:** host-mode exfil defense — env scrub + outbound redaction + stronger guardrails ([d2e21b9](https://github.com/ettisberger/andybioticlaw/commit/d2e21b96216a58b247874dbfaff36641edeba58c))
+
 ## [0.15.0](https://github.com/ettisberger/andybioticlaw/compare/v0.14.0...v0.15.0) (2026-04-24)
 
 
