@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.18.1](https://github.com/ettisberger/andybioticlaw/compare/v0.18.0...v0.18.1) (2026-04-24)
+
+
+### Reverts
+
+* **dashboard:** drop memory hygiene UI, keep DB plumbing ([0df6557](https://github.com/ettisberger/andybioticlaw/commit/0df655747d456f55b5372afefe020d9b9488ebc5))
+
 ## [0.18.0](https://github.com/ettisberger/andybioticlaw/compare/v0.17.1...v0.18.0) (2026-04-24)
 
 
