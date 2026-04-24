@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { CORE_SECRETS } from '../config/secrets.js';
 import type { Api } from 'grammy';
 import type { Logger } from 'pino';
 import type { AuditRepo } from '../db/repositories/audit.js';
@@ -120,6 +121,25 @@ export async function dispatchUserPrompt(
     };
   }
 
+  // Shared mutable Set the sink reads on every flush to redact known
+  // secret values before the reply leaves our service. Populated by
+  // session.ts with skill-scoped secrets; we seed it here with core
+  // secrets so they're covered even for sessions without skills active.
+  // Read fresh from process.env on each flush (not captured once) so
+  // operators who rotate a secret mid-session still get coverage.
+  const secretsRef: { values: Set<string> } = { values: new Set() };
+  const secretsProvider = {
+    current(): ReadonlySet<string> {
+      const out = new Set<string>();
+      for (const key of CORE_SECRETS) {
+        const v = process.env[key];
+        if (v) out.add(v);
+      }
+      for (const v of secretsRef.values) out.add(v);
+      return out;
+    },
+  };
+
   const sink = createTelegramStreamSink(
     {
       api: deps.api,
@@ -129,6 +149,8 @@ export async function dispatchUserPrompt(
       editIntervalMs: deps.streamEditIntervalMs(),
       longTaskNotifyAfterMs: deps.longTaskNotifyAfterMs(),
       parseMode: 'HTML',
+      secretsProvider,
+      audit: deps.audit,
       proposalProcessor: {
         memoryRepo: deps.memoryRepo,
         audit: deps.audit,
@@ -161,6 +183,7 @@ export async function dispatchUserPrompt(
     sink,
     dbPath: deps.dbPath,
     memoryProposalServer: deps.memoryProposalServer,
+    secretsRef,
   };
 
   const onStart = () => {

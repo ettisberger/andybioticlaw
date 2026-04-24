@@ -44,11 +44,36 @@ export interface RunClaudeInput {
  * could switch it from subscription auth to API-key billing or to a different
  * provider (Bedrock/Vertex). See README § Design Decisions.
  */
+/**
+ * Secrets that must NEVER reach Emma's subprocess env. Listed here
+ * (not in CORE_SECRETS' own module) because the list is specific to
+ * "what Emma needs to function" — which is different from
+ * "what counts as a core secret".
+ *
+ * - `TELEGRAM_BOT_TOKEN`: used by the bot poller (parent service),
+ *   not Emma. She doesn't talk to Telegram directly — the sink does.
+ * - `GROQ_API_KEY`: used by the DM voice-transcription preprocessor
+ *   BEFORE Emma's session runs. She never needs it.
+ * - `CLAUDE_CODE_OAUTH_TOKEN` is NOT in this list — the Claude CLI
+ *   itself needs it for subscription auth.
+ * - Skill-scoped secrets (GOOGLE_CALENDAR_*, HUE_*, IMAP_PASS …) are
+ *   also NOT in this list — they're re-injected per-session via
+ *   `extraEnv` in session.ts, scoped to active skills, because some
+ *   skill bash wrappers (himalaya) read them from the environment.
+ */
+export const AGENT_SCRUBBED_SECRETS = [
+  'TELEGRAM_BOT_TOKEN',
+  'GROQ_API_KEY',
+] as const;
+
 export function buildClaudeEnv(
   base: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = {};
-  const blocked = new Set<string>(API_BILLING_ENV_VARS as readonly string[]);
+  const blocked = new Set<string>([
+    ...(API_BILLING_ENV_VARS as readonly string[]),
+    ...AGENT_SCRUBBED_SECRETS,
+  ]);
   for (const [k, v] of Object.entries(base)) {
     if (blocked.has(k)) continue;
     if (v !== undefined) out[k] = v;

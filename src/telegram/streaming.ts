@@ -3,6 +3,9 @@ import type { Logger } from 'pino';
 import type { StreamSink, SessionExecuteResult } from '../agent/session.js';
 import type { ProposalPostProcessDeps } from '../memory/proposals.js';
 import { processSessionProposals } from '../memory/proposals.js';
+import { redactSecrets } from './redact.js';
+import type { SecretsProvider } from './redact.js';
+import type { AuditRepo } from '../db/repositories/audit.js';
 
 export interface StreamSinkDeps {
   api: Api;
@@ -24,6 +27,22 @@ export interface StreamSinkDeps {
    * without parse_mode so a malformed tag loses formatting but not content.
    */
   parseMode?: 'HTML';
+  /**
+   * Last-mile outbound-secret redactor. Called on every flush before
+   * the text reaches Telegram. Any literal secret value (API key,
+   * refresh token, dashboard password hash, …) gets substituted with
+   * `[REDACTED]` and an audit row is written. This is the primary
+   * defence against prompt-injection-driven exfiltration — it runs
+   * regardless of how Emma obtained the secret, so it catches calendar-
+   * event, email, and file-read injection paths uniformly.
+   *
+   * When omitted (or `secretsProvider.current()` returns an empty set),
+   * no redaction is performed — useful for tests.
+   */
+  secretsProvider?: SecretsProvider;
+  /** Audit sink for `agent_secret_leak_blocked` rows. Required when
+   *  secretsProvider is set; omit both together for tests. */
+  audit?: AuditRepo;
 }
 
 const MAX_MESSAGE_CHARS = 3900; // < Telegram's 4096 hard cap.
@@ -52,6 +71,50 @@ export function createTelegramStreamSink(
   openingMessageId: number,
 ): StreamSink {
   const rateLimiter = new RollingRateLimiter(deps.rateLimitEditsPer60s ?? 18, 60_000);
+
+  // Dedupe audit rows per (sessionId, secret-value). One redaction
+  // fire per secret per session is enough for the operator to notice;
+  // more than that just floods the table.
+  const auditedSecrets = new Set<string>();
+
+  /**
+   * Last-mile outbound redaction. Wraps every body before it leaves
+   * the service. If any known secret appears literally in `text`, it
+   * gets replaced with `[REDACTED]` and an audit row is written (once
+   * per secret-value per session). Returns the cleaned text unchanged
+   * when no secretsProvider is configured or no hits.
+   */
+  function redact(text: string): string {
+    if (!deps.secretsProvider) return text;
+    const secrets = deps.secretsProvider.current();
+    if (secrets.size === 0) return text;
+    const { redacted, hits, matchedValues } = redactSecrets(text, secrets);
+    if (hits === 0) return text;
+    deps.logger.warn(
+      { hits, secretsLeaked: matchedValues.size, sessionId: deps.sessionId },
+      'outbound secret leak blocked — redacted before send',
+    );
+    for (const value of matchedValues) {
+      if (auditedSecrets.has(value)) continue;
+      auditedSecrets.add(value);
+      deps.audit?.record({
+        kind: 'agent_secret_leak_blocked',
+        actor: `tg:${deps.chatId}`,
+        detail: {
+          sessionId: deps.sessionId,
+          // Never log the value itself — just metadata the operator can use
+          // to investigate. `length` + `head/tail` mask help identify which
+          // secret without re-leaking.
+          length: value.length,
+          preview:
+            value.length >= 8
+              ? `${value.slice(0, 4)}…${value.slice(-4)}`
+              : '(short)',
+        },
+      });
+    }
+    return redacted;
+  }
 
   let currentMessageId = openingMessageId;
   /** The text content currently shown in `currentMessageId`. */
@@ -135,13 +198,13 @@ export function createTelegramStreamSink(
 
     // Continuation branch — current message would blow Telegram's per-message cap.
     if (aboutToShow.length > MAX_MESSAGE_CHARS) {
-      const truncated = aboutToShow.slice(0, MAX_MESSAGE_CHARS);
+      const truncated = redact(aboutToShow.slice(0, MAX_MESSAGE_CHARS));
       // This message is done being edited — apply parse_mode so any HTML in it
       // renders. Continuation message stays plain-text until IT finalizes.
       await editFinalized(deps, currentMessageId, truncated, 'pre-continuation finalize');
       rateLimiter.record();
 
-      const leftover = aboutToShow.slice(MAX_MESSAGE_CHARS);
+      const leftover = redact(aboutToShow.slice(MAX_MESSAGE_CHARS));
       try {
         const msg = await deps.api.sendMessage(
           deps.chatId,
@@ -160,12 +223,17 @@ export function createTelegramStreamSink(
     }
 
     // Normal edit. No mid-stream suffix — Telegram's typing indicator
-    // (sent every 5s) is the "still writing" signal.
+    // (sent every 5s) is the "still writing" signal. Redact before the
+    // body gets further composed — also prevents a partially-split
+    // secret from leaking on the final flush (we redact every flush,
+    // but most of the pendingTail accumulation happens via onDelta,
+    // which doesn't emit; the first flush to include the full literal
+    // catches it).
     let body: string;
     if (opts.errorPrefix) {
-      body = `${opts.errorPrefix}\n\n${aboutToShow}`.slice(0, 4096);
+      body = `${opts.errorPrefix}\n\n${redact(aboutToShow)}`.slice(0, 4096);
     } else {
-      body = aboutToShow;
+      body = redact(aboutToShow);
     }
 
     if (!opts.final && !opts.errorPrefix && !rateLimiter.canAcquire()) {
@@ -250,8 +318,15 @@ export function createTelegramStreamSink(
 
       if (!totalText && errorPrefix) {
         // Nothing streamed — overwrite the opener with just the error line.
+        // errorPrefix is our own text so it can't contain live secrets, but
+        // we still run it through redact() for consistency / defense in
+        // depth — cheap when the secrets set is small.
         try {
-          await deps.api.editMessageText(deps.chatId, currentMessageId, errorPrefix);
+          await deps.api.editMessageText(
+            deps.chatId,
+            currentMessageId,
+            redact(errorPrefix),
+          );
         } catch (e) {
           logTelegramEditFail(deps.logger, e, currentMessageId, 'final-error edit');
         }

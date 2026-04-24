@@ -49,6 +49,21 @@ export interface SessionExecuteInput {
   memoryProposalServer: { command: string; args: string[] };
   /** Override memory snapshot size (tests). */
   memoryMaxEntries?: number;
+  /**
+   * Shared mutable Set populated by executeSession with every
+   * skill-scoped secret value for this session's active skills.
+   * The caller (dispatch.ts) reads it from its sink's SecretsProvider
+   * on every Telegram flush to redact outbound text.
+   *
+   * Ref-passing pattern: the sink is constructed BEFORE
+   * executeSession runs (it's needed for the "… working" opening
+   * message), so we can't hand the final skill-secret set to it at
+   * construction time. Instead we share a mutable ref — session
+   * populates it once active skills are known; sink reads it fresh
+   * on each flush. Since the sink only streams AFTER session starts,
+   * the ref is always populated before its first read.
+   */
+  secretsRef?: { values: Set<string> };
 }
 
 export interface SessionExecuteDeps {
@@ -219,7 +234,13 @@ async function runOne(
     for (const secretName of skill.requiredSecrets) {
       try {
         const value = deps.resolveSkillSecret(skill.name, secretName);
-        if (value !== undefined) extraEnv[secretName] = value;
+        if (value !== undefined) {
+          extraEnv[secretName] = value;
+          // Also tell the outbound redactor about this value so any
+          // literal appearance in Emma's replies gets scrubbed. See
+          // the ref-passing pattern note on SessionExecuteInput.
+          input.secretsRef?.values.add(value);
+        }
       } catch (e) {
         deps.logger.warn(
           { skill: skill.name, secret: secretName, err: (e as Error).message },

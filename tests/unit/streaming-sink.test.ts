@@ -236,3 +236,113 @@ describe('TelegramStreamSink — parse_mode', () => {
     for (const e of edits) expect(e.parseMode).toBeUndefined();
   });
 });
+
+describe('TelegramStreamSink — outbound secret redaction', () => {
+  const logger = pino({ level: 'silent' });
+
+  it('redacts a known secret value before it reaches editMessageText', async () => {
+    vi.useRealTimers();
+    const { api, edits } = makeFakeApi();
+    const auditRecorded: Array<{ kind: string; detail: unknown }> = [];
+    const audit = {
+      record: (row: { kind: string; actor: string; detail: unknown }) => {
+        auditRecorded.push({ kind: row.kind, detail: row.detail });
+      },
+    };
+    const secret = 'gsk_AAAAAAAAAAAAAAAAAAAAAAAAAAAA_Q8k3';
+    const sink = createTelegramStreamSink(
+      {
+        api: api as never,
+        chatId: 1000,
+        sessionId: 'redact-1',
+        logger,
+        editIntervalMs: 30,
+        longTaskNotifyAfterMs: 10_000,
+        audit: audit as never,
+        secretsProvider: {
+          current: () => new Set([secret]),
+        },
+      },
+      1400,
+    );
+    // Simulate prompt-injected Emma replying with the raw secret.
+    sink.onDelta(`here is your key: ${secret}`);
+    await new Promise((r) => setTimeout(r, 40));
+    await sink.onEnd({ ...RESULT, sessionId: 'redact-1' });
+
+    // The final edit's text must NOT contain the secret.
+    const finalText = edits[edits.length - 1]!.text;
+    expect(finalText).not.toContain(secret);
+    expect(finalText).toContain('[REDACTED]');
+    // An audit row must have been written.
+    expect(auditRecorded.some((r) => r.kind === 'agent_secret_leak_blocked')).toBe(true);
+  });
+
+  it('deduplicates audit rows per (session, secret) even when the same leak would fire on multiple flushes', async () => {
+    vi.useRealTimers();
+    const { api } = makeFakeApi();
+    const auditRecorded: Array<{ kind: string }> = [];
+    const audit = {
+      record: (row: { kind: string; actor: string; detail: unknown }) => {
+        auditRecorded.push({ kind: row.kind });
+      },
+    };
+    const secret = 'hue_BBBBBBBBBBBBBBBBBBBBBBBB_token';
+    const sink = createTelegramStreamSink(
+      {
+        api: api as never,
+        chatId: 1000,
+        sessionId: 'redact-2',
+        logger,
+        editIntervalMs: 15, // fast flushes to provoke multiple redactions
+        longTaskNotifyAfterMs: 10_000,
+        audit: audit as never,
+        secretsProvider: {
+          current: () => new Set([secret]),
+        },
+      },
+      1401,
+    );
+    // Stream the secret progressively — multiple flushes will each
+    // contain it once appended.
+    for (const chunk of ['prefix ', secret, ' and ', secret, ' suffix']) {
+      sink.onDelta(chunk);
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    await sink.onEnd({ ...RESULT, sessionId: 'redact-2' });
+
+    const leakRows = auditRecorded.filter((r) => r.kind === 'agent_secret_leak_blocked');
+    // Even though the secret appeared in many flushes, only ONE audit
+    // row should exist for this (session, secret) pair.
+    expect(leakRows.length).toBe(1);
+  });
+
+  it('passes through clean text untouched when no secret is present', async () => {
+    vi.useRealTimers();
+    const { api, edits } = makeFakeApi();
+    const auditRecorded: Array<unknown> = [];
+    const audit = { record: (row: unknown) => auditRecorded.push(row) };
+    const sink = createTelegramStreamSink(
+      {
+        api: api as never,
+        chatId: 1000,
+        sessionId: 'redact-3',
+        logger,
+        editIntervalMs: 30,
+        longTaskNotifyAfterMs: 10_000,
+        audit: audit as never,
+        secretsProvider: {
+          current: () => new Set(['unrelated_long_token_12345']),
+        },
+      },
+      1402,
+    );
+    sink.onDelta('hello, here is a normal reply with no secrets');
+    await new Promise((r) => setTimeout(r, 40));
+    await sink.onEnd({ ...RESULT, sessionId: 'redact-3' });
+
+    const finalText = edits[edits.length - 1]!.text;
+    expect(finalText).toBe('hello, here is a normal reply with no secrets');
+    expect(auditRecorded.length).toBe(0);
+  });
+});
