@@ -1,5 +1,5 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, isAbsolute, resolve } from 'node:path';
 import type { SkillRecord } from './registry.js';
 
 export interface McpConfigInput {
@@ -82,9 +82,20 @@ export function buildMcpConfig(
         });
         env[k] = interpolated;
       }
+      // Relative paths in args (and command) are resolved against the
+      // skill's own directory. The Claude CLI spawns MCP servers with its
+      // own cwd (the agent workspace, not the skill dir), so manifests
+      // that write `./mcp-server/index.js` meaning "relative to my skill
+      // folder" would otherwise silently fail to start.
+      const resolvedCommand = looksLikePath(srv.command)
+        ? resolvePathAgainstSkill(srv.command, skill.skillDir)
+        : srv.command;
+      const resolvedArgs = srv.args.map((a) =>
+        looksLikePath(a) ? resolvePathAgainstSkill(a, skill.skillDir) : a,
+      );
       servers[srv.name] = {
-        command: srv.command,
-        args: [...srv.args],
+        command: resolvedCommand,
+        args: resolvedArgs,
         env,
       };
     }
@@ -101,4 +112,17 @@ export function writeMcpConfig(path: string, config: McpConfig): void {
 
 export function mcpConfigPath(sessionWorkspace: string): string {
   return resolve(sessionWorkspace, '.mcp.json');
+}
+
+/**
+ * Heuristic for "this string refers to a file inside the skill folder" —
+ * i.e. starts with `./`, `../`, or is already absolute. Bare names
+ * (`node`, `python3`, `himalaya`) are left alone so they resolve via PATH.
+ */
+function looksLikePath(s: string): boolean {
+  return s.startsWith('./') || s.startsWith('../') || isAbsolute(s);
+}
+
+function resolvePathAgainstSkill(s: string, skillDir: string): string {
+  return isAbsolute(s) ? s : resolve(skillDir, s);
 }

@@ -23,7 +23,7 @@ mcp_servers:
   - name: google-calendar
     command: node
     args:
-      - ./skills/google-calendar/mcp-server/index.js
+      - ./mcp-server/index.js
     env:
       GOOGLE_CALENDAR_CLIENT_ID: ${GOOGLE_CALENDAR_CLIENT_ID}
       GOOGLE_CALENDAR_CLIENT_SECRET: ${GOOGLE_CALENDAR_CLIENT_SECRET}

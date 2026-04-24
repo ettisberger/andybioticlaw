@@ -92,6 +92,30 @@ describe('buildMcpConfig', () => {
     expect(warnings.some((w) => /not in required_secrets/.test(w))).toBe(true);
   });
 
+  it('resolves relative args against the skill dir; leaves bare commands on PATH', () => {
+    const s = skill('calendar', {
+      skillDir: '/opt/andybioticlaw/skills/calendar',
+      mcpServers: [
+        {
+          name: 'calendar',
+          command: 'node',
+          args: ['./mcp-server/index.js', '--flag', '/abs/keep.json'],
+          env: {},
+        },
+      ],
+    });
+    const { config } = buildMcpConfig({
+      skills: [s],
+      getSkillSecret: () => undefined,
+    });
+    expect(config.mcpServers['calendar']!.command).toBe('node');
+    expect(config.mcpServers['calendar']!.args).toEqual([
+      '/opt/andybioticlaw/skills/calendar/mcp-server/index.js',
+      '--flag',
+      '/abs/keep.json',
+    ]);
+  });
+
   it('warns on name collision and drops the duplicate', () => {
     const s1 = skill('a', {
       mcpServers: [{ name: 'dup', command: 'node', args: [], env: {} }],
