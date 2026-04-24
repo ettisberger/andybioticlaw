@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.7.0](https://github.com/ettisberger/andybioticlaw/compare/v0.6.0...v0.7.0) (2026-04-24)
+
+
+### Features
+
+* **telegram:** enable HTML parse_mode for bold/italic/code/links in replies ([5073343](https://github.com/ettisberger/andybioticlaw/commit/50733439e37d68e220269b8662cb1e08edfdea57))
+
 ## [0.6.0](https://github.com/ettisberger/andybioticlaw/compare/v0.5.5...v0.6.0) (2026-04-24)
 
 
