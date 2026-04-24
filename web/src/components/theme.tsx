@@ -24,8 +24,8 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
  * Resolve the initial theme synchronously, before React paints, so the
  * first frame already has the right colors. Priority:
  *   1. Explicit user choice stored in localStorage (the toggle).
- *   2. System preference (prefers-color-scheme).
- *   3. Light (safe default).
+ *   2. Light (default — chosen over system-follow because the dashboard
+ *      is a warm-palette tool; dark is opt-in via the toggle).
  *
  * Called once at module init — the returned mode is the source of truth
  * for the first render. Subsequent changes go through React state.
@@ -37,10 +37,7 @@ function readInitialMode(): Mode {
     if (stored === 'dark' || stored === 'light') return stored;
   } catch {
     // localStorage can throw in private browsing / embedded contexts —
-    // fall through to system preference.
-  }
-  if (window.matchMedia?.('(prefers-color-scheme: dark)').matches) {
-    return 'dark';
+    // fall through to the default.
   }
   return 'light';
 }
@@ -67,24 +64,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       /* fine — theme just won't persist */
     }
   }, [mode]);
-
-  // Track system changes IFF the user hasn't made an explicit choice.
-  // If they've toggled the switch once, we respect their pick.
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const hasExplicit = (() => {
-      try {
-        return !!window.localStorage.getItem(STORAGE_KEY);
-      } catch {
-        return false;
-      }
-    })();
-    if (hasExplicit) return;
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const onChange = (e: MediaQueryListEvent) => setMode(e.matches ? 'dark' : 'light');
-    mq.addEventListener('change', onChange);
-    return () => mq.removeEventListener('change', onChange);
-  }, []);
 
   const toggle = useCallback(() => {
     setMode((m) => (m === 'dark' ? 'light' : 'dark'));
