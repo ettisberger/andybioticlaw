@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.17.1](https://github.com/ettisberger/andybioticlaw/compare/v0.17.0...v0.17.1) (2026-04-24)
+
+
+### Bug Fixes
+
+* **dashboard:** correct unit suffix on telegram.conversationHistoryLimit ([8364b4d](https://github.com/ettisberger/andybioticlaw/commit/8364b4d77fd77cb17a20ae2d0d6795722b852367))
+
 ## [0.17.0](https://github.com/ettisberger/andybioticlaw/compare/v0.16.0...v0.17.0) (2026-04-24)
 
 
