@@ -128,6 +128,7 @@ export async function dispatchUserPrompt(
       logger: deps.logger,
       editIntervalMs: deps.streamEditIntervalMs(),
       longTaskNotifyAfterMs: deps.longTaskNotifyAfterMs(),
+      parseMode: 'HTML',
       proposalProcessor: {
         memoryRepo: deps.memoryRepo,
         audit: deps.audit,

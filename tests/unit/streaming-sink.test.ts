@@ -12,16 +12,34 @@ import type { SessionExecuteResult } from '../../src/agent/session.js';
  * deltas are silently lost.
  */
 
-function makeFakeApi() {
-  const edits: Array<{ chatId: number; messageId: number; text: string }> = [];
+function makeFakeApi(opts: { rejectParseWith?: string } = {}) {
+  const edits: Array<{
+    chatId: number;
+    messageId: number;
+    text: string;
+    parseMode?: string;
+  }> = [];
   const sends: Array<{ chatId: number; text: string }> = [];
   let nextMessageId = 2000;
 
   const api = {
-    async editMessageText(chatId: number, messageId: number, text: string) {
+    async editMessageText(
+      chatId: number,
+      messageId: number,
+      text: string,
+      other?: { parse_mode?: string },
+    ) {
       // Simulate a slow Telegram API — 80ms round-trip.
       await new Promise((r) => setTimeout(r, 80));
-      edits.push({ chatId, messageId, text });
+      if (opts.rejectParseWith && other?.parse_mode) {
+        throw new Error(opts.rejectParseWith);
+      }
+      edits.push({
+        chatId,
+        messageId,
+        text,
+        ...(other?.parse_mode ? { parseMode: other.parse_mode } : {}),
+      });
       return true as const;
     },
     async sendMessage(chatId: number, text: string) {
@@ -134,5 +152,87 @@ describe('TelegramStreamSink — delta coalescing under overlap', () => {
 
     const lastEdit = edits[edits.length - 1]!;
     expect(lastEdit.text).toBe('The quick brown fox jumps over the lazy dog.');
+  });
+});
+
+describe('TelegramStreamSink — parse_mode', () => {
+  const logger = pino({ level: 'silent' });
+
+  it('applies parse_mode only on the final edit; mid-stream edits stay plain', async () => {
+    vi.useRealTimers();
+    const { api, edits } = makeFakeApi();
+    const sink = createTelegramStreamSink(
+      {
+        api: api as never,
+        chatId: 1000,
+        sessionId: 'p1',
+        logger,
+        editIntervalMs: 30,
+        longTaskNotifyAfterMs: 10_000,
+        parseMode: 'HTML',
+      },
+      1300,
+    );
+
+    for (const chunk of ['<b>Hi</b> ', 'there ', 'friend']) {
+      sink.onDelta(chunk);
+      await new Promise((r) => setTimeout(r, 40));
+    }
+    await sink.onEnd({ ...RESULT, sessionId: 'p1' });
+
+    // At least two edits: some mid-stream (plain) and one final (HTML).
+    expect(edits.length).toBeGreaterThanOrEqual(2);
+    const midStreamEdits = edits.slice(0, -1);
+    for (const e of midStreamEdits) expect(e.parseMode).toBeUndefined();
+    const finalEdit = edits[edits.length - 1]!;
+    expect(finalEdit.parseMode).toBe('HTML');
+    expect(finalEdit.text).toBe('<b>Hi</b> there friend');
+  });
+
+  it("falls back to plain text when Telegram rejects HTML parse entities", async () => {
+    vi.useRealTimers();
+    const { api, edits } = makeFakeApi({
+      rejectParseWith: "Bad Request: can't parse entities: Unclosed start tag at byte offset 3",
+    });
+    const sink = createTelegramStreamSink(
+      {
+        api: api as never,
+        chatId: 1000,
+        sessionId: 'p2',
+        logger,
+        editIntervalMs: 30,
+        longTaskNotifyAfterMs: 10_000,
+        parseMode: 'HTML',
+      },
+      1301,
+    );
+
+    sink.onDelta('<b>oops');
+    await new Promise((r) => setTimeout(r, 40));
+    await sink.onEnd({ ...RESULT, sessionId: 'p2' });
+
+    const finalPlain = edits[edits.length - 1]!;
+    expect(finalPlain.parseMode).toBeUndefined();
+    expect(finalPlain.text).toBe('<b>oops');
+  });
+
+  it('omits parse_mode entirely when not configured', async () => {
+    vi.useRealTimers();
+    const { api, edits } = makeFakeApi();
+    const sink = createTelegramStreamSink(
+      {
+        api: api as never,
+        chatId: 1000,
+        sessionId: 'p3',
+        logger,
+        editIntervalMs: 30,
+        longTaskNotifyAfterMs: 10_000,
+      },
+      1302,
+    );
+    sink.onDelta('plain text reply');
+    await new Promise((r) => setTimeout(r, 40));
+    await sink.onEnd({ ...RESULT, sessionId: 'p3' });
+    for (const e of edits) expect(e.parseMode).toBeUndefined();
   });
 });

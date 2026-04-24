@@ -61,14 +61,14 @@ Deletes an event. Irreversible. Always confirm in the DM first.
 
 ## Response presentation
 
-When returning calendar data to the principal, prefer a compact emoji-labeled layout over prose. Suggested shape for a list of events:
+When returning calendar data to the principal, prefer a compact emoji-labeled layout over prose. Suggested shape for a list of events (Telegram HTML renders here — see the Presentation section of the base prompt for allowed tags):
 
-    📅 <day-of-week, short date>
-    ⏰ <HH:MM–HH:MM>  <title>
-    📍 <location, if any>
-    👥 <attendee count, if any>
+    📅 <b>{day-of-week, short date}</b>
+    ⏰ {HH:MM–HH:MM}  <b>{title}</b>
+    📍 {location}
+    👥 {attendee count}
 
-One emoji per field; skip any field that is empty. Use ✅ for confirmed events, ❓ for tentative, ⏹ for cancelled. For a single event detail (`get_event`), the same shape works — add 📝 for description. Use the principal's local timezone for any time you render.
+One emoji per field; skip any field that is empty. Use ✅ for confirmed events, ❓ for tentative, ⏹ for cancelled. For a single event detail (`get_event`), the same shape works — add 📝 for description and, when helpful, wrap the htmlLink as `<a href="{htmlLink}">open in calendar</a>`. Event ids, when you need to show them, belong in `<code>…</code>`. Use the principal's local timezone for any time you render. HTML-escape any event title, location, or description that came from Google before placing it in the reply (`<` → `&lt;`, `>` → `&gt;`, `&` → `&amp;`).
 
 ## When the refresh token expires
 

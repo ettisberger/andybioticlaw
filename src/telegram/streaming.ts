@@ -16,6 +16,14 @@ export interface StreamSinkDeps {
   rateLimitEditsPer60s?: number;
   /** Post-session memory-proposal handler (Phase 3). If omitted, skipped. */
   proposalProcessor?: Omit<ProposalPostProcessDeps, 'api' | 'logger'>;
+  /**
+   * Telegram `parse_mode` to apply to FINALIZED edits only — the truly-final
+   * edit at session end AND the pre-continuation finalize when a message
+   * overflows. Mid-stream edits stay plain text so unclosed tags don't make
+   * Telegram reject the edit. On 400 "can't parse entities" we retry once
+   * without parse_mode so a malformed tag loses formatting but not content.
+   */
+  parseMode?: 'HTML';
 }
 
 const MAX_MESSAGE_CHARS = 3900; // < Telegram's 4096 hard cap.
@@ -128,11 +136,9 @@ export function createTelegramStreamSink(
     // Continuation branch — current message would blow Telegram's per-message cap.
     if (aboutToShow.length > MAX_MESSAGE_CHARS) {
       const truncated = aboutToShow.slice(0, MAX_MESSAGE_CHARS);
-      try {
-        await deps.api.editMessageText(deps.chatId, currentMessageId, truncated);
-      } catch (e) {
-        logTelegramEditFail(deps.logger, e, currentMessageId, 'pre-continuation finalize');
-      }
+      // This message is done being edited — apply parse_mode so any HTML in it
+      // renders. Continuation message stays plain-text until IT finalizes.
+      await editFinalized(deps, currentMessageId, truncated, 'pre-continuation finalize');
       rateLimiter.record();
 
       const leftover = aboutToShow.slice(MAX_MESSAGE_CHARS);
@@ -167,8 +173,19 @@ export function createTelegramStreamSink(
       return;
     }
 
+    // Apply parse_mode ONLY on the truly-final edit. Mid-stream edits stay
+    // plain so a partial tag (`<b>Meet` — close tag still buffered) doesn't
+    // make Telegram reject the edit. errorPrefix also stays plain because
+    // we don't want to compound a failed session with a parse error.
+    const applyParseMode = opts.final && !opts.errorPrefix;
+
     try {
-      await deps.api.editMessageText(deps.chatId, currentMessageId, body);
+      await deps.api.editMessageText(
+        deps.chatId,
+        currentMessageId,
+        body,
+        applyParseMode && deps.parseMode ? { parse_mode: deps.parseMode } : {},
+      );
       rateLimiter.record();
       currentMessageText = aboutToShow;
       // Only remove the bytes we actually flushed — preserves any deltas
@@ -181,6 +198,21 @@ export function createTelegramStreamSink(
         // the edit succeeded (prevents re-submitting the same body forever).
         currentMessageText = aboutToShow;
         pendingTail = pendingTail.slice(tailSnapshot.length);
+      } else if (applyParseMode && deps.parseMode && isParseEntitiesError(msg)) {
+        // Malformed HTML in the agent output. Resend as plain text so the
+        // user at least sees the content; the tags land as literal `<b>…`
+        // but that's strictly better than the whole reply vanishing.
+        deps.logger.warn(
+          { err: msg, parseMode: deps.parseMode },
+          'telegram parse_mode rejected; resending plain',
+        );
+        try {
+          await deps.api.editMessageText(deps.chatId, currentMessageId, body);
+          currentMessageText = aboutToShow;
+          pendingTail = pendingTail.slice(tailSnapshot.length);
+        } catch (e2) {
+          logTelegramEditFail(deps.logger, e2, currentMessageId, 'plain-text fallback');
+        }
       } else {
         // Other errors — keep pendingTail intact so the next tick retries
         // with the full growing content.
@@ -294,6 +326,55 @@ function logTelegramEditFail(
     { err: (err as Error).message, messageId, label },
     'telegram edit failed',
   );
+}
+
+/**
+ * Edit a message as "done" — apply `parse_mode` (if configured) so any HTML
+ * in the body renders. On a parse-entities 400 (malformed tags from the
+ * agent), retry once as plain text so content isn't lost. Never throws —
+ * logs via {@link logTelegramEditFail}.
+ */
+async function editFinalized(
+  deps: StreamSinkDeps,
+  messageId: number,
+  body: string,
+  label: string,
+): Promise<void> {
+  try {
+    await deps.api.editMessageText(
+      deps.chatId,
+      messageId,
+      body,
+      deps.parseMode ? { parse_mode: deps.parseMode } : {},
+    );
+    return;
+  } catch (e) {
+    const msg = (e as Error).message;
+    if (/message is not modified/i.test(msg)) return;
+    if (deps.parseMode && isParseEntitiesError(msg)) {
+      deps.logger.warn(
+        { err: msg, parseMode: deps.parseMode, label },
+        'telegram parse_mode rejected; resending plain',
+      );
+      try {
+        await deps.api.editMessageText(deps.chatId, messageId, body);
+        return;
+      } catch (e2) {
+        logTelegramEditFail(deps.logger, e2, messageId, `${label} (plain fallback)`);
+        return;
+      }
+    }
+    logTelegramEditFail(deps.logger, e, messageId, label);
+  }
+}
+
+/**
+ * Telegram's 400 response body for malformed HTML/MarkdownV2 is roughly
+ * `Bad Request: can't parse entities: <reason>`. grammy wraps that in
+ * `GrammyError` but preserves the text. Match loosely.
+ */
+function isParseEntitiesError(msg: string): boolean {
+  return /can.?t parse entities/i.test(msg);
 }
 
 /**
