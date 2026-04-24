@@ -40,12 +40,44 @@ fi
 # Step 1: ask Google for a device + user code.
 # ---------------------------------------------------------------------------
 echo "▸ requesting device code from Google…"
-DEVICE_RES="$(curl -sfS \
+# `-sS` (not `-sfS`) — we want Google's JSON error body on HTTP 4xx instead
+# of a bare "exit 22". Failing with the body visible lets the operator
+# diagnose (wrong OAuth client type is the #1 cause; they need to see the
+# `invalid_client` / `unauthorized_client` string to know what to fix).
+DEVICE_RES="$(curl -sS \
   --max-time 15 \
   -X POST \
   -d "client_id=${GOOGLE_CALENDAR_CLIENT_ID}" \
   -d "scope=https://www.googleapis.com/auth/calendar" \
   "https://oauth2.googleapis.com/device/code")"
+
+# If Google returned an `error` field the handshake failed — surface it.
+DEVICE_ERR="$(echo "$DEVICE_RES" | grep -o '"error":"[^"]*"' | sed 's/^"error":"//;s/"$//')"
+if [[ -n "$DEVICE_ERR" ]]; then
+  DEVICE_DESC="$(echo "$DEVICE_RES" | grep -o '"error_description":"[^"]*"' | sed 's/^"error_description":"//;s/"$//')"
+  echo "✗ Google rejected the device-code request:" >&2
+  echo "    error: $DEVICE_ERR" >&2
+  if [[ -n "$DEVICE_DESC" ]]; then
+    echo "    description: $DEVICE_DESC" >&2
+  fi
+  echo "" >&2
+  case "$DEVICE_ERR" in
+    invalid_client|unauthorized_client|disabled_client)
+      echo "  Fix: your OAuth client is the wrong type. In Google Cloud Console →" >&2
+      echo "  APIs & Services → Credentials, create a new OAuth 2.0 Client ID of" >&2
+      echo "  type 'TVs and Limited Input devices'. Then wipe the old values:" >&2
+      echo "    sed -i '/^GOOGLE_CALENDAR_CLIENT_ID=/d' \"$ENV_FILE\"" >&2
+      echo "    sed -i '/^GOOGLE_CALENDAR_CLIENT_SECRET=/d' \"$ENV_FILE\"" >&2
+      echo "  and re-run 'andybioticlaw skill setup google-calendar'." >&2
+      ;;
+    access_denied)
+      echo "  Fix: the Google Calendar API isn't enabled on this project." >&2
+      echo "  Visit https://console.cloud.google.com/apis/library/calendar-json.googleapis.com" >&2
+      echo "  and click 'Enable'." >&2
+      ;;
+  esac
+  exit 2
+fi
 
 # Minimal JSON field extraction — no jq required. These fields are simple
 # strings without embedded quotes, so grep + sed works reliably.

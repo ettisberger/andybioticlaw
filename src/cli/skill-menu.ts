@@ -11,8 +11,9 @@ import { createSkillRegistry } from '../skills/registry.js';
 import type { SkillRecord } from '../skills/registry.js';
 import { loadSkills } from '../skills/loader.js';
 import { arrowPicker, releaseStdin } from './prompt-helpers.js';
-import { bold, cyan, dim, green, lavender, sage, yellow } from './ansi.js';
+import { dim, green, sage, yellow } from './ansi.js';
 import { runSkillSetup, SkillSetupError } from './skill-setup.js';
+import { section } from './section.js';
 
 /**
  * Top-level menu handler for "Add / configure skills". Lists every skill
@@ -46,10 +47,10 @@ export async function runSkillMenuCommand(): Promise<void> {
 
     const envPath = defaultEnvPath(projectRoot());
 
+    section(stdout, 'skills', 'Add or configure skills');
     stdout.write(
-      `\n${bold(lavender('andybioticlaw'))} ${dim('— add / configure skills')}\n` +
-        dim(`  skills live at ${expandPath(config.skills.dir, projectRoot())}\n`) +
-        dim(`  pick a skill to (re)run its setup wizard\n\n`),
+      `  ${dim(`skills live at ${expandPath(config.skills.dir, projectRoot())}`)}\n` +
+        `  ${dim('pick a skill to (re)run its setup wizard')}\n`,
     );
 
     while (true) {
@@ -87,7 +88,6 @@ export async function runSkillMenuCommand(): Promise<void> {
         continue;
       }
 
-      stdout.write(`\n${dim('──')} ${cyan(chosen.name)} ${dim('──')}\n\n`);
       try {
         await runSkillSetup({
           skill: chosen,

@@ -11,6 +11,7 @@ import {
   askSecret,
   releaseStdin,
 } from './prompt-helpers.js';
+import { section } from './section.js';
 
 class InitAbortedError extends Error {
   constructor() {
@@ -375,10 +376,6 @@ async function runInitCommandInner(): Promise<void> {
   );
 }
 
-/** Prints a section header like `── 2/4 · Principal user id ──`. */
-function section(stdout: NodeJS.WritableStream, step: string, title: string): void {
-  stdout.write(`\n${dim('──')} ${lavender(step)} ${dim('·')} ${bold(title)} ${dim('──')}\n\n`);
-}
 
 /** Curated list of IANA timezones covering the most common operator
  *  locations. Not exhaustive — the picker includes an "Other" escape

@@ -5,6 +5,8 @@ import { promisify } from 'node:util';
 import type { Logger } from 'pino';
 import type { AuditRepo } from '../db/repositories/audit.js';
 import type { SkillRegistry } from './registry.js';
+import { dim } from '../cli/ansi.js';
+import { section } from '../cli/section.js';
 
 const pexec = promisify(execFile);
 
@@ -78,14 +80,18 @@ export async function installSkill(
     const body = readFileSync(script, 'utf8');
     const lines = body.split('\n');
     const head = lines.slice(0, PREVIEW_LINES);
-    process.stdout.write(
-      `\n--- ${name}/install.sh (first ${head.length} of ${lines.length} lines) ---\n`,
+    section(
+      process.stdout,
+      'preview',
+      `${name}/install.sh (first ${head.length} of ${lines.length} lines)`,
     );
-    for (const line of head) process.stdout.write(`| ${line}\n`);
+    for (const line of head) process.stdout.write(`  ${dim('│')} ${line}\n`);
     if (lines.length > head.length) {
-      process.stdout.write(`| … (${lines.length - head.length} more lines)\n`);
+      process.stdout.write(
+        `  ${dim('│')} ${dim(`… (${lines.length - head.length} more lines)`)}\n`,
+      );
     }
-    process.stdout.write(`--- end preview ---\n\n`);
+    process.stdout.write('\n');
   } catch (e) {
     // Unreadable script → fail BEFORE confirm so we don't run garbage.
     throw new Error(`could not read ${script}: ${(e as Error).message}`);

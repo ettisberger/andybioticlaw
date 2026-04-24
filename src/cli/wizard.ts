@@ -1,10 +1,13 @@
 import type { WizardQuestion, SetupWizard } from '../skills/manifest.js';
 import { readEnvFile, writeEnvFileUpdates } from '../config/env-file.js';
+import { cyan, dim, lavender, sage, yellow } from './ansi.js';
+import { section } from './section.js';
 
 /**
- * Interactive terminal wizard for skill setup. Drives `readline`, respects
- * already-set env vars (silently skips), masks password input, applies tiny
- * built-in validators. No external deps.
+ * Interactive terminal wizard for skill setup. Drives raw-mode stdin (no
+ * readline — avoids the double-echo trap from mixing readline + raw-mode
+ * secret prompts), applies built-in validators, respects already-set env
+ * vars as defaults (Enter keeps, any typed value replaces).
  */
 
 export interface WizardRunOptions {
@@ -38,50 +41,56 @@ export async function runSetupWizard(
   const skippedEmpty: string[] = [];
   const toWrite: Record<string, string> = {};
 
-  stdout.write(`\n${opts.skillName} — ${opts.wizard.description}\n\n`);
+  section(stdout, 'setup', opts.skillName);
+  stdout.write(`  ${dim(opts.wizard.description)}\n`);
 
-  const totalAsked = opts.wizard.questions.filter(
-    (q) => !existing.values[q.key] || existing.values[q.key] === '',
+  const alreadySetCount = opts.wizard.questions.filter(
+    (q) => existing.values[q.key] && existing.values[q.key] !== '',
   ).length;
-  const alreadySet = opts.wizard.questions.length - totalAsked;
-
-  stdout.write(
-    `Collecting configuration (${opts.wizard.questions.length} values; ${alreadySet} already in .env):\n`,
-  );
+  const total = opts.wizard.questions.length;
+  const summary =
+    alreadySetCount === 0
+      ? `${total} value${total === 1 ? '' : 's'} to collect`
+      : `${total} value${total === 1 ? '' : 's'} requested · ${alreadySetCount} already in .env — press Enter to keep, or type a new value to replace`;
+  stdout.write(`  ${dim(summary)}\n`);
 
   try {
     for (const q of opts.wizard.questions) {
-      const current = existing.values[q.key];
-      if (current !== undefined && current !== '') {
-        reused.push(q.key);
-        const shown = q.secret ? '"***"' : `"${truncate(current, 40)}"`;
-        stdout.write(`  ✓ ${q.key.padEnd(18)}= ${shown.padEnd(44)} (already set, reusing)\n`);
-        continue;
-      }
+      const current = existing.values[q.key] ?? '';
+      const hasCurrent = current !== '';
+      const effectiveDefault = hasCurrent ? current : (q.default ?? '');
 
-      const answer = await askOne(stdin, stdout, q);
+      const answer = await askOne(stdin, stdout, q, effectiveDefault, hasCurrent);
 
       if (answer === null) {
-        // User interrupted (Ctrl-C or EOF). Abort.
-        stdout.write('\nwizard aborted — no changes written.\n');
+        stdout.write(`\n${yellow('!')} ${dim('wizard aborted — no new values written.')}\n`);
         throw new WizardAbortedError();
       }
-      if (answer === '' && q.default) {
+      // Empty answer + we have a default → use the default (which equals
+      // the currently-saved value when re-running after an earlier setup).
+      if (answer === '' && effectiveDefault) {
+        // Reusing an existing value → no write needed.
+        if (hasCurrent && effectiveDefault === current) {
+          reused.push(q.key);
+          continue;
+        }
+        // Applying a manifest-level default that isn't saved yet → write it.
         collected.push(q.key);
-        toWrite[q.key] = q.default;
+        toWrite[q.key] = effectiveDefault;
         continue;
       }
       if (answer === '') {
         skippedEmpty.push(q.key);
-        stdout.write(`  (skipped — left empty)\n`);
+        stdout.write(`  ${dim('(skipped — left empty)')}\n`);
         continue;
       }
+      // A typed value — always write, even if it matches the current
+      // (operator may have re-pasted to confirm; cheap to rewrite).
       collected.push(q.key);
       toWrite[q.key] = answer;
     }
   } finally {
-    // No readline to close; the raw-mode prompt helpers tear down their
-    // own stdin listeners after each answer.
+    // No readline to close; raw-mode helpers tear down their own listeners.
     (stdin as unknown as { pause?: () => void }).pause?.();
   }
 
@@ -90,12 +99,21 @@ export async function runSetupWizard(
     appended: [],
   };
   if (Object.keys(toWrite).length > 0) {
+    const n = Object.keys(toWrite).length;
     stdout.write(
-      `\nWriting ${Object.keys(toWrite).length} value(s) to ${opts.envPath}…\n`,
+      `\n  ${sage('✓')} ${dim(`writing ${n} value${n === 1 ? '' : 's'} to`)} ${cyan(opts.envPath)}${dim('…')}\n`,
     );
     writes = writeEnvFileUpdates(opts.envPath, toWrite);
-    stdout.write(`  updated: ${writes.updated.join(', ') || '(none)'}\n`);
-    stdout.write(`  appended: ${writes.appended.join(', ') || '(none)'}\n`);
+    if (writes.updated.length > 0) {
+      stdout.write(`    ${dim('updated:')}  ${writes.updated.join(', ')}\n`);
+    }
+    if (writes.appended.length > 0) {
+      stdout.write(`    ${dim('appended:')} ${writes.appended.join(', ')}\n`);
+    }
+  } else if (reused.length === total) {
+    stdout.write(
+      `\n  ${dim('all values already set — nothing new written.')}\n`,
+    );
   }
 
   return { reused, collected, skippedEmpty, writes };
@@ -103,40 +121,64 @@ export async function runSetupWizard(
 
 type Stdin = NodeJS.ReadableStream & { setRawMode?: (mode: boolean) => void };
 
+/**
+ * Print a question's prompt and read one answer. The prompt is rendered in
+ * the same visual language as the init wizard / edit-config menu:
+ *
+ *     <optional help in dim>
+ *
+ *     ? <prompt text>  [default: <value>]: <user input>
+ *
+ * The `KEY` identifier isn't shown — it's an implementation detail, not
+ * something the operator needs to type. When a value is already set the
+ * default is the current value (Enter to keep, type to replace). For
+ * secrets the default is rendered as `***` so we don't leak.
+ */
 async function askOne(
   stdin: Stdin,
   stdout: NodeJS.WritableStream,
   q: WizardQuestion,
+  effectiveDefault: string,
+  hasCurrent: boolean,
 ): Promise<string | null> {
   if (q.help) {
-    stdout.write(`\n  ${q.help}\n`);
+    stdout.write(`\n  ${dim(q.help)}\n`);
   } else {
     stdout.write('\n');
   }
-  const defaultHint = q.default ? ` [${q.secret ? '***' : q.default}]` : '';
-  const suffix = q.secret ? ' (hidden)' : '';
-  const prompt = `  ? ${q.key} — ${q.prompt}${defaultHint}${suffix}: `;
+
+  const suffix = q.secret ? dim(' (hidden input)') : '';
+  let defaultHint = '';
+  if (effectiveDefault) {
+    const shown = q.secret ? '***' : truncate(effectiveDefault, 40);
+    const label = hasCurrent ? 'keep current' : 'default';
+    defaultHint = `  ${dim(`[${label}: ${shown}]`)}`;
+  }
+  const prompt =
+    `  ${lavender('?')} ${q.prompt}${defaultHint}${suffix}${dim(':')} `;
 
   while (true) {
     const raw = await readOneLine(stdin, stdout, prompt, !!q.secret);
     if (raw === null) return null;
     const trimmed = raw.trim();
-    const value = trimmed === '' && q.default ? q.default : trimmed;
+    const value = trimmed === '' && effectiveDefault ? effectiveDefault : trimmed;
 
     if (!value && q.validate === 'nonempty') {
-      stdout.write(`  ! ${q.key} cannot be empty. Try again.\n`);
+      stdout.write(`  ${yellow('!')} ${dim(`${q.key} cannot be empty. Try again.`)}\n`);
       continue;
     }
     if (!value) {
-      // empty and no nonempty validator and no default → allow
       return '';
     }
     const err = validate(value, q.validate);
     if (err) {
-      stdout.write(`  ! ${err} Try again.\n`);
+      stdout.write(`  ${yellow('!')} ${dim(`${err} Try again.`)}\n`);
       continue;
     }
-    return value;
+    // If the user pressed Enter on a re-run, return empty string so the
+    // caller recognises "keep current" (see the effectiveDefault handling
+    // in runSetupWizard). Otherwise return the typed value.
+    return trimmed === '' ? '' : value;
   }
 }
 
@@ -164,11 +206,9 @@ function validate(value: string, kind: WizardQuestion['validate']): string | nul
  * Raw-mode prompt. Handles Enter, Ctrl-C/D, backspace. When `mask` is
  * true echoes `*` per keystroke (for secrets); otherwise echoes the char.
  *
- * We deliberately do NOT use Node's readline here. Mixing a persistent
- * readline interface with a raw-mode secret prompt produces double-
- * echoed characters — readline's own handler stays attached across
- * `.pause()` calls and races with our onData. A single raw-mode impl
- * sidesteps the whole problem.
+ * We deliberately do NOT use Node's readline here — mixing a persistent
+ * readline listener with a raw-mode secret prompt produces double-echoed
+ * characters. One raw-mode implementation for everything.
  */
 function readOneLine(
   stdin: Stdin,
