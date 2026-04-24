@@ -1,0 +1,57 @@
+name: hue
+version: 0.1.0
+description: Control your Philips Hue lights, rooms, and scenes via the Hue Remote API.
+enabled: true
+
+scope:
+  - dm
+
+# Three secrets are set by the wizard (the OAuth app credentials the
+# operator creates at developers.meethue.com); the other four are filled
+# in by install.sh at the end of the authorization-code flow + physical
+# bridge-button press.
+required_secrets:
+  - HUE_CLIENT_ID
+  - HUE_CLIENT_SECRET
+  - HUE_REDIRECT_URI
+  - HUE_ACCESS_TOKEN
+  - HUE_REFRESH_TOKEN
+  - HUE_BRIDGE_ID
+  - HUE_USERNAME
+
+# curl is used inside install.sh for the OAuth flow; the MCP server
+# itself is plain Node + fetch, no external deps beyond the SDK already
+# hoisted at the repo root.
+system_commands:
+  - curl
+
+mcp_servers:
+  - name: hue
+    command: node
+    args:
+      - ./mcp-server/index.js
+    env:
+      HUE_CLIENT_ID: ${HUE_CLIENT_ID}
+      HUE_CLIENT_SECRET: ${HUE_CLIENT_SECRET}
+      HUE_REDIRECT_URI: ${HUE_REDIRECT_URI}
+      HUE_ACCESS_TOKEN: ${HUE_ACCESS_TOKEN}
+      HUE_REFRESH_TOKEN: ${HUE_REFRESH_TOKEN}
+      HUE_BRIDGE_ID: ${HUE_BRIDGE_ID}
+      HUE_USERNAME: ${HUE_USERNAME}
+
+setup_wizard:
+  description: Collects Hue OAuth app credentials, then runs the OAuth code-flow + bridge link-button pairing to obtain long-lived access credentials.
+  questions:
+    - key: HUE_CLIENT_ID
+      prompt: "Hue OAuth client_id"
+      validate: nonempty
+      help: "Create an app at https://developers.meethue.com/my-apps (Hue dev account required). Copy the ClientId shown on the app page. See SKILL.md for the 5-step recipe."
+    - key: HUE_CLIENT_SECRET
+      prompt: "Hue OAuth client_secret"
+      secret: true
+      validate: nonempty
+      help: "Shown alongside the ClientId in your Hue developer app page. Stored in .env with mode 0600."
+    - key: HUE_REDIRECT_URI
+      prompt: "Redirect URI you registered at developers.meethue.com"
+      validate: url
+      help: "Any HTTPS URL works (it does not need to resolve) but it MUST match exactly what is in your Hue app settings. e.g. https://andybioticlaw.example/hue-callback"
