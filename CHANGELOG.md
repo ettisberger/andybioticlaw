@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.6.0](https://github.com/ettisberger/andybioticlaw/compare/v0.5.5...v0.6.0) (2026-04-24)
+
+
+### Features
+
+* **agent:** teach Emma to use emojis and compact layout in Telegram ([e5282d6](https://github.com/ettisberger/andybioticlaw/commit/e5282d67ad75ec03c73c28f551a6eae77dfc9ec4))
+
 ## [0.5.5](https://github.com/ettisberger/andybioticlaw/compare/v0.5.4...v0.5.5) (2026-04-24)
 
 
