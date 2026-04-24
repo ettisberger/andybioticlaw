@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.15.0](https://github.com/ettisberger/andybioticlaw/compare/v0.14.0...v0.15.0) (2026-04-24)
+
+
+### Features
+
+* **dashboard:** redesigned Config page with Cards view + JSON toggle ([a0fdf3c](https://github.com/ettisberger/andybioticlaw/commit/a0fdf3cb6789b769a3bd05a80001cdf16570c1bd))
+
 ## [0.14.0](https://github.com/ettisberger/andybioticlaw/compare/v0.13.0...v0.14.0) (2026-04-24)
 
 
