@@ -1,0 +1,45 @@
+name: google-calendar
+version: 0.1.0
+description: Read and manage your Google Calendar events.
+enabled: true
+
+scope:
+  - dm
+
+# Two secrets are set by the wizard; the third (REFRESH_TOKEN) is obtained
+# by install.sh at the end of the OAuth device flow and appended to .env
+# automatically.
+required_secrets:
+  - GOOGLE_CALENDAR_CLIENT_ID
+  - GOOGLE_CALENDAR_CLIENT_SECRET
+  - GOOGLE_CALENDAR_REFRESH_TOKEN
+
+# install.sh + mcp server are pure Node + fetch — no external binaries
+# needed. curl is used inside install.sh for the OAuth device-code flow.
+system_commands:
+  - curl
+
+mcp_servers:
+  - name: google-calendar
+    command: node
+    args:
+      - ./skills/google-calendar/mcp-server/index.js
+    env:
+      GOOGLE_CALENDAR_CLIENT_ID: ${GOOGLE_CALENDAR_CLIENT_ID}
+      GOOGLE_CALENDAR_CLIENT_SECRET: ${GOOGLE_CALENDAR_CLIENT_SECRET}
+      GOOGLE_CALENDAR_REFRESH_TOKEN: ${GOOGLE_CALENDAR_REFRESH_TOKEN}
+
+# Wizard collects only the two secrets that come from Google Cloud
+# Console — the refresh token gets filled in by install.sh.
+setup_wizard:
+  description: Collects Google OAuth client_id + client_secret, then runs an OAuth device-flow to obtain a long-lived refresh token.
+  questions:
+    - key: GOOGLE_CALENDAR_CLIENT_ID
+      prompt: "Google OAuth client_id (from Google Cloud Console)"
+      validate: nonempty
+      help: "Create an OAuth 2.0 Client ID of type 'TV and Limited Input devices' at https://console.cloud.google.com/apis/credentials — see SKILL.md for the 6-step recipe."
+    - key: GOOGLE_CALENDAR_CLIENT_SECRET
+      prompt: "Google OAuth client_secret"
+      secret: true
+      validate: nonempty
+      help: "Displayed alongside the client_id in the Google Cloud Console. Stored in .env with mode 0600."

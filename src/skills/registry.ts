@@ -32,6 +32,8 @@ export interface SkillRegistry {
   setEnabled(name: string, enabled: boolean): void;
   /** Record an install (idempotent). */
   recordInstall(name: string, output: string | null): void;
+  /** Read persisted skill_state incl. last install output. Null when unseen. */
+  getState(name: string): SkillStateFull | null;
 }
 
 export interface SkillState {
@@ -40,11 +42,23 @@ export interface SkillState {
   installed_at: number;
 }
 
+export interface SkillStateFull extends SkillState {
+  last_install_output: string | null;
+  last_enabled_at: number | null;
+  last_disabled_at: number | null;
+}
+
 export function createSkillRegistry(db: Database): SkillRegistry {
   const table = new Map<string, SkillRecord>();
 
   const selectState = db.prepare<{ name: string }, SkillState>(
     `SELECT name, enabled, installed_at FROM skill_state WHERE name = @name`,
+  );
+
+  const selectStateFull = db.prepare<{ name: string }, SkillStateFull>(
+    `SELECT name, enabled, installed_at,
+            last_install_output, last_enabled_at, last_disabled_at
+     FROM skill_state WHERE name = @name`,
   );
 
   const upsertInstall = db.prepare<{
@@ -120,6 +134,12 @@ export function createSkillRegistry(db: Database): SkillRegistry {
         installed_at: existing ? existing.installed_at : Date.now(),
         last_install_output: output,
       });
+    },
+    getState(name) {
+      const row = selectStateFull.get({ name });
+      if (!row) return null;
+      // SQLite returns 0/1 for BOOL columns; normalise to boolean.
+      return { ...row, enabled: Boolean(row.enabled) };
     },
   };
 }

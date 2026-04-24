@@ -17,7 +17,8 @@ import { createBudgetTracker } from '../agent/budget.js';
 import { parsePayload, ScheduleKind } from '../scheduler/payloads.js';
 import cron from 'node-cron';
 import pino from 'pino';
-import { runSetupWizard, WizardAbortedError } from './wizard.js';
+import { WizardAbortedError } from './wizard.js';
+import { runSkillSetup, SkillSetupError } from './skill-setup.js';
 import { defaultEnvPath } from '../config/paths.js';
 
 const program = new Command();
@@ -414,74 +415,31 @@ skill
           process.stderr.write(`no skill named ${name}\n`);
           process.exit(1);
         }
-        if (!skill.setupWizard) {
-          process.stderr.write(
-            `skill ${name} has no setup_wizard block in its manifest.yaml\n`,
-          );
-          process.exit(2);
-        }
-
-        const envPath = defaultEnvPath(projectRoot());
 
         try {
-          await runSetupWizard({
-            skillName: skill.name,
-            wizard: skill.setupWizard,
-            envPath,
+          await runSkillSetup({
+            skill,
+            registry,
+            audit,
+            logger,
+            envPath: defaultEnvPath(projectRoot()),
+            dataDir,
+            runInstall: opts.install !== false,
+            sighup: opts.sighup !== false,
           });
         } catch (e) {
-          if (e instanceof WizardAbortedError) {
-            process.exit(130);
+          if (e instanceof SkillSetupError) {
+            process.stderr.write(`${e.message}\n`);
+            const code =
+              e.stage === 'wizard-aborted'
+                ? 130
+                : e.stage === 'no-wizard'
+                  ? 2
+                  : 3;
+            process.exit(code);
           }
           throw e;
         }
-
-        if (opts.install !== false) {
-          process.stdout.write(`\nRunning install.sh…\n`);
-          try {
-            // `skill setup` is already an explicit opt-in — the operator
-            // chose this skill and walked through its wizard. Auto-confirm
-            // the preview here so there's no double-prompt. The preview
-            // itself is still printed for transparency.
-            const out = await installSkill(
-              skill.name,
-              { registry, audit, logger },
-              { autoConfirm: true },
-            );
-            if (out.ran) {
-              process.stdout.write(out.stdout);
-              if (out.stderr) process.stderr.write(out.stderr);
-            } else {
-              process.stdout.write(`(no install.sh — skill recorded as installed.)\n`);
-            }
-          } catch (e) {
-            process.stderr.write(`install.sh FAILED: ${(e as Error).message}\n`);
-            process.exit(3);
-          }
-        }
-
-        if (opts.sighup !== false) {
-          const pidPath = pidFilePath(dataDir);
-          if (existsSync(pidPath)) {
-            const pid = parseInt(readFileSync(pidPath, 'utf8').trim(), 10);
-            try {
-              process.kill(pid, 'SIGHUP');
-              process.stdout.write(
-                `\n✓ SIGHUP sent to pid ${pid} — skill registry will re-scan.\n`,
-              );
-            } catch (e) {
-              process.stderr.write(
-                `could not SIGHUP daemon (pid ${pid}): ${(e as Error).message}\n`,
-              );
-            }
-          } else {
-            process.stdout.write(
-              `\n(daemon not running — skill will be picked up on next start.)\n`,
-            );
-          }
-        }
-
-        process.stdout.write(`\nSkill "${skill.name}" is ready.\n`);
       } finally {
         dbHandle.close();
       }

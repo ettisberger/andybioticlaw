@@ -62,6 +62,13 @@ export async function runInteractiveMenu(): Promise<void> {
           },
         });
         items.push({
+          label: 'Add / configure skills — install-wizard + secrets',
+          handler: async () => {
+            const { runSkillMenuCommand } = await import('./skill-menu.js');
+            await runSkillMenuCommand();
+          },
+        });
+        items.push({
           label: 'Update — git pull + rebuild + prune dev deps',
           handler: async () => {
             const { runUpdateCommand } = await import('./update.js');
