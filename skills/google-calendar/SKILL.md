@@ -59,6 +59,17 @@ Arguments: `{ calendarId?, eventId }`
 
 Deletes an event. Irreversible. Always confirm in the DM first.
 
+## Response presentation
+
+When returning calendar data to the principal, prefer a compact emoji-labeled layout over prose. Suggested shape for a list of events:
+
+    📅 <day-of-week, short date>
+    ⏰ <HH:MM–HH:MM>  <title>
+    📍 <location, if any>
+    👥 <attendee count, if any>
+
+One emoji per field; skip any field that is empty. Use ✅ for confirmed events, ❓ for tentative, ⏹ for cancelled. For a single event detail (`get_event`), the same shape works — add 📝 for description. Use the principal's local timezone for any time you render.
+
 ## When the refresh token expires
 
 After ~6 months of inactivity, or if the principal revokes access at
