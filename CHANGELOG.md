@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.5.0](https://github.com/ettisberger/andybioticlaw/compare/v0.4.0...v0.5.0) (2026-04-24)
+
+
+### Features
+
+* skill management — menu entry, dashboard details, google-calendar ([0b2f499](https://github.com/ettisberger/andybioticlaw/commit/0b2f4996128d29f9a3ceda90fd73936882071000))
+
 ## [0.4.0](https://github.com/ettisberger/andybioticlaw/compare/v0.3.2...v0.4.0) (2026-04-24)
 
 
