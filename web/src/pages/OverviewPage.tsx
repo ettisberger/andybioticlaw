@@ -191,7 +191,7 @@ export function OverviewPage() {
             <div key={s.id} className="border-b border-line py-1.5 last:border-0 text-sm">
               <div className="flex items-center gap-2">
                 <Badge tone={statusTone(s.status)}>{s.status}</Badge>
-                <span className="font-mono text-xs text-ink-faint">{s.id.slice(0, 8)}…</span>
+                <span className="font-mono text-xs tabular-nums text-ink-faint">{s.id.slice(0, 8)}…</span>
                 <span className="text-xs text-ink-faint">
                   {s.tokens_input + s.tokens_output} tok
                 </span>
@@ -209,7 +209,7 @@ export function OverviewPage() {
           )}
           {data.recentFailures.map((s) => (
             <div key={s.id} className="border-b border-line py-1.5 last:border-0 text-sm">
-              <div className="font-mono text-xs text-ink-faint">{s.id.slice(0, 8)}…</div>
+              <div className="font-mono text-xs tabular-nums text-ink-faint">{s.id.slice(0, 8)}…</div>
               <div className="mt-0.5 text-xs text-error-ink">{s.error}</div>
               <div className="text-xs text-ink-faint">{formatTs(s.started_at)}</div>
             </div>
@@ -460,23 +460,23 @@ function AgentHeroCard({
             {data.principalUserId !== null && (
               <HeroChip>
                 principal id{' '}
-                <span className="font-mono text-ink">
+                <span className="font-mono tabular-nums text-ink">
                   {data.principalUserId}
                 </span>
               </HeroChip>
             )}
             <HeroChip>
-              queue <span className="font-mono text-ink">{data.queueTotalDepth}</span>
+              queue <span className="font-mono tabular-nums text-ink">{data.queueTotalDepth}</span>
             </HeroChip>
             <HeroChip>
               skills{' '}
-              <span className="font-mono text-ink">
+              <span className="font-mono tabular-nums text-ink">
                 {data.skills.enabled}/{data.skills.total}
               </span>
             </HeroChip>
             <HeroChip>
               schedules{' '}
-              <span className="font-mono text-ink">
+              <span className="font-mono tabular-nums text-ink">
                 {data.schedules.enabled}/{data.schedules.total}
               </span>
             </HeroChip>
@@ -506,10 +506,10 @@ function AgentHeroCard({
               <Link
                 key={l.sessionId}
                 to={`/sessions/${l.sessionId}`}
-                className="rounded-xl border border-line/60 bg-surface/40 px-3 py-2 text-left backdrop-blur-sm hover:bg-surface/70"
+                className="rounded-2xl border border-line/60 bg-surface/40 px-3 py-2 text-left backdrop-blur-sm transition-transform hover:-translate-y-0.5 hover:bg-surface/70 active:translate-y-0"
               >
                 <div className="flex items-center justify-between text-xs text-ink-dim">
-                  <span className="font-mono text-info-ink">
+                  <span className="font-mono tabular-nums text-info-ink">
                     {l.sessionId.slice(0, 8)}…
                   </span>
                   <span>

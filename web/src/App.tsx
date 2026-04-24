@@ -69,7 +69,7 @@ export function App() {
             </div>
             <ThemeToggle />
           </div>
-          <div className="rounded-xl border border-line/60 bg-surface/40 px-3 py-2.5 backdrop-blur-sm">
+          <div className="rounded-2xl border border-line/60 bg-surface/40 px-3 py-2.5 backdrop-blur-sm">
             <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-ink-faint">
               Tip
             </div>

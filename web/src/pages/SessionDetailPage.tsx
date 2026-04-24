@@ -109,7 +109,7 @@ export function SessionDetailPage() {
         ← back to sessions
       </Link>
       <PageTitle subtitle={`${session.source} · model ${session.model ?? '—'}`}>
-        <span className="font-mono">{session.id.slice(0, 12)}…</span>
+        <span className="font-mono tabular-nums">{session.id.slice(0, 12)}…</span>
       </PageTitle>
 
       <div className="mb-4 grid grid-cols-3 gap-3">
@@ -119,14 +119,14 @@ export function SessionDetailPage() {
         </Card>
         <Card>
           <div className="text-xs uppercase text-ink-faint">Tokens</div>
-          <div className="mt-1">
+          <div className="mt-1 tabular-nums">
             {session.tokens_input.toLocaleString()} in / {session.tokens_output.toLocaleString()} out
           </div>
         </Card>
         <Card>
           <div className="text-xs uppercase text-ink-faint">Timing</div>
-          <div className="mt-1 text-xs">{formatTs(session.started_at)}</div>
-          <div className="text-xs text-ink-faint">
+          <div className="mt-1 font-mono text-xs tabular-nums">{formatTs(session.started_at)}</div>
+          <div className="font-mono text-xs tabular-nums text-ink-faint">
             {session.ended_at ? `ended ${formatTs(session.ended_at)}` : '(still active)'}
           </div>
         </Card>

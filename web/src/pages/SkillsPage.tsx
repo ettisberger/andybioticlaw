@@ -112,7 +112,7 @@ function SkillCard({
 }) {
   const missingSecrets = skill.secrets.filter((s) => !s.present).length;
   return (
-    <div className="overflow-hidden rounded-xl border border-line bg-surface">
+    <div className="glass glass-highlight overflow-hidden rounded-2xl">
       {/* Summary row */}
       <button
         onClick={onToggleExpanded}

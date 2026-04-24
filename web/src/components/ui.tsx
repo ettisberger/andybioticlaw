@@ -97,7 +97,7 @@ export function Button({
 }) {
   const base =
     'inline-flex items-center justify-center rounded-lg px-3 py-1.5 text-sm font-medium ' +
-    'disabled:cursor-not-allowed disabled:opacity-50 ' +
+    'active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100 ' +
     'focus:outline-none focus:ring-2 focus:ring-accent/40 focus:ring-offset-2 focus:ring-offset-bg';
   const variantClass = {
     default:

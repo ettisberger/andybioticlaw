@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiGet, apiPost, formatTs, truncate } from '../lib/api';
-import { Badge, Button, Card, ErrorBanner, PageTitle, Table, Td, Th, Empty } from '../components/ui';
+import { Badge, Button, ErrorBanner, PageTitle, Table, Td, Th, Empty } from '../components/ui';
 import { estimateUsd, formatUsd } from '../lib/pricing';
 
 interface SessionRow {
@@ -172,16 +172,18 @@ export function SessionsPage() {
                   <Td>
                     <Badge tone={statusTone(s.status)}>{s.status}</Badge>
                   </Td>
-                  <Td className="font-mono text-xs">
+                  <Td className="font-mono text-xs tabular-nums">
                     <Link to={`/sessions/${s.id}`} className="text-info-ink hover:underline">
                       {s.id.slice(0, 8)}…
                     </Link>
                   </Td>
-                  <Td className="text-xs text-ink-dim">{formatTs(s.started_at)}</Td>
-                  <Td className="text-xs">
+                  <Td className="font-mono text-xs tabular-nums text-ink-dim">
+                    {formatTs(s.started_at)}
+                  </Td>
+                  <Td className="text-xs tabular-nums">
                     {s.tokens_input.toLocaleString()}/{s.tokens_output.toLocaleString()}
                   </Td>
-                  <Td className="text-xs text-ink-dim">
+                  <Td className="text-xs tabular-nums text-ink-dim">
                     {formatUsd(estimateUsd(s.model, s.tokens_input, s.tokens_output))}
                   </Td>
                   <Td className="text-xs text-ink">{truncate(s.input_preview, 80)}</Td>
@@ -234,23 +236,25 @@ function LiveCard({ live }: { live: LiveSession }) {
   // Show the tail end of the streamed text — that's where the cursor is.
   const tail = live.text.length > 240 ? '…' + live.text.slice(-240) : live.text;
 
+  // Whole card is a link to the detail view — better hit target than just
+  // the id, and it gives us a clean surface for the hover/press lift.
   return (
-    <Card>
+    <Link
+      to={`/sessions/${live.sessionId}`}
+      className="glass glass-highlight block rounded-2xl p-5 transition-transform hover:-translate-y-0.5 active:translate-y-0"
+    >
       <div className="flex items-center justify-between text-xs">
-        <Link
-          to={`/sessions/${live.sessionId}`}
-          className="font-mono text-info-ink hover:underline"
-        >
+        <span className="font-mono tabular-nums text-info-ink">
           {live.sessionId.slice(0, 8)}…
-        </Link>
+        </span>
         <div className="flex gap-2 text-ink-faint">
           <span>{live.source}</span>
           <span>·</span>
-          <span>{elapsed}s elapsed</span>
+          <span className="tabular-nums">{elapsed}s elapsed</span>
           {sinceDelta !== null && (
             <>
               <span>·</span>
-              <span>{sinceDelta}s since last delta</span>
+              <span className="tabular-nums">{sinceDelta}s since last delta</span>
             </>
           )}
         </div>
@@ -274,6 +278,6 @@ function LiveCard({ live }: { live: LiveSession }) {
       ) : (
         <div className="mt-2 text-xs text-ink-faint">(no output yet)</div>
       )}
-    </Card>
+    </Link>
   );
 }
