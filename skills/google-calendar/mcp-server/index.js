@@ -3,7 +3,7 @@
  * Google Calendar MCP server. Spawned per agent session by the core
  * service when the google-calendar skill is active.
  *
- * Exposes 5 tools (list/get/create/update/delete events) backed by the
+ * Exposes 6 tools (list/get/create/update/delete events + list_calendars) backed by the
  * Google Calendar API v3. Exchanges the long-lived refresh token for a
  * fresh access token on each call (cached ~50 min).
  *
@@ -112,6 +112,28 @@ async function gcal(method, path, query, body) {
 const SERVER_NAME = 'google-calendar';
 
 const TOOLS = [
+  {
+    name: 'list_calendars',
+    description:
+      "List all calendars the principal has access to (own, shared, and subscribed). Returns each calendar's id, summary, primary flag, accessRole, and timeZone. Use the returned `id` as the `calendarId` argument for the other tools to operate on a non-primary calendar.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        showHidden: {
+          type: 'boolean',
+          description:
+            'Include calendars the principal has hidden in the Google Calendar UI. Defaults to false.',
+          default: false,
+        },
+        minAccessRole: {
+          type: 'string',
+          description:
+            'Filter to calendars where the principal has at least this role. One of: freeBusyReader, reader, writer, owner.',
+          enum: ['freeBusyReader', 'reader', 'writer', 'owner'],
+        },
+      },
+    },
+  },
   {
     name: 'list_events',
     description:
@@ -265,6 +287,26 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
   try {
     switch (name) {
+      case 'list_calendars': {
+        const res = await gcal('GET', '/users/me/calendarList', {
+          showHidden: args.showHidden ? 'true' : undefined,
+          minAccessRole: args.minAccessRole,
+        });
+        const compact = (res.items ?? []).map((c) => ({
+          id: c.id,
+          summary: c.summary,
+          summaryOverride: c.summaryOverride,
+          description: c.description,
+          primary: c.primary === true,
+          accessRole: c.accessRole,
+          timeZone: c.timeZone,
+          backgroundColor: c.backgroundColor,
+          selected: c.selected === true,
+          hidden: c.hidden === true,
+        }));
+        return textResult({ calendars: compact, count: compact.length });
+      }
+
       case 'list_events': {
         const res = await gcal('GET', `/calendars/${encodeURIComponent(calendarId)}/events`, {
           timeMin: args.timeMin,
