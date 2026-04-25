@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.19.0](https://github.com/ettisberger/andybioticlaw/compare/v0.18.1...v0.19.0) (2026-04-25)
+
+
+### Features
+
+* **skill/google-calendar:** add list_calendars tool ([b81d6bb](https://github.com/ettisberger/andybioticlaw/commit/b81d6bb3fbf4d065d3fc975e416b8f312b0a86fc))
+
 ## [0.18.1](https://github.com/ettisberger/andybioticlaw/compare/v0.18.0...v0.18.1) (2026-04-24)
 
 
