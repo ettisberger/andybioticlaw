@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.20.0](https://github.com/ettisberger/andybioticlaw/compare/v0.19.0...v0.20.0) (2026-04-26)
+
+
+### Features
+
+* notes skill with FTS5 + dashboard page ([c8be04a](https://github.com/ettisberger/andybioticlaw/commit/c8be04a312b82eaefe84cd57dfa1c4621c50c062))
+
 ## [0.19.0](https://github.com/ettisberger/andybioticlaw/compare/v0.18.1...v0.19.0) (2026-04-25)
 
 
