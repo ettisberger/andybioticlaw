@@ -205,6 +205,10 @@ async function runOne(
       args: [...input.memoryProposalServer.args],
       env: memoryMcpEnv,
     },
+    // Same env the memory MCP server gets — every skill MCP server needs
+    // PATH/HOME at minimum, and any skill that talks to our SQLite DB
+    // (e.g. the `notes` skill) reaches it via ANDYBIOTICLAW_DB_PATH.
+    frameworkEnv: memoryMcpEnv,
     getSkillSecret: deps.resolveSkillSecret,
   });
   for (const w of mcpWarnings) deps.logger.warn({ warning: w }, 'mcp config warning');

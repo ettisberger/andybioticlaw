@@ -18,7 +18,7 @@ describe('migration runner — fresh boot', () => {
     try {
       const { db, close } = openDatabase(dbPath, logger);
 
-      // Expected tables per the current migration set (0001..0007).
+      // Expected tables per the current migration set (0001..0008).
       const tables = db
         .prepare<[], { name: string }>(
           `SELECT name FROM sqlite_master WHERE type='table' ORDER BY name`,
@@ -32,6 +32,7 @@ describe('migration runner — fresh boot', () => {
         'memory',
         'memory_proposals',
         'messages',
+        'notes',
         'pending_email_sends',
         'schedule_runs',
         'schedules',
@@ -64,12 +65,28 @@ describe('migration runner — fresh boot', () => {
       expect(memoryCols).toContain('last_used_at');
       expect(memoryCols).toContain('pinned');
 
+      // Migration 0008 added the `notes` table + `notes_fts` virtual table.
+      const noteCols = db
+        .prepare<[], { name: string }>(`PRAGMA table_info(notes)`)
+        .all()
+        .map((r) => r.name);
+      for (const c of ['id', 'title', 'body', 'tags', 'source', 'pinned', 'archived']) {
+        expect(noteCols).toContain(c);
+      }
+      // notes_fts is a virtual table — confirm it exists in sqlite_master.
+      const ftsExists = db
+        .prepare<[], { name: string }>(
+          `SELECT name FROM sqlite_master WHERE type='table' AND name='notes_fts'`,
+        )
+        .get();
+      expect(ftsExists?.name).toBe('notes_fts');
+
       // The runner recorded one row per applied migration.
       const versions = db
         .prepare<[], { version: number }>('SELECT version FROM schema_version ORDER BY version')
         .all()
         .map((r) => r.version);
-      expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7]);
+      expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
 
       close();
     } finally {
@@ -88,7 +105,7 @@ describe('migration runner — fresh boot', () => {
       const rows = second.db
         .prepare<[], { n: number }>('SELECT COUNT(*) AS n FROM schema_version')
         .all();
-      expect(rows[0]!.n).toBe(7);
+      expect(rows[0]!.n).toBe(8);
       second.close();
     } finally {
       rmSync(dir, { recursive: true, force: true });

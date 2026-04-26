@@ -8,6 +8,7 @@ import { SessionsPage } from './pages/SessionsPage';
 import { SessionDetailPage } from './pages/SessionDetailPage';
 import { SchedulesPage } from './pages/SchedulesPage';
 import { MemoryPage } from './pages/MemoryPage';
+import { NotesPage } from './pages/NotesPage';
 import { SkillsPage } from './pages/SkillsPage';
 import { LogsPage } from './pages/LogsPage';
 import { ConfigPage } from './pages/ConfigPage';
@@ -44,6 +45,7 @@ ReactDOM.createRoot(root).render(
           <Route path="/sessions/:id" element={<SessionDetailPage />} />
           <Route path="/schedules" element={<SchedulesPage />} />
           <Route path="/memory" element={<MemoryPage />} />
+          <Route path="/notes" element={<NotesPage />} />
           <Route path="/skills" element={<SkillsPage />} />
           <Route path="/logs" element={<LogsPage />} />
           <Route path="/config" element={<ConfigPage />} />

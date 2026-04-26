@@ -1,0 +1,25 @@
+name: notes
+version: 0.1.0
+description: Save, search, and recall the principal's notes (markdown bodies, freeform tags).
+enabled: true
+
+scope:
+  - dm
+
+# No secrets — the MCP server reads ANDYBIOTICLAW_DB_PATH from the
+# session env that the harness injects into every spawned MCP server.
+required_secrets: []
+
+# Pure Node + better-sqlite3 (hoisted at the repo root). install.sh just
+# verifies the framework env is reachable.
+system_commands: []
+
+mcp_servers:
+  - name: notes
+    command: node
+    args:
+      - ./mcp-server/index.js
+    # Empty env — the framework injects ANDYBIOTICLAW_DB_PATH (plus
+    # PATH/HOME/NODE_ENV) into every skill MCP server. See
+    # src/skills/mcp.ts → frameworkEnv.
+    env: {}

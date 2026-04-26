@@ -15,6 +15,15 @@ export interface McpConfigInput {
     args: string[];
     env: Record<string, string>;
   };
+  /**
+   * Env vars injected into every spawned skill MCP server. Carries framework
+   * essentials the server needs to function (PATH, HOME, NODE_ENV) plus
+   * session-scoped context (`ANDYBIOTICLAW_DB_PATH`, `_SESSION_ID`, `_CHAT_ID`)
+   * that any skill is allowed to read without declaring it as a secret. Skill
+   * manifest `env` blocks layer on top — keys collide → manifest wins, which
+   * is what you want when a skill needs a different PATH or to redirect the DB.
+   */
+  frameworkEnv?: Record<string, string>;
   /** Resolver for skill secret values. Returns `undefined` if the secret is not set. */
   getSkillSecret: (skillName: string, secretName: string) => string | undefined;
 }
@@ -59,7 +68,7 @@ export function buildMcpConfig(
         );
         continue;
       }
-      const env: Record<string, string> = {};
+      const env: Record<string, string> = { ...(input.frameworkEnv ?? {}) };
       for (const [k, template] of Object.entries(srv.env)) {
         const interpolated = template.replace(/\$\{([A-Z][A-Z0-9_]*)\}/g, (_, name) => {
           // The secret must have been declared in required_secrets for us to

@@ -10,6 +10,7 @@ import type { Logger } from 'pino';
 import type { SessionsRepo } from '../db/repositories/sessions.js';
 import type { MessagesRepo } from '../db/repositories/messages.js';
 import type { MemoryManager } from '../memory/manager.js';
+import type { NotesRepo } from '../db/repositories/notes.js';
 import type { SkillRegistry } from '../skills/registry.js';
 import type { SchedulesRepo } from '../db/repositories/schedules.js';
 import type { HeartbeatsRepo } from '../db/repositories/heartbeats.js';
@@ -28,6 +29,7 @@ import { overviewRoutes } from './routes/overview.js';
 import { sessionsRoutes } from './routes/sessions.js';
 import { schedulesRoutes } from './routes/schedules.js';
 import { memoryRoutes } from './routes/memory.js';
+import { notesRoutes } from './routes/notes.js';
 import { skillsRoutes } from './routes/skills.js';
 import { configRoutes } from './routes/config.js';
 import { auditRoutes } from './routes/audit.js';
@@ -44,6 +46,7 @@ export interface DashboardDeps {
   sessions: SessionsRepo;
   messages: MessagesRepo;
   memoryManager: MemoryManager;
+  notes: NotesRepo;
   skills: SkillRegistry;
   schedules: SchedulesRepo;
   heartbeats: HeartbeatsRepo;
@@ -255,6 +258,13 @@ export function createDashboard(deps: DashboardDeps): DashboardService {
     memoryRoutes({
       manager: deps.memoryManager,
       principalUserId: deps.principalUserId,
+    }),
+  );
+
+  app.register(
+    notesRoutes({
+      repo: deps.notes,
+      audit: deps.audit,
     }),
   );
 

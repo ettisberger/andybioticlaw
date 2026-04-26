@@ -21,6 +21,7 @@ import { createHeartbeatsRepo } from './db/repositories/heartbeats.js';
 import { createSessionsRepo } from './db/repositories/sessions.js';
 import { createMessagesRepo } from './db/repositories/messages.js';
 import { createMemoryRepo } from './db/repositories/memory.js';
+import { createNotesRepo } from './db/repositories/notes.js';
 import { createMemoryManager } from './memory/manager.js';
 import { createMemoryTtlCron } from './memory/ttl.js';
 import { buildLogger } from './observability/logger.js';
@@ -96,6 +97,7 @@ async function main(): Promise<void> {
   const sessions = createSessionsRepo(dbHandle.db);
   const messages = createMessagesRepo(dbHandle.db);
   const memoryRepo = createMemoryRepo(dbHandle.db);
+  const notesRepo = createNotesRepo(dbHandle.db);
   const schedulesRepo = createSchedulesRepo(dbHandle.db);
   const budgetStateRepo = createBudgetStateRepo(dbHandle.db);
   const voiceStateRepo = createVoiceStateRepo(dbHandle.db);
@@ -401,6 +403,7 @@ async function main(): Promise<void> {
     sessions,
     messages,
     memoryManager,
+    notes: notesRepo,
     skills: skillRegistry,
     schedules: schedulesRepo,
     heartbeats,

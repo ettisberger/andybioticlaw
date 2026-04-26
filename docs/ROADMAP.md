@@ -11,7 +11,14 @@ a one-line add to Backlog is enough — don't gate on a full spec.
 
 ## Planned next
 
-*(empty — see "Shipped" below for items recently moved from here.)*
+- **`andybioticlaw doctor` command** — single read-only health check
+  covering config, DB, auth, Telegram, dashboard, skills, schedules,
+  disk, logs, budget. Tabular output, non-zero exit on any ✗, with
+  `--json` and `--verbose` flags. Read-only, no auto-fix in v1.
+  Designed to be the first thing the operator runs after `ssh` into
+  the VPS when something feels off. ~ half day.
+- **Skill hot-reload** — re-spawn an MCP server without a full Emma
+  restart. Faster skill dev loop. ~ half day.
 
 ## Backlog — high-impact, small scope (quick wins)
 
@@ -77,6 +84,17 @@ a one-line add to Backlog is enough — don't gate on a full spec.
 
 ## Shipped
 
+- **Notes skill + dashboard page** — markdown-bodied notes with FTS5
+  full-text search, freeform tags, soft-archive lifecycle. New `notes`
+  MCP skill (6 tools: create / list / get / update / archive /
+  unarchive); hard-delete is dashboard-only. Notes do NOT auto-load
+  into Emma's context — she reaches for `list_notes` when conversation
+  calls for it. Dashboard page renders bodies as markdown, supports
+  pin / archive / hard-delete, tag-chip filtering, and a debounced
+  search box. Side benefit: extended `buildMcpConfig` with
+  `frameworkEnv` so any future skill MCP server gets
+  `ANDYBIOTICLAW_DB_PATH` + `PATH` / `HOME` automatically — no manifest
+  boilerplate needed.
 - **Proactive briefings** — morning + evening DMs from Emma at operator-
   configured times. Wraps the existing `agent-task` scheduler kind.
   Toggled from the Settings menu under "Briefings".
