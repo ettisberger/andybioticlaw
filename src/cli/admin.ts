@@ -76,6 +76,28 @@ program
     }
   });
 
+// --- doctor --------------------------------------------------------------
+program
+  .command('doctor')
+  .description('Read-only health check: config, DB, auth, telegram, dashboard, skills, schedules, disk, logs, budget.')
+  .option('--json', 'machine-readable JSON output')
+  .option('-v, --verbose', 'include detail lines under each row')
+  .option('-c, --config <path>', 'override config file path')
+  .action(async (opts: { json?: boolean; verbose?: boolean; config?: string }) => {
+    const { runDoctor } = await import('./commands/doctor.js');
+    try {
+      const exitCode = await runDoctor({
+        json: !!opts.json,
+        verbose: !!opts.verbose,
+        ...(opts.config !== undefined ? { configPath: opts.config } : {}),
+      });
+      process.exit(exitCode);
+    } catch (e) {
+      process.stderr.write(`\ndoctor failed: ${(e as Error).message}\n`);
+      process.exit(1);
+    }
+  });
+
 // --- config ---------------------------------------------------------------
 const config = program.command('config').description('Inspect, edit, and reload configuration');
 

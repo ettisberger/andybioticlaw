@@ -11,12 +11,6 @@ a one-line add to Backlog is enough — don't gate on a full spec.
 
 ## Planned next
 
-- **`andybioticlaw doctor` command** — single read-only health check
-  covering config, DB, auth, Telegram, dashboard, skills, schedules,
-  disk, logs, budget. Tabular output, non-zero exit on any ✗, with
-  `--json` and `--verbose` flags. Read-only, no auto-fix in v1.
-  Designed to be the first thing the operator runs after `ssh` into
-  the VPS when something feels off. ~ half day.
 - **Skill hot-reload** — re-spawn an MCP server without a full Emma
   restart. Faster skill dev loop. ~ half day.
 
@@ -84,6 +78,16 @@ a one-line add to Backlog is enough — don't gate on a full spec.
 
 ## Shipped
 
+- **`andybioticlaw doctor` command** — single read-only health check
+  covering config, DB, claude auth, telegram, dashboard, service
+  pidfile, skills (with live MCP server probe via JSON-RPC), schedules,
+  disk free space, logs, and budget. Tabular ✓/!/✗/— output with
+  `--json` (machine-readable) and `--verbose` (extra detail per row).
+  Exits non-zero if any row fails. Skill probes spawn each enabled
+  MCP server and send `initialize` + `tools/list` over stdio — if the
+  server exits before answering, the doctor surfaces the exit code
+  plus the last stderr line so config issues like missing OAuth
+  secrets are diagnosable at a glance.
 - **Notes skill + dashboard page** — markdown-bodied notes with FTS5
   full-text search, freeform tags, soft-archive lifecycle. New `notes`
   MCP skill (6 tools: create / list / get / update / archive /
