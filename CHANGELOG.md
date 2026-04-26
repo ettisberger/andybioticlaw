@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.21.0](https://github.com/ettisberger/andybioticlaw/compare/v0.20.0...v0.21.0) (2026-04-26)
+
+
+### Features
+
+* **cli:** add `andybioticlaw doctor` health check ([87d442a](https://github.com/ettisberger/andybioticlaw/commit/87d442a697677bfdc73828a044234e838c296585))
+
 ## [0.20.0](https://github.com/ettisberger/andybioticlaw/compare/v0.19.0...v0.20.0) (2026-04-26)
 
 
