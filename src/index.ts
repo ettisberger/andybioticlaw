@@ -11,10 +11,13 @@ import {
 import {
   expandPath,
   logsDir,
+  policiesPath,
   sqliteDbPath,
   pidFilePath,
   workspacesDir,
 } from './config/paths.js';
+import { loadPolicies, savePolicies } from './policies/repo.js';
+import { synthesizeDefaultPolicies } from './policies/auto-generate.js';
 import { openDatabase } from './db/index.js';
 import { createAuditRepo } from './db/repositories/audit.js';
 import { createHeartbeatsRepo } from './db/repositories/heartbeats.js';
@@ -231,6 +234,31 @@ async function main(): Promise<void> {
   const principalUserId = config.telegram.dm.allowedUserIds[0] ?? null;
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
   const memoryProposalServer = resolveMemoryServerSpawn();
+
+  // Auto-generate data/policies.json on first boot from the configured
+  // principal id. Mirrors today's permissive behaviour for the principal
+  // DM (`execMode: 'full'` matches `--permission-mode bypassPermissions`)
+  // — operator can tighten via `andybioticlaw policy edit` later. Step 4
+  // of the multi-agent refactor wires this file into runtime decisions;
+  // until then it's stored but unused.
+  const policiesFilePath = policiesPath(dataDir);
+  let policies = loadPolicies(policiesFilePath);
+  if (!policies) {
+    policies = synthesizeDefaultPolicies({
+      defaultAgentId: 'emma',
+      principalUserId,
+    });
+    savePolicies(policiesFilePath, policies);
+    logger.info(
+      { path: policiesFilePath, contexts: Object.keys(policies.contexts).length },
+      'auto-generated data/policies.json from current config',
+    );
+    audit.record({
+      kind: 'policies_auto_generated',
+      actor: 'startup',
+      detail: { path: policiesFilePath, principalUserId },
+    });
+  }
 
   let telegram: ReturnType<typeof createTelegramService> | null = null;
   let scheduler: ReturnType<typeof createSchedulerEngine> | null = null;

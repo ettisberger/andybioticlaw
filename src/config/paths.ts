@@ -33,6 +33,10 @@ export function pidFilePath(dataDir: string): string {
   return resolve(dataDir, 'andybioticlaw.pid');
 }
 
+export function policiesPath(dataDir: string): string {
+  return resolve(dataDir, 'policies.json');
+}
+
 export function sqliteDbPath(dataDir: string): string {
   return resolve(dataDir, 'andybioticlaw.db');
 }
