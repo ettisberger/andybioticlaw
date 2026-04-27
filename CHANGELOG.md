@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.22.0](https://github.com/ettisberger/andybioticlaw/compare/v0.21.0...v0.22.0) (2026-04-27)
+
+
+### Features
+
+* let Emma create agent-task schedules (daily-digest pattern) ([b9e3c2a](https://github.com/ettisberger/andybioticlaw/commit/b9e3c2a4309939ffeef1298ca021cf4ee74adbaf))
+
 ## [0.21.0](https://github.com/ettisberger/andybioticlaw/compare/v0.20.0...v0.21.0) (2026-04-26)
 
 
