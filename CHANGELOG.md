@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.22.6](https://github.com/ettisberger/andybioticlaw/compare/v0.22.5...v0.22.6) (2026-04-27)
+
+
+### Bug Fixes
+
+* **install:** pre-create ~/.cache + ~/.claude for systemd sandbox ([64e55c8](https://github.com/ettisberger/andybioticlaw/commit/64e55c8534866a0a7455ad334d507634d690a883))
+* **systemd:** add user-local bins to service PATH so claude CLI works ([df93d82](https://github.com/ettisberger/andybioticlaw/commit/df93d824cdff798431690e9726cf76806c45b7c1))
+
 ## [0.22.5](https://github.com/ettisberger/andybioticlaw/compare/v0.22.4...v0.22.5) (2026-04-27)
 
 
