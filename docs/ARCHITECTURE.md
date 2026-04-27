@@ -125,18 +125,92 @@ Config + .env loaded at boot
 
 | Dir | What lives here |
 |---|---|
-| `src/agent/` | runner, session, queue, context, budget, credentials, dispatch, rate-limit-tracker |
+| `src/agent/` | runner, session, queue, context (system-prompt), runtime-context (binding), budget, credentials, dispatch, rate-limit-tracker |
 | `src/telegram/` | grammy bot, auth allowlist, streaming edit batcher, DM/command/memory handlers |
 | `src/scheduler/` | engine + 4 kind handlers + Zod payload schemas + Telegram output sink |
 | `src/skills/` | manifest (Zod), loader, DB-backed registry, install-script runner, MCP config composer |
+| `src/policies/` | policies.json schema, load/save, layered resolver, first-boot auto-generation |
 | `src/memory/` | scope-aware manager, TTL cron, post-session proposal dispatcher |
 | `src/mcp/` | stdio MCP server for `memory_propose` tool |
-| `src/dashboard/` | Fastify server, 7 route modules, WebSocket log broadcaster |
-| `src/db/` | `openDatabase` (WAL, FK, chmod 0600), 5 migrations, 7 repositories |
+| `src/dashboard/` | Fastify server, route modules, WebSocket log broadcaster |
+| `src/db/` | `openDatabase` (WAL, FK, chmod 0600), 9 migrations, repositories |
 | `src/config/` | YAML loader, Zod schema, paths, SIGHUP reload controller, secrets manager, `.env` writer |
 | `src/observability/` | pino logger with redaction, heartbeat cron, error reporter, workspace sweeper |
-| `src/cli/` | `andybioticlaw` admin CLI (Commander), `init` wizard, skill-setup wizard |
-| `web/` | Vite + React 19 frontend (7 pages: Overview, Sessions, Schedules, Memory, Skills, Logs, Config, Audit) |
+| `src/cli/` | `andybioticlaw` admin CLI (Commander), `init` wizard, skill-setup wizard, `doctor`, `policy`, `agent` subcommands |
+| `web/` | Vite + React 19 frontend (Overview, Sessions, Schedules, Memory, Notes, Skills, Logs, Config, Audit) |
+
+## Agents, contexts, and policies
+
+Three coordinated layers control "who is Emma running for, and what
+can she do?". Inspired by OpenClaw's `agents.list` + `bindings` +
+`exec-approvals.json` model, adapted to our Telegram-first single-
+host shape.
+
+```
+┌─ Layer 1: Agent registry  ─────────────────────────────────────┐
+│ config.yaml `agents:` block — one entry per agent.              │
+│ Each agent has: id, name, default flag, model, haikuModel,     │
+│   skills allowlist, optional tokenEnvVar / systemPromptFile /  │
+│   workspace.                                                    │
+│ Today's default install ships ONE agent ('emma'). The schema    │
+│ supports N; adding a second is a config edit + restart.         │
+│ During the deprecation window, the legacy single-`agent:` block │
+│ is auto-synthesized into `agents: [{ id: 'emma', ... }]`.       │
+└─────────────────────────────────────────────────────────────────┘
+                               │
+┌─ Layer 2: Routing  (`bindings`) ───────────────────────────────┐
+│ config.yaml `bindings:` array — `{ agentId, match: { channel, │
+│   chatIds?, userIds? } }`. Resolver picks the FIRST match by    │
+│   specificity: chat+user > chat > user > channel-only > default │
+│   agent. See src/agent/runtime-context.ts.                      │
+│ Output is a `RuntimeContext = { agentId, channel, chatId }`.    │
+│ Serialized as `<agent>:<channel>:<chat>` and stored on every    │
+│ session row + scheduled-task row.                               │
+└─────────────────────────────────────────────────────────────────┘
+                               │
+┌─ Layer 3: Policy lookup  (`data/policies.json`) ───────────────┐
+│ Per-context settings keyed by RuntimeContext key. Each entry    │
+│ may declare:                                                    │
+│   - scheduleKinds       → which kinds this context may create   │
+│   - scheduleAgentTaskCap→ max active agent-task schedules       │
+│   - execMode            → 'deny' | 'allowlist' | 'full'         │
+│   - execAllow           → Bash() patterns when mode=allowlist   │
+│   - skillsVisible       → ['*'] = all enabled, or explicit list │
+│   - deliverToChatId     → optional override for scheduled output│
+│   - _inherits           → one-level inheritance from another    │
+│                           context (no chains)                   │
+│ Resolver layers: explicit context → _inherits parent → file     │
+│ defaults → HARDCODED_FALLBACK (deny-by-default floor).          │
+│ Auto-generated on first boot from the principal id with         │
+│ `execMode: 'full'` (mirrors today's bypassPermissions); operator│
+│ tightens via dashboard or by editing the file.                  │
+└─────────────────────────────────────────────────────────────────┘
+                               │
+┌─ Layer 4 (planned): Per-session .claude/settings.json ─────────┐
+│ The harness will switch Claude CLI's `--permission-mode` from   │
+│ `bypassPermissions` to `default`, write a per-session settings  │
+│ file containing the resolved policy's execAllow + every active  │
+│ skill's `exec_allow` block, and pass it via `--settings`. Until │
+│ that ships, the policy file is informational — Claude still     │
+│ runs in bypass mode.                                            │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Adding a second agent** (e.g. work-Emma in a separate group):
+
+1. Append a second entry to `agents:` with its own `id`, `name`,
+   `tokenEnvVar`, `skills: [...]`, optional `workspace`.
+2. Add a binding rule directing the relevant chat or user id to it:
+   `{ agentId: 'work-emma', match: { channel: 'telegram', chatIds: [-100123] } }`.
+3. Add a policy entry under `data/policies.json`'s `contexts` keyed by
+   `work-emma:telegram:-100123` with the appropriate restrictions.
+4. Set `TELEGRAM_BOT_TOKEN_WORK_EMMA` in `.env`.
+5. Restart.
+
+No code change. The harness wires up an additional grammy listener,
+threads the agentId through every session, and looks up policies by
+context key. Skills, memory, schedules, and the audit log all gain
+a per-agent dimension automatically.
 
 ## Key invariants
 
@@ -151,16 +225,19 @@ is either a bug or a security regression.
 2. **Secret scoping.** A skill can only read secrets declared in its
    `manifest.yaml`. Violations throw `SecretScopeViolationError` and
    write a `secret_scope_violation` audit row.
-3. **Single-principal.** Exactly one user id is allowed to DM the bot
-   (config `telegram.dm.allowedUserIds[0]`). Everybody else → rejected
-   + audited.
-4. **Per-chat serialization.** Two messages from the same chat never
+3. **Per-chat serialization.** Two messages from the same chat never
    run concurrently. Different chats run in parallel.
-5. **Schedule loop protection.** 3 consecutive failures OR >5 runs in
+4. **Schedule loop protection.** 3 consecutive failures OR >5 runs in
    5 minutes → auto-disable + principal DM.
-6. **Agent can't create shell schedules.** Only `--kind reminder`
-   unless `ANDYBIOTICLAW_AGENT_CAN_BASH=1` is set by the caller. Every
+5. **Agent can't create shell schedules.** Only `--reminder` and
+   `--message` (= reminder + agent-task) unless
+   `ANDYBIOTICLAW_AGENT_CAN_BASH=1` is set by the caller. Every
    agent-initiated schedule is audited (`schedule_created_by_agent`).
+   Capped at `AGENT_TASK_SCHEDULE_CAP=20` active rows total.
+6. **Migration-only column changes.** `agent_id` and `context` were
+   added by migration 0009 with safe defaults; existing rows
+   backfilled silently. No column drops, no rename — DB downgrade by
+   tarball restore is always possible.
 
 ## Further reading
 

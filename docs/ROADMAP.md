@@ -52,55 +52,28 @@ a one-line add to Backlog is enough — don't gate on a full spec.
 
 ## Backlog — large scope (weeks)
 
-- **Conceptual refactor: scheduling axis (`WHEN` vs `WHAT`) + per-command exec policy** —
-  *Inspired by [OpenClaw's design](https://docs.openclaw.ai/automation/cron-jobs.md)* —
-  worth considering when our schedule taxonomy or live-Bash safety
-  story starts to bite. Three threads, mostly independent:
+- **Subagent orchestration** — distinct from multi-agent (which is
+  about parallel specialists at the *channel* level). Subagents are
+  short-lived specialists spawned by a parent agent for a single
+  task: Main-Emma decides "research the X paper" → spawns a
+  `researcher` subagent with web access only and a longer thinking
+  budget; subagent does its work, returns the answer, gets cleaned up.
+  The user never talks to subagents directly. Implementation builds
+  on the current multi-agent + policies abstraction (subagent =
+  short-lived agent record + a context that inherits from its
+  parent's context). Pick up when a real "delegate this to a
+  specialist" use case appears. See
+  [OpenClaw subagents](https://docs.openclaw.ai/tools/subagents.md)
+  for the shape they ship.
 
-  1. **Split scheduling axes.** Today our `--kind` mixes WHEN with
-     WHAT (`bash` / `http-check` / `agent-task` / `reminder`).
-     OpenClaw's `at` / `every` / `cron` describe only timing, with a
-     separate `--session` flag (`isolated` / `current` / `custom`)
-     for execution context. Their default scheduled work is always
-     "agent run with prompt" — i.e., our `agent-task` becomes the
-     base case and the others (`bash` / `http-check`) become
-     constraints on what tools the spawned session has. Cleaner;
-     less to teach Emma. Migration: rename `--kind` → `--style`,
-     add `--at` / `--every` axis, keep current names as backward-
-     compat aliases for one release. Touches
-     `src/scheduler/payloads.ts`, `src/cli/admin.ts`, `src/scheduler/`,
-     and Emma's system prompt.
-  2. **Borrow exec-approvals as a per-command Bash gate.**
-     Currently Emma has `allowedTools: all` in `config/config.yaml`
-     so her live Bash tool runs anything. OpenClaw's
-     `~/.openclaw/exec-approvals.json` is a three-layer interlock
-     (tool policy + host allowlist + optional user prompt) with
-     modes `deny` / `allowlist` / `full` × ask `off` / `on-miss` /
-     `always`. Same pattern Claude Code already supports natively
-     via `permissions.allow` / `defaultMode` in
-     `.claude/settings.json` — we just haven't tightened beyond
-     `all`. Win: stop relying on Emma's good behavior for shell
-     safety; gain a deny-by-default base + opt-in allowlist. Risk:
-     breaking existing skills that shell out (himalaya). Migration:
-     audit current Bash usage, build the allowlist, ship behind a
-     config feature-flag for one release.
-  3. **"Standing Orders" pattern as living docs.**
-     OpenClaw's [standing orders](https://docs.openclaw.ai/automation/standing-orders.md)
-     are markdown documents in `AGENTS.md` granting "permanent
-     operating authority for defined programs" — `scope, triggers,
-     approval gates, escalation rules`. Emma reads them every
-     session. Trust-based, not enforced — but the pattern of a
-     living doc the agent self-references is a nice complement to
-     enforced gates. We could add `data/standing-orders.md` Emma
-     auto-reads; gives the operator a place to write durable
-     authority grants ("you are authorized to send daily digests
-     without re-confirming") without code changes.
-
-  **Why not now:** our current model is enforceable and shipping;
-  switching axes mid-flight breaks every existing schedule. Pick
-  this up when: (a) we add a 5th schedule kind and the taxonomy
-  starts feeling cramped, OR (b) we want to lock down Emma's live
-  Bash without breaking himalaya.
+- **"Standing Orders" pattern as living docs.**
+  [OpenClaw's standing orders](https://docs.openclaw.ai/automation/standing-orders.md)
+  are markdown documents in `AGENTS.md` granting "permanent
+  operating authority for defined programs" — `scope, triggers,
+  approval gates, escalation rules`. The agent reads them every
+  session. Trust-based, not enforced — complement to our policy
+  layer which is enforced. Skip until `system.base.md` grows past
+  ~5 pages and authority grants would benefit from isolation.
 
 - **Security tier 2 — systemd sandbox directives** (`PrivateTmp`,
   `ProtectHome`, `ReadWritePaths`, `NoNewPrivileges`, …) in the
