@@ -629,8 +629,15 @@ schedule
     '--at <iso>',
     'fire once at this local timestamp (YYYY-MM-DDTHH:MM). Implies --once.',
   )
-  .requiredOption('-k, --kind <kind>', 'bash | http-check | agent-task | reminder')
-  .requiredOption('-p, --payload <json>', 'kind-specific JSON payload')
+  // Payload-shape flags. Exactly one is required. Each maps to a
+  // ScheduleKind internally — same engine, cleaner CLI surface.
+  .option('--reminder <text>', 'send a fixed Telegram message at the cron time')
+  .option('--message <prompt>', 'spawn the agent with this prompt at the cron time (= agent-task)')
+  .option('--exec <command>', 'run this shell command at the cron time (gated; principal-only)')
+  .option('--http <url>', 'GET this URL at the cron time (gated; principal-only)')
+  // Legacy form — kept for backward compat with scripts in the wild.
+  .option('-k, --kind <kind>', '[deprecated] use --reminder/--message/--exec/--http instead')
+  .option('-p, --payload <json>', '[deprecated] kind-specific JSON payload, paired with --kind')
   .option(
     '--once',
     'one-shot: fire once at the next cron match then delete. Use with --cron for "tonight at 23:00" style pinned expressions.',
@@ -642,8 +649,12 @@ schedule
       name: string;
       cron?: string;
       at?: string;
-      kind: string;
-      payload: string;
+      reminder?: string;
+      message?: string;
+      exec?: string;
+      http?: string;
+      kind?: string;
+      payload?: string;
       once?: boolean;
       budget?: string;
       disabled?: boolean;
@@ -656,6 +667,52 @@ schedule
       if (!opts.at && !opts.cron) {
         process.stderr.write(`one of --at or --cron is required\n`);
         process.exit(2);
+      }
+
+      // Resolve the payload form. Exactly one of:
+      //   - --reminder / --message / --exec / --http   (new)
+      //   - --kind + --payload                          (deprecated shim)
+      const formFlags = [
+        opts.reminder !== undefined,
+        opts.message !== undefined,
+        opts.exec !== undefined,
+        opts.http !== undefined,
+      ].filter(Boolean).length;
+      const legacyForm = opts.kind !== undefined || opts.payload !== undefined;
+      if (formFlags + (legacyForm ? 1 : 0) === 0) {
+        process.stderr.write(
+          `one of --reminder, --message, --exec, --http required (or legacy --kind + --payload)\n`,
+        );
+        process.exit(2);
+      }
+      if (formFlags > 1 || (formFlags > 0 && legacyForm)) {
+        process.stderr.write(
+          `--reminder / --message / --exec / --http are mutually exclusive; pick one (and don't mix with --kind/--payload)\n`,
+        );
+        process.exit(2);
+      }
+      let resolvedKind: string;
+      let resolvedPayload: string;
+      if (opts.reminder !== undefined) {
+        resolvedKind = 'reminder';
+        resolvedPayload = JSON.stringify({ text: opts.reminder });
+      } else if (opts.message !== undefined) {
+        resolvedKind = 'agent-task';
+        resolvedPayload = JSON.stringify({ prompt: opts.message });
+      } else if (opts.exec !== undefined) {
+        resolvedKind = 'bash';
+        resolvedPayload = JSON.stringify({ command: opts.exec });
+      } else if (opts.http !== undefined) {
+        resolvedKind = 'http-check';
+        resolvedPayload = JSON.stringify({ url: opts.http });
+      } else {
+        // Legacy form — both --kind and --payload required when this branch runs.
+        if (!opts.kind || !opts.payload) {
+          process.stderr.write(`--kind and --payload must be used together\n`);
+          process.exit(2);
+        }
+        resolvedKind = opts.kind;
+        resolvedPayload = opts.payload;
       }
 
       let cronExpr: string;
@@ -684,15 +741,15 @@ schedule
         process.stderr.write(`invalid cron expression: "${cronExpr}"\n`);
         process.exit(2);
       }
-      const kindRes = ScheduleKind.safeParse(opts.kind);
+      const kindRes = ScheduleKind.safeParse(resolvedKind);
       if (!kindRes.success) {
         process.stderr.write(
-          `invalid kind "${opts.kind}" — must be one of: bash, http-check, agent-task, reminder\n`,
+          `invalid kind "${resolvedKind}" — must be one of: bash, http-check, agent-task, reminder\n`,
         );
         process.exit(2);
       }
       try {
-        parsePayload(kindRes.data, opts.payload);
+        parsePayload(kindRes.data, resolvedPayload);
       } catch (e) {
         process.stderr.write(`payload invalid: ${(e as Error).message}\n`);
         process.exit(2);
@@ -766,7 +823,7 @@ schedule
           name: opts.name,
           cron_expr: cronExpr,
           kind: kindRes.data,
-          payload: opts.payload,
+          payload: resolvedPayload,
           enabled: !opts.disabled,
           recurring,
           budget_tokens_per_day: opts.budget ? Number(opts.budget) : null,
@@ -933,6 +990,134 @@ schedule
       `schedule "${id}" will fire on its next cron tick. For immediate dev use, set its cron to '* * * * *' temporarily.\n`,
     );
     void id;
+  });
+
+// --- policy ---------------------------------------------------------------
+const policy = program.command('policy').description('Inspect per-context permission policies');
+
+policy
+  .command('show')
+  .description('Show resolved policy for a context (or list all contexts when none given)')
+  .argument(
+    '[context]',
+    'context key, e.g. emma:telegram:18998064 — omit to list all contexts',
+  )
+  .action(async (contextArg?: string) => {
+    bootstrapEnv();
+    const loaded = loadConfig();
+    const dataDir = expandPath(loaded.config.service.dataDir, projectRoot());
+    const { policiesPath } = await import('../config/paths.js');
+    const { loadPolicies, resolvePolicy } = await import('../policies/repo.js');
+    const path = policiesPath(dataDir);
+    const file = loadPolicies(path);
+    if (!file) {
+      process.stderr.write(`no policies file at ${path} — start the service once to auto-generate\n`);
+      process.exit(1);
+    }
+    if (contextArg) {
+      try {
+        const resolved = resolvePolicy(file, contextArg);
+        process.stdout.write(JSON.stringify({ context: contextArg, ...resolved }, null, 2) + '\n');
+      } catch (e) {
+        process.stderr.write(`${(e as Error).message}\n`);
+        process.exit(1);
+      }
+      return;
+    }
+    // No context given — list all known contexts + their resolved policies.
+    const keys = Object.keys(file.contexts);
+    if (keys.length === 0) {
+      process.stdout.write('(no per-context policies; only defaults)\n');
+      process.stdout.write(JSON.stringify({ defaults: file.defaults }, null, 2) + '\n');
+      return;
+    }
+    for (const key of keys) {
+      const resolved = resolvePolicy(file, key);
+      process.stdout.write(`\n=== ${key} ===\n`);
+      process.stdout.write(JSON.stringify(resolved, null, 2) + '\n');
+    }
+  });
+
+policy
+  .command('reload')
+  .description('Validate policies.json (the service re-reads on every session, so this is a syntax check)')
+  .action(async () => {
+    bootstrapEnv();
+    const loaded = loadConfig();
+    const dataDir = expandPath(loaded.config.service.dataDir, projectRoot());
+    const { policiesPath } = await import('../config/paths.js');
+    const { loadPolicies } = await import('../policies/repo.js');
+    const path = policiesPath(dataDir);
+    try {
+      const file = loadPolicies(path);
+      if (!file) {
+        process.stderr.write(`no policies file at ${path}\n`);
+        process.exit(1);
+      }
+      process.stdout.write(
+        `✓ ${path} parsed cleanly (${Object.keys(file.contexts).length} contexts)\n`,
+      );
+    } catch (e) {
+      process.stderr.write(`${(e as Error).message}\n`);
+      process.exit(1);
+    }
+  });
+
+// --- agent ----------------------------------------------------------------
+const agent = program.command('agent').description('Inspect configured agents');
+
+agent
+  .command('list')
+  .description('List configured agents')
+  .action(() => {
+    const { config } = openRuntime();
+    if (!config.agents || config.agents.length === 0) {
+      process.stdout.write(
+        `(no agents: block — running with synthesized 'emma' from legacy agent: block)\n`,
+      );
+      process.stdout.write(`✓ emma  ${config.agent.name}  ${config.agent.model}\n`);
+      return;
+    }
+    for (const a of config.agents) {
+      const flag = a.default ? '*' : ' ';
+      const skills = a.skills.join(', ');
+      process.stdout.write(`${flag}  ${a.id}  ${a.name}  ${a.model}  skills=${skills}\n`);
+    }
+  });
+
+agent
+  .command('show')
+  .description('Show full details for an agent')
+  .argument('<id>')
+  .action((id: string) => {
+    const { config } = openRuntime();
+    if (!config.agents || config.agents.length === 0) {
+      if (id === 'emma') {
+        process.stdout.write(
+          JSON.stringify(
+            {
+              id: 'emma',
+              name: config.agent.name,
+              default: true,
+              model: config.agent.model,
+              haikuModel: config.agent.haikuModel,
+              note: 'synthesized from legacy `agent:` block — add an explicit `agents:` block to config.yaml to declare more agents',
+            },
+            null,
+            2,
+          ) + '\n',
+        );
+        return;
+      }
+      process.stderr.write(`no agent named "${id}" (running with single legacy 'emma')\n`);
+      process.exit(1);
+    }
+    const found = config.agents.find((a) => a.id === id);
+    if (!found) {
+      process.stderr.write(`no agent named "${id}"\n`);
+      process.exit(1);
+    }
+    process.stdout.write(JSON.stringify(found, null, 2) + '\n');
   });
 
 // --- remaining stubs for later phases ------------------------------------
