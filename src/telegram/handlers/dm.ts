@@ -62,7 +62,6 @@ export interface DmHandlerDeps {
   streamEditIntervalMs: () => number;
   longTaskNotifyAfterMs: () => number;
   conversationHistoryLimit: () => number;
-  allowedTools: () => string;
   credentialsReady: () => boolean;
   dbPath: string;
   sessionWorkspaceRoot: string;
@@ -100,7 +99,6 @@ function dispatchDepsFromHandler(deps: DmHandlerDeps): DispatchDeps {
     streamEditIntervalMs: deps.streamEditIntervalMs,
     longTaskNotifyAfterMs: deps.longTaskNotifyAfterMs,
     conversationHistoryLimit: deps.conversationHistoryLimit,
-    allowedTools: deps.allowedTools,
     credentialsReady: deps.credentialsReady,
     dbPath: deps.dbPath,
     sessionWorkspaceRoot: deps.sessionWorkspaceRoot,

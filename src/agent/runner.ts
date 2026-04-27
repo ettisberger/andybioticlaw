@@ -9,8 +9,6 @@ export interface RunClaudeInput {
   systemPrompt: string;
   model: string;
   cwd: string;
-  /** "all" = pass default tool set; otherwise forwarded as --allowedTools <value>. */
-  allowedTools: string;
   /** Kill the CLI if no stream event arrives for this many ms. */
   streamIdleTimeoutMs: number;
   /** Optional: abort signal for user-initiated cancellation. */
@@ -155,9 +153,6 @@ export function runClaude(input: RunClaudeInput): Promise<RunClaudeResult> {
     '--permission-mode',
     input.permissionMode ?? 'bypassPermissions',
   ];
-  if (input.allowedTools && input.allowedTools !== 'all') {
-    args.push('--allowedTools', input.allowedTools);
-  }
   if (input.mcpConfigPath) {
     args.push('--mcp-config', input.mcpConfigPath);
   }

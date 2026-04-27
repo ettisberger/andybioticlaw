@@ -1,20 +1,24 @@
 import type { ScheduleKind } from '../../scheduler/payloads.js';
+import type { ResolvedPolicy } from '../../policies/schema.js';
 
 /**
- * Cap on how many `agent-task` schedules can exist at once. Includes the
- * principal's own — the cap exists primarily to bound a worst-case
- * prompt-injection loop where Emma is talked into creating thousands.
- * 20 is generous for a single-principal setup; promote to config if it
- * ever bites.
+ * Cap on how many `agent-task` schedules can exist at once. Defaults
+ * here are the floor; the per-context `policy.scheduleAgentTaskCap`
+ * overrides. Catches a prompt-injection loop where Emma is talked
+ * into creating thousands.
  */
 export const AGENT_TASK_SCHEDULE_CAP = 20;
 
 export interface GateInput {
   kind: ScheduleKind;
-  /** True when the principal's shell exported `ANDYBIOTICLAW_AGENT_CAN_BASH=1`. */
-  agentCanBash: boolean;
-  /** Current count of `agent-task` rows in the schedules table (any
-   *  enabled state). Counted by the caller via `SchedulesRepo.list()`. */
+  /**
+   * Resolved policy for the caller's context. When `null`, the caller
+   * is acting OUTSIDE a session (e.g. the operator's interactive shell
+   * — no `ANDYBIOTICLAW_CONTEXT_KEY` env-var set) and the gate allows
+   * everything: it's the principal acting directly.
+   */
+  policy: ResolvedPolicy | null;
+  /** Current count of `agent-task` rows in the schedules table. */
   agentTaskCount: number;
 }
 
@@ -23,36 +27,40 @@ export type GateResult =
   | { ok: false; reason: string };
 
 /**
- * Decide whether a `schedule add --kind <kind>` invocation is allowed.
+ * Decide whether a `schedule add --<kind>` invocation is allowed.
  *
- *   - With the bash flag: anything goes (the principal is acting directly).
- *   - Without it: `reminder` and `agent-task` are allowed (low-blast-radius
- *     kinds Emma can self-service). `bash` and `http-check` are refused —
- *     prompt-injection could otherwise trick Emma into running arbitrary
- *     shell or polling attacker-controlled URLs.
- *   - `agent-task` is additionally capped at {@link AGENT_TASK_SCHEDULE_CAP}
- *     to bound runaway creation.
+ *   - Outside a session (operator's shell, `policy = null`): allow
+ *     everything. The principal is acting directly.
+ *   - Inside a session (Emma shells out to the CLI): the caller's
+ *     context policy gates the kind via `policy.scheduleKinds`. The
+ *     auto-generated principal-DM context allows `reminder` +
+ *     `agent-task`; the catch-all defaults restrict to `reminder`.
+ *   - `agent-task` is additionally capped at
+ *     `policy.scheduleAgentTaskCap` (or {@link AGENT_TASK_SCHEDULE_CAP}
+ *     when the policy doesn't set one) to bound runaway creation.
  *
  * Pure function — no I/O — so the matrix is unit-testable.
  */
 export function evaluateScheduleKindGate(input: GateInput): GateResult {
-  if (input.agentCanBash) return { ok: true };
+  // Operator acting directly (no session env var). Skip every gate.
+  if (input.policy === null) return { ok: true };
 
-  if (input.kind === 'reminder') return { ok: true };
-
-  if (input.kind === 'agent-task') {
-    if (input.agentTaskCount >= AGENT_TASK_SCHEDULE_CAP) {
-      return {
-        ok: false,
-        reason: `agent-task schedule cap reached (${input.agentTaskCount}/${AGENT_TASK_SCHEDULE_CAP}) — archive or delete an existing one first`,
-      };
-    }
-    return { ok: true };
+  if (!input.policy.scheduleKinds.includes(input.kind)) {
+    return {
+      ok: false,
+      reason: `kind "${input.kind}" not in policy.scheduleKinds (${input.policy.scheduleKinds.join(', ')})`,
+    };
   }
 
-  // bash, http-check
-  return {
-    ok: false,
-    reason: `kind "${input.kind}" requires ANDYBIOTICLAW_AGENT_CAN_BASH=1 (principal-only)`,
-  };
+  if (input.kind === 'agent-task') {
+    const cap = input.policy.scheduleAgentTaskCap;
+    if (input.agentTaskCount >= cap) {
+      return {
+        ok: false,
+        reason: `agent-task schedule cap reached (${input.agentTaskCount}/${cap}) — archive or delete an existing one first`,
+      };
+    }
+  }
+
+  return { ok: true };
 }

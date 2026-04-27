@@ -29,9 +29,9 @@ agent:
   haikuModel: claude-haiku-4-5-20251001
   credentialsDir: ~/.claude
   streamIdleTimeoutSec: 120
-  # Claude-CLI tool permissions. "all" — grant all tools; or comma/space
-  # separated list like "Bash,Edit,Read".
-  allowedTools: all
+  # Tool permissions are driven by data/policies.json (per-context
+  # execMode + execAllow patterns), not config.yaml. See
+  # docs/ARCHITECTURE.md "Agents, contexts, and policies" for the model.
   # Cheap-model router (opt-in). Sends short/simple DMs to `haikuModel`
   # for a big cost reduction; keeps complex work on `model`. Scheduled
   # agent-tasks are NOT routed.

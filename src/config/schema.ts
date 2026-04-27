@@ -39,7 +39,6 @@ export const AgentConfig = z.object({
     .default('claude-haiku-4-5-20251001'),
   credentialsDir: z.string().min(1),
   streamIdleTimeoutSec: z.number().int().positive(),
-  allowedTools: z.union([z.literal('all'), z.string().min(1)]),
   routing: AgentRoutingConfig.default({ enabled: false, minCharsForOpus: 120 }),
 });
 
@@ -267,7 +266,6 @@ export const RESTART_REQUIRED_PATHS: ReadonlyArray<string> = [
   'agent.model',
   'agent.credentialsDir',
   'agent.streamIdleTimeoutSec',
-  'agent.allowedTools',
   'telegram.dm.allowedUserIds',
   'telegram.dm.runMode',
   'telegram.group.allowedGroupIds',

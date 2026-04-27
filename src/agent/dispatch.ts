@@ -43,7 +43,6 @@ export interface DispatchDeps {
   streamEditIntervalMs: () => number;
   longTaskNotifyAfterMs: () => number;
   conversationHistoryLimit: () => number;
-  allowedTools: () => string;
   credentialsReady: () => boolean;
   dbPath: string;
   sessionWorkspaceRoot: string;
@@ -183,7 +182,6 @@ export async function dispatchUserPrompt(
     timezone: deps.timezone,
     agentName: deps.agentName,
     agentId: deps.agentId,
-    allowedTools: deps.allowedTools(),
     streamIdleTimeoutMs: deps.streamIdleTimeoutMs(),
     cwd: deps.cwd,
     sessionWorkspaceRoot: deps.sessionWorkspaceRoot,

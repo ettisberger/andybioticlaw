@@ -229,11 +229,16 @@ is either a bug or a security regression.
    run concurrently. Different chats run in parallel.
 4. **Schedule loop protection.** 3 consecutive failures OR >5 runs in
    5 minutes → auto-disable + principal DM.
-5. **Agent can't create shell schedules.** Only `--reminder` and
-   `--message` (= reminder + agent-task) unless
-   `ANDYBIOTICLAW_AGENT_CAN_BASH=1` is set by the caller. Every
-   agent-initiated schedule is audited (`schedule_created_by_agent`).
-   Capped at `AGENT_TASK_SCHEDULE_CAP=20` active rows total.
+5. **Schedule kinds are policy-gated per context.** When the CLI is
+   invoked from a session (Emma shells out, harness sets
+   `ANDYBIOTICLAW_CONTEXT_KEY`), the resolved policy's
+   `scheduleKinds` controls what kinds may be created. Default
+   principal-DM policy allows `reminder` + `agent-task`. The
+   operator's interactive shell (no context env-var) bypasses the
+   gate — they're the principal acting directly. agent-task is
+   additionally capped at `policy.scheduleAgentTaskCap` (default 20)
+   to bound runaway prompt-injection. Every agent-initiated schedule
+   is audited (`schedule_created_by_agent`).
 6. **Migration-only column changes.** `agent_id` and `context` were
    added by migration 0009 with safe defaults; existing rows
    backfilled silently. No column drops, no rename — DB downgrade by

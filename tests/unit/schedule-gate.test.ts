@@ -3,94 +3,96 @@ import {
   AGENT_TASK_SCHEDULE_CAP,
   evaluateScheduleKindGate,
 } from '../../src/cli/commands/schedule-gate.js';
+import type { ResolvedPolicy } from '../../src/policies/schema.js';
 
 /**
  * The gate is the only thing standing between Emma and arbitrary shell
- * execution at cron times. The matrix below is the contract.
+ * execution at cron times. Lock the matrix here.
  */
 
+const principalPolicy: ResolvedPolicy = {
+  scheduleKinds: ['reminder', 'agent-task'],
+  scheduleAgentTaskCap: 20,
+  execMode: 'full',
+  execAllow: [],
+  skillsVisible: ['*'],
+};
+
+const reminderOnlyPolicy: ResolvedPolicy = {
+  scheduleKinds: ['reminder'],
+  scheduleAgentTaskCap: 0,
+  execMode: 'deny',
+  execAllow: [],
+  skillsVisible: [],
+};
+
 describe('evaluateScheduleKindGate', () => {
-  it('allows reminder without the bash flag', () => {
+  it('allows everything when policy is null (operator interactive shell)', () => {
+    const r = evaluateScheduleKindGate({
+      kind: 'bash',
+      policy: null,
+      agentTaskCount: 99,
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it('allows kinds in policy.scheduleKinds', () => {
     const r = evaluateScheduleKindGate({
       kind: 'reminder',
-      agentCanBash: false,
+      policy: principalPolicy,
       agentTaskCount: 0,
     });
     expect(r.ok).toBe(true);
   });
 
-  it('allows agent-task without the bash flag, under the cap', () => {
+  it('rejects kinds not in policy.scheduleKinds', () => {
     const r = evaluateScheduleKindGate({
-      kind: 'agent-task',
-      agentCanBash: false,
+      kind: 'bash',
+      policy: principalPolicy,
       agentTaskCount: 0,
     });
-    expect(r.ok).toBe(true);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/not in policy\.scheduleKinds/);
   });
 
-  it('refuses agent-task when at the cap', () => {
+  it('reminder-only policy refuses agent-task', () => {
     const r = evaluateScheduleKindGate({
       kind: 'agent-task',
-      agentCanBash: false,
-      agentTaskCount: AGENT_TASK_SCHEDULE_CAP,
+      policy: reminderOnlyPolicy,
+      agentTaskCount: 0,
+    });
+    expect(r.ok).toBe(false);
+  });
+
+  it('refuses agent-task when at the policy cap', () => {
+    const r = evaluateScheduleKindGate({
+      kind: 'agent-task',
+      policy: principalPolicy,
+      agentTaskCount: principalPolicy.scheduleAgentTaskCap,
     });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toMatch(/cap reached/);
   });
 
-  it('refuses agent-task when over the cap (defensive)', () => {
+  it('refuses agent-task when above the policy cap (defensive)', () => {
     const r = evaluateScheduleKindGate({
       kind: 'agent-task',
-      agentCanBash: false,
-      agentTaskCount: AGENT_TASK_SCHEDULE_CAP + 5,
+      policy: principalPolicy,
+      agentTaskCount: principalPolicy.scheduleAgentTaskCap + 5,
     });
     expect(r.ok).toBe(false);
   });
 
-  it('still allows agent-task at the cap when the bash flag is set', () => {
-    // Principal acting directly — caps don't apply.
+  it('still allows agent-task at the cap when policy is null (operator)', () => {
     const r = evaluateScheduleKindGate({
       kind: 'agent-task',
-      agentCanBash: true,
+      policy: null,
       agentTaskCount: AGENT_TASK_SCHEDULE_CAP + 100,
     });
     expect(r.ok).toBe(true);
   });
 
-  it('refuses bash without the bash flag', () => {
-    const r = evaluateScheduleKindGate({
-      kind: 'bash',
-      agentCanBash: false,
-      agentTaskCount: 0,
-    });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toMatch(/principal-only/);
-  });
-
-  it('allows bash with the bash flag', () => {
-    const r = evaluateScheduleKindGate({
-      kind: 'bash',
-      agentCanBash: true,
-      agentTaskCount: 0,
-    });
-    expect(r.ok).toBe(true);
-  });
-
-  it('refuses http-check without the bash flag', () => {
-    const r = evaluateScheduleKindGate({
-      kind: 'http-check',
-      agentCanBash: false,
-      agentTaskCount: 0,
-    });
-    expect(r.ok).toBe(false);
-  });
-
-  it('allows http-check with the bash flag', () => {
-    const r = evaluateScheduleKindGate({
-      kind: 'http-check',
-      agentCanBash: true,
-      agentTaskCount: 0,
-    });
-    expect(r.ok).toBe(true);
+  it('exposes the legacy default cap constant for callers wanting a sensible floor', () => {
+    expect(AGENT_TASK_SCHEDULE_CAP).toBe(20);
   });
 });

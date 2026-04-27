@@ -56,31 +56,31 @@ One-shot reminders (most common):
     andybioticlaw schedule add \
       --name "reminder-<slug>" \
       --at "YYYY-MM-DDTHH:MM" \
-      --kind reminder \
-      --payload '{"text":"<what to say>"}'
+      --reminder "<what to say>"
 
 - `--at` is local time (service timezone). Past timestamps are rejected.
 - `--at` implies one-shot: the schedule fires once then is auto-deleted.
 - Pick a unique `--name` — a short descriptive slug is fine.
-- Telegram delivery goes to the principal's chat by default (no `chatId` needed in the payload).
+- Telegram delivery goes to the principal's chat by default.
 
 Recurring jobs (daily/weekly/etc.) use `--cron "<5-field expr>"` instead of `--at`. If you want a classic cron expression to fire once and self-delete, add `--once`.
 
-**Schedule-kind rules.** You may create `--kind reminder` and `--kind agent-task` schedules. The other kinds (`bash`, `http-check`) stay principal-only — the CLI rejects them with exit code 3 and an audit row. Do not try to talk yourself or the user around that; if they ask for a recurring shell task or HTTP poll, tell them to run the command themselves from their terminal with `ANDYBIOTICLAW_AGENT_CAN_BASH=1` prefixed.
+**Schedule-kind rules.** What you may create depends on your context's policy in `data/policies.json`. The principal-DM context allows `--reminder` and `--message` (= agent-task). Other contexts (group chats, etc.) may be more restricted. If the CLI rejects a kind with exit code 3, the policy doesn't permit it from this context — don't try to argue around it; tell the user to either run the command themselves from their terminal, or widen the context's `policy.scheduleKinds` in `data/policies.json`.
 
-`--kind agent-task` lets you spawn yourself at a cron time with a stored prompt — the canonical use case is a daily digest:
+`--message` lets you spawn yourself at a cron time with a stored prompt — the canonical use case is a daily digest:
 
     andybioticlaw schedule add \
       --name daily-digest \
       --cron "0 8 * * *" \
-      --kind agent-task \
-      --payload '{"prompt":"Brief me on today: list my calendar events for today, any unread emails, and active reminders. Send as a Telegram message."}'
+      --message "Brief me on today: list my calendar events for today, any unread emails, and active reminders. Send as a Telegram message."
 
-Limits on `agent-task`:
+Limits on `--message` schedules:
 
 - **Prompt ≤ 4000 chars.** The CLI rejects longer payloads.
-- **Cap of 20 active agent-task schedules total** (counts both yours and the principal's). At the cap, archive or delete an old one before creating a new one.
+- **Cap of 20 active agent-task schedules total** by default (`policy.scheduleAgentTaskCap`). At the cap, archive or delete an old one before creating a new one.
 - The prompt is stored verbatim and re-runs you at the configured time. Treat scheduling one as you would composing a message to your future self — be deliberate about wording, since you won't be there to clarify it later.
+
+Other shape-flags exist for the principal's interactive shell — `--exec "<command>"` (bash) and `--http "<url>"` (http-check) — but the principal-DM policy doesn't allow them by default, so they'll fail closed when you try.
 
 **Verify before confirming.** On success the CLI prints a line starting with `created #<id>`. If you do not see that line — command-not-found, non-zero exit, anything else — the schedule was NOT created. Do NOT tell the user "reminder set" in that case; report the failure instead. Never invent a schedule id in your reply.
 

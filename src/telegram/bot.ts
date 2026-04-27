@@ -35,7 +35,6 @@ export interface BotConfigView {
   model: string;
   timezone: string;
   cwd: string;
-  allowedTools(): string;
   streamIdleTimeoutMs(): number;
   streamEditIntervalMs(): number;
   longTaskNotifyAfterMs(): number;
@@ -208,7 +207,6 @@ export function createTelegramService(deps: BotDeps): TelegramService {
     streamEditIntervalMs: () => deps.config.streamEditIntervalMs(),
     longTaskNotifyAfterMs: () => deps.config.longTaskNotifyAfterMs(),
     conversationHistoryLimit: () => deps.config.conversationHistoryLimit(),
-    allowedTools: () => deps.config.allowedTools(),
     credentialsReady: deps.credentialsReady,
     dbPath: deps.dbPath,
     sessionWorkspaceRoot: deps.sessionWorkspaceRoot,

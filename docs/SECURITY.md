@@ -168,19 +168,22 @@ This is **shell injection** — acceptable *when the principal authored
 the payload*. Since Emma was given shell access (via Bash tool) and the
 ability to invoke this CLI, a prompt injection (email contents, web
 fetch, skill output, etc.) could otherwise talk her into creating a
-bash schedule that survives restarts. The CLI therefore refuses to
-create any schedule whose `--kind` is not `reminder` **unless the
-environment variable `ANDYBIOTICLAW_AGENT_CAN_BASH=1` is set at
-invocation time**.
+bash schedule that survives restarts. The CLI therefore gates schedule
+creation against the per-context policy in `data/policies.json`.
 
-- Emma's subprocess env never carries the flag → she can only create
-  `--kind reminder`. Attempts at other kinds exit with code 3 and write
-  a `schedule_kind_gate_blocked` audit row.
-- The principal's interactive shell exports (or inlines) the flag →
-  full functionality restored.
-- Every schedule Emma successfully creates (all reminders) is logged
-  as a `schedule_created_by_agent` audit row so suspicious activity is
-  post-hoc inspectable.
+- The harness sets `ANDYBIOTICLAW_CONTEXT_KEY=<agentId>:telegram:<chatId>`
+  in Emma's session env. The CLI reads this var, looks up the
+  resolved policy, and rejects any kind not in `policy.scheduleKinds`.
+- The principal's interactive shell has no `ANDYBIOTICLAW_CONTEXT_KEY`
+  set → gate is bypassed entirely (principal acting directly).
+- The default principal-DM policy allows `reminder` + `agent-task`;
+  group-chat policies are typically tighter (`reminder` only).
+- agent-task creation is additionally capped at
+  `policy.scheduleAgentTaskCap` (default 20) to bound runaway
+  prompt-injection loops.
+- Every schedule Emma successfully creates is logged as
+  `schedule_created_by_agent` (with the resolved context key in the
+  detail) so suspicious activity is post-hoc inspectable.
 
 Do NOT:
 
@@ -188,11 +191,9 @@ Do NOT:
   form, an external API).
 - Expose a config-editing endpoint on the dashboard (we don't —
   `/api/config` is read-only and masked).
-- Set `ANDYBIOTICLAW_AGENT_CAN_BASH=1` in the service's systemd unit
-  or in any file the daemon reads at startup — that would defeat the
-  gate for Emma's subprocess env. It belongs only in the principal's
-  interactive shell (e.g. `.bashrc`) or inline before a one-off
-  invocation.
+- Set `ANDYBIOTICLAW_CONTEXT_KEY` in the service's systemd unit or in
+  any file the daemon reads at startup — that would shadow the
+  per-session value the harness injects.
 
 ### Dashboard is localhost-only by default, with defense-in-depth
 

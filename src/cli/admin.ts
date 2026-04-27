@@ -16,6 +16,7 @@ import { createSessionsRepo } from '../db/repositories/sessions.js';
 import { createBudgetTracker } from '../agent/budget.js';
 import { parsePayload, ScheduleKind } from '../scheduler/payloads.js';
 import { evaluateScheduleKindGate } from './commands/schedule-gate.js';
+import type { ResolvedPolicy } from '../policies/schema.js';
 import cron from 'node-cron';
 import pino from 'pino';
 import { WizardAbortedError } from './wizard.js';
@@ -633,11 +634,8 @@ schedule
   // ScheduleKind internally — same engine, cleaner CLI surface.
   .option('--reminder <text>', 'send a fixed Telegram message at the cron time')
   .option('--message <prompt>', 'spawn the agent with this prompt at the cron time (= agent-task)')
-  .option('--exec <command>', 'run this shell command at the cron time (gated; principal-only)')
-  .option('--http <url>', 'GET this URL at the cron time (gated; principal-only)')
-  // Legacy form — kept for backward compat with scripts in the wild.
-  .option('-k, --kind <kind>', '[deprecated] use --reminder/--message/--exec/--http instead')
-  .option('-p, --payload <json>', '[deprecated] kind-specific JSON payload, paired with --kind')
+  .option('--exec <command>', 'run this shell command at the cron time (gated by policy.scheduleKinds)')
+  .option('--http <url>', 'GET this URL at the cron time (gated by policy.scheduleKinds)')
   .option(
     '--once',
     'one-shot: fire once at the next cron match then delete. Use with --cron for "tonight at 23:00" style pinned expressions.',
@@ -645,7 +643,7 @@ schedule
   .option('-b, --budget <tokens>', 'per-day token budget (agent-task / triggered chains)')
   .option('--disabled', 'create disabled')
   .action(
-    (opts: {
+    async (opts: {
       name: string;
       cron?: string;
       at?: string;
@@ -653,8 +651,6 @@ schedule
       message?: string;
       exec?: string;
       http?: string;
-      kind?: string;
-      payload?: string;
       once?: boolean;
       budget?: string;
       disabled?: boolean;
@@ -669,25 +665,22 @@ schedule
         process.exit(2);
       }
 
-      // Resolve the payload form. Exactly one of:
-      //   - --reminder / --message / --exec / --http   (new)
-      //   - --kind + --payload                          (deprecated shim)
+      // Exactly one shape-flag required.
       const formFlags = [
         opts.reminder !== undefined,
         opts.message !== undefined,
         opts.exec !== undefined,
         opts.http !== undefined,
       ].filter(Boolean).length;
-      const legacyForm = opts.kind !== undefined || opts.payload !== undefined;
-      if (formFlags + (legacyForm ? 1 : 0) === 0) {
+      if (formFlags === 0) {
         process.stderr.write(
-          `one of --reminder, --message, --exec, --http required (or legacy --kind + --payload)\n`,
+          `one of --reminder, --message, --exec, --http required\n`,
         );
         process.exit(2);
       }
-      if (formFlags > 1 || (formFlags > 0 && legacyForm)) {
+      if (formFlags > 1) {
         process.stderr.write(
-          `--reminder / --message / --exec / --http are mutually exclusive; pick one (and don't mix with --kind/--payload)\n`,
+          `--reminder / --message / --exec / --http are mutually exclusive; pick one\n`,
         );
         process.exit(2);
       }
@@ -702,17 +695,10 @@ schedule
       } else if (opts.exec !== undefined) {
         resolvedKind = 'bash';
         resolvedPayload = JSON.stringify({ command: opts.exec });
-      } else if (opts.http !== undefined) {
-        resolvedKind = 'http-check';
-        resolvedPayload = JSON.stringify({ url: opts.http });
       } else {
-        // Legacy form — both --kind and --payload required when this branch runs.
-        if (!opts.kind || !opts.payload) {
-          process.stderr.write(`--kind and --payload must be used together\n`);
-          process.exit(2);
-        }
-        resolvedKind = opts.kind;
-        resolvedPayload = opts.payload;
+        // Only --http remains.
+        resolvedKind = 'http-check';
+        resolvedPayload = JSON.stringify({ url: opts.http! });
       }
 
       let cronExpr: string;
@@ -755,24 +741,40 @@ schedule
         process.exit(2);
       }
 
-      // Agent gate. Emma can shell out to this CLI, so a prompt injection
-      // could otherwise talk her into creating `--kind bash` schedules
-      // that run arbitrary shell commands as the service user.
+      // Schedule-kind gate, policy-driven.
       //
-      // The gate:
-      //   - With ANDYBIOTICLAW_AGENT_CAN_BASH=1 set: anything goes (the
-      //     principal is acting directly via their shell).
-      //   - Without it: only `reminder` + `agent-task` allowed (Emma's
-      //     self-service surface — agent-task just re-runs Emma with a
-      //     prompt, same risk profile as a normal DM). `bash` and
-      //     `http-check` stay principal-only.
-      //   - `agent-task` is also capped at AGENT_TASK_SCHEDULE_CAP active
-      //     rows so a hostile prompt can't loop Emma into mass-creating.
+      // The CLI runs in two situations:
+      //   - Operator's interactive shell (no ANDYBIOTICLAW_CONTEXT_KEY
+      //     env var). Treated as principal acting directly: gate
+      //     allows every kind.
+      //   - Emma shelling out from her session (harness sets
+      //     ANDYBIOTICLAW_CONTEXT_KEY = `<agentId>:telegram:<chatId>`).
+      //     We resolve the per-context policy and gate against
+      //     policy.scheduleKinds. agent-task creation is additionally
+      //     capped at policy.scheduleAgentTaskCap.
       //
       // See `evaluateScheduleKindGate` for the matrix.
-      const agentCanBash = process.env.ANDYBIOTICLAW_AGENT_CAN_BASH === '1';
+      const contextKey = process.env.ANDYBIOTICLAW_CONTEXT_KEY ?? null;
+      let resolvedPolicy: ResolvedPolicy | null = null;
+      if (contextKey) {
+        const { policiesPath: ppath } = await import('../config/paths.js');
+        const { loadPolicies, resolvePolicy } = await import('../policies/repo.js');
+        const { HARDCODED_FALLBACK } = await import('../policies/schema.js');
+        const { config: cfg } = openRuntime();
+        const dataDir = expandPath(cfg.service.dataDir, projectRoot());
+        const file = loadPolicies(ppath(dataDir));
+        // Context env-var set + policies file present: real lookup.
+        // Context env-var set + file missing: fall back to deny-by-default
+        // floor (HARDCODED_FALLBACK). NOT to null — null would be
+        // interpreted as "operator acting directly" and bypass the gate.
+        // This treats a missing file as "policies should be in effect but
+        // the file vanished" → safer to fail closed.
+        resolvedPolicy = file
+          ? resolvePolicy(file, contextKey)
+          : HARDCODED_FALLBACK;
+      }
       let agentTaskCount = 0;
-      if (kindRes.data === 'agent-task' && !agentCanBash) {
+      if (kindRes.data === 'agent-task' && resolvedPolicy !== null) {
         const { dbHandle } = openRuntime();
         try {
           const repo = createSchedulesRepo(dbHandle.db);
@@ -783,7 +785,7 @@ schedule
       }
       const gate = evaluateScheduleKindGate({
         kind: kindRes.data,
-        agentCanBash,
+        policy: resolvedPolicy,
         agentTaskCount,
       });
       if (!gate.ok) {
@@ -792,11 +794,12 @@ schedule
           const auditRepo = createAuditRepo(dbHandle.db);
           auditRepo.record({
             kind: 'schedule_kind_gate_blocked',
-            actor: 'cli',
+            actor: contextKey ?? 'cli',
             detail: {
               attemptedKind: kindRes.data,
               name: opts.name,
               cron: cronExpr,
+              contextKey,
               reason: gate.reason,
             },
           });
@@ -804,10 +807,14 @@ schedule
           dbHandle.close();
         }
         process.stderr.write(
-          `refusing to create schedule of kind "${kindRes.data}": ${gate.reason}\n` +
-            `If you (the principal) really want this, prefix the command:\n` +
-            `  ANDYBIOTICLAW_AGENT_CAN_BASH=1 andybioticlaw schedule add ...\n`,
+          `refusing to create schedule of kind "${kindRes.data}": ${gate.reason}\n`,
         );
+        if (contextKey) {
+          process.stderr.write(
+            `(running under context "${contextKey}" — policy.scheduleKinds gates this)\n` +
+              `Edit data/policies.json to widen the policy if you really want this kind here.\n`,
+          );
+        }
         process.exit(3);
       }
 
@@ -828,19 +835,20 @@ schedule
           recurring,
           budget_tokens_per_day: opts.budget ? Number(opts.budget) : null,
         });
-        // When the gate flag is unset, this CLI call almost certainly
-        // originated from the agent (the principal's interactive shell
-        // would have it exported). Log that for post-hoc inspection —
-        // even harmless `reminder` creations are worth tracing.
-        if (!agentCanBash) {
+        // When ANDYBIOTICLAW_CONTEXT_KEY is set, this CLI call originated
+        // inside an agent session (Emma shelled out to schedule a job).
+        // Log every successful creation so post-hoc audit can spot
+        // suspicious patterns even for harmless `reminder` kinds.
+        if (contextKey) {
           auditRepo.record({
             kind: 'schedule_created_by_agent',
-            actor: 'cli',
+            actor: contextKey,
             detail: {
               id: row.id,
               name: row.name,
               kind: row.kind,
               cron: row.cron_expr,
+              contextKey,
               recurring,
             },
           });

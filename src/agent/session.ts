@@ -38,7 +38,6 @@ export interface SessionExecuteInput {
    *  sessions table so per-agent dashboards / metrics work after the
    *  multi-agent split. Today everyone is 'emma'. */
   agentId: string;
-  allowedTools: string;
   streamIdleTimeoutMs: number;
   cwd: string;
   /** Where per-session artifacts (.mcp.json) are written. Usually a workspaces subdir. */
@@ -297,6 +296,10 @@ async function runOne(
     ANDYBIOTICLAW_SESSION_ID: sessionId,
     ANDYBIOTICLAW_CHAT_ID: input.chatId,
     ANDYBIOTICLAW_DB_PATH: input.dbPath,
+    // The CLI's `schedule add` command reads this to look up the
+    // policy.scheduleKinds for Emma's current context. Replaces the old
+    // ANDYBIOTICLAW_AGENT_CAN_BASH=1 env-var gate.
+    ANDYBIOTICLAW_CONTEXT_KEY: `${input.agentId}:telegram:${input.chatId}`,
   };
   for (const skill of activeSkills) {
     const envKey = `SKILL_${skill.name.toUpperCase().replace(/-/g, '_')}_DIR`;
@@ -339,7 +342,6 @@ async function runOne(
     systemPrompt,
     model: input.model,
     cwd: input.cwd,
-    allowedTools: input.allowedTools,
     streamIdleTimeoutMs: input.streamIdleTimeoutMs,
     signal: input.signal,
     mcpConfigPath: mcpPath,
