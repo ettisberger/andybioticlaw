@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.22.1](https://github.com/ettisberger/andybioticlaw/compare/v0.22.0...v0.22.1) (2026-04-27)
+
+
+### Bug Fixes
+
+* **release:** build root + web in tarball workflow ([0662294](https://github.com/ettisberger/andybioticlaw/commit/0662294bb8536aed773a6a832030bfe3ad46b6bb))
+
 ## [0.22.0](https://github.com/ettisberger/andybioticlaw/compare/v0.21.0...v0.22.0) (2026-04-27)
 
 
