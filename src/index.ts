@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, writeFileSync, unlinkSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bootstrapEnv, loadConfig, ConfigLoadError, projectRoot } from './config/load.js';
+import { getDefaultAgent } from './config/agents-helper.js';
 import { createReloadController } from './config/reload.js';
 import {
   createSecretsManager,
@@ -82,12 +83,12 @@ async function main(): Promise<void> {
 
   logger.info(
     {
-      agent: config.agent.name,
-      model: config.agent.model,
+      agent: getDefaultAgent(config).name,
+      model: getDefaultAgent(config).model,
       configPath: loaded.configPath,
       dataDir,
     },
-    `andybioticlaw starting (agent: ${config.agent.name}, model: ${config.agent.model})`,
+    `andybioticlaw starting (agent: ${getDefaultAgent(config).name}, model: ${getDefaultAgent(config).model})`,
   );
 
   const bus = createEventBus();
@@ -140,7 +141,7 @@ async function main(): Promise<void> {
   let credentialsOk = false;
   let authMethod: AuthMethod | null = null;
   const credentialsResult = await runStartupCredentialsCheck({
-    credentialsDir: config.agent.credentialsDir,
+    credentialsDir: getDefaultAgent(config).credentialsDir,
     logger,
     bus,
     audit,
@@ -274,12 +275,12 @@ async function main(): Promise<void> {
     telegram = createTelegramService({
       config: {
         botToken,
-        agentName: config.agent.name,
+        agentName: getDefaultAgent(config).name,
         agentId: 'emma',
-        model: config.agent.model,
+        model: getDefaultAgent(config).model,
         timezone: config.service.timezone,
         cwd: dmWorkspace,
-        streamIdleTimeoutMs: () => config.agent.streamIdleTimeoutSec * 1000,
+        streamIdleTimeoutMs: () => getDefaultAgent(config).streamIdleTimeoutSec * 1000,
         streamEditIntervalMs: () => config.telegram.streamEditIntervalMs,
         longTaskNotifyAfterMs: () => config.telegram.longTaskNotifyAfterMs,
         conversationHistoryLimit: () => config.telegram.conversationHistoryLimit,
@@ -355,11 +356,11 @@ async function main(): Promise<void> {
         userMessage,
         principalUserId,
         principalLabel: `scheduler:${scheduleName}`,
-        model: modelOverride ?? config.agent.model,
+        model: modelOverride ?? getDefaultAgent(config).model,
         timezone: config.service.timezone,
-        agentName: config.agent.name,
+        agentName: getDefaultAgent(config).name,
         agentId: 'emma',
-        streamIdleTimeoutMs: config.agent.streamIdleTimeoutSec * 1000,
+        streamIdleTimeoutMs: getDefaultAgent(config).streamIdleTimeoutSec * 1000,
         cwd: dmWorkspace,
         sessionWorkspaceRoot: dmWorkspace,
         conversationHistoryLimit: config.telegram.conversationHistoryLimit,
@@ -419,12 +420,12 @@ async function main(): Promise<void> {
         errors,
         queue: telegram.queue,
         cwd: dmWorkspace,
-        agentName: config.agent.name,
+        agentName: getDefaultAgent(config).name,
         agentId: 'emma',
-        model: config.agent.model,
+        model: getDefaultAgent(config).model,
         timezone: config.service.timezone,
         memoryAutoAccept: () => config.memory.autoAccept,
-        streamIdleTimeoutMs: () => config.agent.streamIdleTimeoutSec * 1000,
+        streamIdleTimeoutMs: () => getDefaultAgent(config).streamIdleTimeoutSec * 1000,
         streamEditIntervalMs: () => config.telegram.streamEditIntervalMs,
         longTaskNotifyAfterMs: () => config.telegram.longTaskNotifyAfterMs,
         conversationHistoryLimit: () => config.telegram.conversationHistoryLimit,
@@ -453,8 +454,8 @@ async function main(): Promise<void> {
     queue: telegram?.queue ?? null,
     dispatch: dispatchDeps,
     principalUserId,
-    agentName: config.agent.name,
-    model: config.agent.model,
+    agentName: getDefaultAgent(config).name,
+    model: getDefaultAgent(config).model,
     timezone: config.service.timezone,
     credentialsOk: () => credentialsOk,
     authMethod: () => authMethod,

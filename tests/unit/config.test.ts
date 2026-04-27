@@ -19,7 +19,8 @@ describe('config schema', () => {
 
   it('rejects an unknown model ID pattern', () => {
     const bad = structuredClone(parsed as Record<string, unknown>);
-    (bad.agent as Record<string, unknown>).model = 'gpt-4o';
+    const agents = bad.agents as Record<string, unknown>[];
+    agents[0]!.model = 'gpt-4o';
     const result = Config.safeParse(bad);
     expect(result.success).toBe(false);
   });

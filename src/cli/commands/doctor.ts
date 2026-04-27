@@ -23,6 +23,7 @@ import { spawn, execSync } from 'node:child_process';
 import type { Database as Db } from 'better-sqlite3';
 import pino from 'pino';
 import { bootstrapEnv, ConfigLoadError, loadConfig, projectRoot } from '../../config/load.js';
+import { getDefaultAgent } from '../../config/agents-helper.js';
 import {
   expandPath,
   logsDir,
@@ -99,7 +100,7 @@ async function collectRows(opts: DoctorOptions): Promise<DoctorResult> {
   const dbPath = sqliteDbPath(dataDir);
 
   rows.push(await checkDatabase(dbPath));
-  rows.push(await checkClaudeAuth(config.agent.credentialsDir));
+  rows.push(await checkClaudeAuth(getDefaultAgent(config).credentialsDir));
   rows.push(await checkTelegram(config.telegram.dm.allowedUserIds));
   rows.push(await checkDashboard(config.dashboard));
   rows.push(checkServiceRunning(dataDir));
@@ -191,8 +192,8 @@ export async function checkConfig(configPath?: string): Promise<DoctorRow> {
       status: 'ok',
       detail: `loaded ${result.configPath}`,
       extras: [
-        `agent: ${result.config.agent.name}`,
-        `model: ${result.config.agent.model}`,
+        `agent: ${getDefaultAgent(result.config).name}`,
+        `model: ${getDefaultAgent(result.config).model}`,
         `dataDir: ${result.config.service.dataDir}`,
       ],
     };
@@ -831,49 +832,35 @@ export function checkLogs(logsDirPath: string): DoctorRow {
 }
 
 /**
- * Reports the configured agents (from `agents:` block) or — if absent
- * during the deprecation window — synthesizes a single 'emma' from the
- * legacy `agent:` block. Validates that exactly one agent has
- * `default: true` and that ids are unique.
+ * Reports the configured agents from the `agents:` block. Validates
+ * that exactly one agent has `default: true` and that ids are unique
+ * — the schema's refines should already guarantee this, but doctor
+ * checks again because a hand-edited config could fall out of spec
+ * between reloads.
  */
 export function checkAgents(config: {
-  agent?: { name: string } | undefined;
-  agents?: ReadonlyArray<{ id: string; name: string; default: boolean }> | undefined;
+  agents: ReadonlyArray<{ id: string; name: string; default: boolean }>;
 }): DoctorRow {
-  const agents = config.agents ?? null;
-  if (!agents || agents.length === 0) {
-    // Deprecation-window install — no `agents:` block yet. Synthesize
-    // info for the operator so doctor still reports something sensible.
-    if (config.agent) {
-      return {
-        name: 'Agents',
-        status: 'ok',
-        detail: `1 agent (legacy single-agent config — '${config.agent.name}' as 'emma')`,
-        extras: [
-          'add an `agents:` block to config.yaml to declare multi-agent explicitly',
-          'auto-synthesised: id=emma, default=true, skills=*',
-        ],
-      };
-    }
+  // Schema's nonempty + refines guarantee at least one entry, exactly
+  // one default, unique ids. Doctor still validates because a hand-
+  // edited config.yaml could violate before the next reload picks it up.
+  const agents = config.agents;
+  if (agents.length === 0) {
     return {
       name: 'Agents',
       status: 'fail',
-      detail: 'neither agent: nor agents: configured',
+      detail: 'agents: block is empty',
     };
   }
   const defaults = agents.filter((a) => a.default);
-  if (defaults.length === 0) {
+  if (defaults.length !== 1) {
     return {
       name: 'Agents',
       status: 'fail',
-      detail: `${agents.length} agent(s) but none marked default: true`,
-    };
-  }
-  if (defaults.length > 1) {
-    return {
-      name: 'Agents',
-      status: 'fail',
-      detail: `${defaults.length} agents marked default — exactly one must be`,
+      detail:
+        defaults.length === 0
+          ? `${agents.length} agent(s) but none marked default: true`
+          : `${defaults.length} agents marked default — exactly one must be`,
       extras: defaults.map((a) => `default: ${a.id} (${a.name})`),
     };
   }

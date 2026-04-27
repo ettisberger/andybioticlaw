@@ -148,14 +148,13 @@ host shape.
 
 ```
 ┌─ Layer 1: Agent registry  ─────────────────────────────────────┐
-│ config.yaml `agents:` block — one entry per agent.              │
-│ Each agent has: id, name, default flag, model, haikuModel,     │
-│   skills allowlist, optional tokenEnvVar / systemPromptFile /  │
-│   workspace.                                                    │
-│ Today's default install ships ONE agent ('emma'). The schema    │
-│ supports N; adding a second is a config edit + restart.         │
-│ During the deprecation window, the legacy single-`agent:` block │
-│ is auto-synthesized into `agents: [{ id: 'emma', ... }]`.       │
+│ config.yaml `agents:` block — REQUIRED. One entry per agent.    │
+│ Each agent has: id, name, default flag, model, haikuModel,      │
+│   skills allowlist, optional tokenEnvVar / systemPromptFile /   │
+│   workspace.                                                     │
+│ Schema enforces: nonempty + exactly one `default: true` +       │
+│   unique ids. Default install ships ONE agent ('emma'); adding  │
+│   a second is a config edit + restart.                          │
 └─────────────────────────────────────────────────────────────────┘
                                │
 ┌─ Layer 2: Routing  (`bindings`) ───────────────────────────────┐

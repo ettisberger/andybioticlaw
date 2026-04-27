@@ -16,28 +16,40 @@ service:
   logLevel: info # debug | info | warn | error
   timezone: Europe/Zurich
 
-agent:
-  name: Emma
-  # Valid model IDs (as of April 2026):
-  #   claude-opus-4-7             — current flagship (default)
-  #   claude-opus-4-6
-  #   claude-sonnet-4-6
-  #   claude-haiku-4-5-20251001
-  model: claude-opus-4-7
-  # Cheap fallback used by the Opus↔Haiku router when `routing.enabled` is
-  # true. The DM handler picks between `model` and `haikuModel` per message.
-  haikuModel: claude-haiku-4-5-20251001
-  credentialsDir: ~/.claude
-  streamIdleTimeoutSec: 120
-  # Tool permissions are driven by data/policies.json (per-context
-  # execMode + execAllow patterns), not config.yaml. See
-  # docs/ARCHITECTURE.md "Agents, contexts, and policies" for the model.
-  # Cheap-model router (opt-in). Sends short/simple DMs to `haikuModel`
-  # for a big cost reduction; keeps complex work on `model`. Scheduled
-  # agent-tasks are NOT routed.
-  routing:
-    enabled: false
-    minCharsForOpus: 120
+# Agents — exactly one entry must have `default: true`. Adding a
+# second is a config edit + restart; see docs/ARCHITECTURE.md
+# "Adding a second agent" for the recipe.
+#
+# Tool permissions are driven by data/policies.json (per-context
+# execMode + execAllow patterns), not this file.
+agents:
+  - id: emma
+    name: Emma
+    default: true
+    # Valid model IDs (as of April 2026):
+    #   claude-opus-4-7             — current flagship
+    #   claude-opus-4-6
+    #   claude-sonnet-4-6
+    #   claude-haiku-4-5-20251001
+    model: claude-opus-4-7
+    # Cheap fallback used by the Opus↔Haiku router when routing.enabled
+    # is true. The DM handler picks between `model` and `haikuModel`
+    # per message.
+    haikuModel: claude-haiku-4-5-20251001
+    credentialsDir: ~/.claude
+    streamIdleTimeoutSec: 120
+    # Skills visible to this agent. ['*'] = every enabled skill.
+    skills: ['*']
+    # Cheap-model router (opt-in). Sends short/simple DMs to
+    # `haikuModel` for a big cost reduction; keeps complex work on
+    # `model`. Scheduled agent-tasks are NOT routed.
+    routing:
+      enabled: false
+      minCharsForOpus: 120
+
+# Routing rules — map incoming messages to a specific agent. Empty
+# array means everything goes to the default agent.
+bindings: []
 
 telegram:
   dm:

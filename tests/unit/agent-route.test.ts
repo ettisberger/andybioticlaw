@@ -8,16 +8,25 @@ import type { Config } from '../../src/config/schema.js';
  * classifier) is forced to decide what to do with each input type.
  */
 
-function cfg(overrides: Partial<Config['agent']['routing']> = {}, enabled = true): Config {
+function cfg(
+  overrides: Partial<{ enabled: boolean; minCharsForOpus: number }> = {},
+  enabled = true,
+): Config {
   // Only the fields chooseModel reads; everything else is `{}` cast
   // through `as unknown as Config` — the test is about the router, not
   // the full schema shape.
   return {
-    agent: {
-      model: 'claude-opus-4-7',
-      haikuModel: 'claude-haiku-4-5-20251001',
-      routing: { enabled, minCharsForOpus: 120, ...overrides },
-    },
+    agents: [
+      {
+        id: 'emma',
+        name: 'Emma',
+        default: true,
+        model: 'claude-opus-4-7',
+        haikuModel: 'claude-haiku-4-5-20251001',
+        routing: { enabled, minCharsForOpus: 120, ...overrides },
+        skills: ['*'],
+      },
+    ],
   } as unknown as Config;
 }
 

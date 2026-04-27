@@ -1,7 +1,7 @@
 import type { PoliciesFile } from './schema.js';
 
 export interface SynthesizeInput {
-  /** Default agent's stable id. Always 'emma' during the deprecation window. */
+  /** Default agent's stable id (from `agents.find(a => a.default)`). */
   defaultAgentId: string;
   /** Operator's principal Telegram user id (DM). */
   principalUserId: number | null;

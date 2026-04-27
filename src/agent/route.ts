@@ -11,6 +11,7 @@
  */
 
 import type { Config } from '../config/schema.js';
+import { getDefaultAgent } from '../config/agents-helper.js';
 
 /**
  * Keywords that strongly indicate a long-form / synthesis task and
@@ -66,9 +67,9 @@ export interface ChooseModelResult {
  * trivially unit-testable.
  */
 export function chooseModel(userMessage: string, config: Config): ChooseModelResult {
-  const primary = config.agent.model;
-  const haiku = config.agent.haikuModel;
-  const routing = config.agent.routing;
+  const primary = getDefaultAgent(config).model;
+  const haiku = getDefaultAgent(config).haikuModel;
+  const routing = getDefaultAgent(config).routing;
 
   // Routing disabled → always primary (current behaviour).
   if (!routing.enabled) {

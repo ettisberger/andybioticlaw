@@ -24,11 +24,14 @@ service:
   dataDir: /tmp/does-not-matter
   logLevel: info
   timezone: UTC
-agent:
-  name: test
-  model: claude-opus-4-7
-  allowedTools: all
-  streamIdleTimeoutSec: 120
+agents:
+  - id: emma
+    name: test
+    default: true
+    model: claude-opus-4-7
+    streamIdleTimeoutSec: 120
+    skills: ['*']
+bindings: []
 telegram:
   dm:
     allowedUserIds: [123]

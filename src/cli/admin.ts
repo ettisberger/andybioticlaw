@@ -2,6 +2,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { Command } from 'commander';
 import { bootstrapEnv, loadConfig, ConfigLoadError, projectRoot } from '../config/load.js';
+import { getDefaultAgent } from '../config/agents-helper.js';
 import { expandPath, pidFilePath, sqliteDbPath } from '../config/paths.js';
 import { openDatabase } from '../db/index.js';
 import { createAuditRepo } from '../db/repositories/audit.js';
@@ -140,7 +141,7 @@ config
       const result = loadConfig(opts.config);
       process.stdout.write(`OK — config valid: ${result.configPath}\n`);
       process.stdout.write(
-        `  agent: ${result.config.agent.name}  model: ${result.config.agent.model}\n`,
+        `  agent: ${getDefaultAgent(result.config).name}  model: ${getDefaultAgent(result.config).model}\n`,
       );
       process.stdout.write(`  dataDir: ${result.config.service.dataDir}\n`);
       process.exit(0);
@@ -1079,13 +1080,6 @@ agent
   .description('List configured agents')
   .action(() => {
     const { config } = openRuntime();
-    if (!config.agents || config.agents.length === 0) {
-      process.stdout.write(
-        `(no agents: block — running with synthesized 'emma' from legacy agent: block)\n`,
-      );
-      process.stdout.write(`✓ emma  ${config.agent.name}  ${config.agent.model}\n`);
-      return;
-    }
     for (const a of config.agents) {
       const flag = a.default ? '*' : ' ';
       const skills = a.skills.join(', ');
@@ -1099,27 +1093,6 @@ agent
   .argument('<id>')
   .action((id: string) => {
     const { config } = openRuntime();
-    if (!config.agents || config.agents.length === 0) {
-      if (id === 'emma') {
-        process.stdout.write(
-          JSON.stringify(
-            {
-              id: 'emma',
-              name: config.agent.name,
-              default: true,
-              model: config.agent.model,
-              haikuModel: config.agent.haikuModel,
-              note: 'synthesized from legacy `agent:` block — add an explicit `agents:` block to config.yaml to declare more agents',
-            },
-            null,
-            2,
-          ) + '\n',
-        );
-        return;
-      }
-      process.stderr.write(`no agent named "${id}" (running with single legacy 'emma')\n`);
-      process.exit(1);
-    }
     const found = config.agents.find((a) => a.id === id);
     if (!found) {
       process.stderr.write(`no agent named "${id}"\n`);

@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import argon2 from 'argon2';
 import { readEnvFile, writeEnvFileUpdates } from '../config/env-file.js';
 import { loadConfig, projectRoot } from '../config/load.js';
+import { getDefaultAgent } from '../config/agents-helper.js';
 import { defaultConfigPath, defaultEnvPath } from '../config/paths.js';
 import { bold, cyan, dim, green, lavender, sage, yellow } from './ansi.js';
 import {
@@ -319,7 +320,7 @@ async function runInitCommandInner(): Promise<void> {
     const result = loadConfig();
     stdout.write(`  ${sage('✓')} ${green('config valid:')} ${dim(result.configPath)}\n`);
     stdout.write(
-      `    ${dim(`agent=${result.config.agent.name}  model=${result.config.agent.model}  tz=${result.config.service.timezone}`)}\n`,
+      `    ${dim(`agent=${getDefaultAgent(result.config).name}  model=${getDefaultAgent(result.config).model}  tz=${result.config.service.timezone}`)}\n`,
     );
   } catch (e) {
     stdout.write(`  ${yellow('⚠')} config validation failed: ${(e as Error).message}\n`);

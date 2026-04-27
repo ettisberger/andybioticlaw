@@ -32,12 +32,16 @@ service:
   logLevel: info
   timezone: UTC
 
-agent:
-  name: Emma
-  model: claude-opus-4-7
-  credentialsDir: ~/.claude
-  streamIdleTimeoutSec: 120
-  allowedTools: all
+agents:
+  - id: emma
+    name: Emma
+    default: true
+    model: claude-opus-4-7
+    credentialsDir: ~/.claude
+    streamIdleTimeoutSec: 120
+    skills: ['*']
+
+bindings: []
 
 telegram:
   dm:

@@ -9,7 +9,6 @@ interface AgentView {
   model: string;
   haikuModel: string;
   skills: string[];
-  fromLegacy: boolean;
 }
 
 export function AgentsPage() {
@@ -28,14 +27,6 @@ export function AgentsPage() {
         Agents
       </PageTitle>
       {error && <ErrorBanner>{error}</ErrorBanner>}
-
-      {agents.length > 0 && agents[0]!.fromLegacy && (
-        <div className="mb-3 rounded-2xl border border-warn/30 bg-warn-bg/70 px-4 py-3 text-sm text-warn-ink backdrop-blur-sm">
-          Running with the legacy single-<code>agent:</code> block — synthesised as <code>emma</code>.
-          Add an explicit <code>agents:</code> block to <code>config.yaml</code> when you're ready
-          to declare more than one agent. See <code>docs/ARCHITECTURE.md</code> for the recipe.
-        </div>
-      )}
 
       {agents.length === 0 ? (
         <Empty message="No agents configured." />

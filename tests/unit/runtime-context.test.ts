@@ -3,8 +3,6 @@ import {
   contextKey,
   parseContextKey,
   resolveBinding,
-  synthesizeAgentsFromLegacy,
-  synthesizeDefaultBindings,
 } from '../../src/agent/runtime-context.js';
 import type { AgentConfigEntry, BindingRule } from '../../src/config/schema.js';
 
@@ -134,29 +132,3 @@ describe('resolveBinding', () => {
   });
 });
 
-describe('synthesizeAgentsFromLegacy + synthesizeDefaultBindings', () => {
-  it('builds a single-default agent named "emma"', () => {
-    const synthesized = synthesizeAgentsFromLegacy({
-      name: 'Emma',
-      model: 'claude-opus-4-7',
-      haikuModel: 'claude-haiku-4-5-20251001',
-      credentialsDir: '~/.claude',
-      streamIdleTimeoutSec: 300,
-      routing: { enabled: false, minCharsForOpus: 120 },
-    });
-    expect(synthesized).toHaveLength(1);
-    expect(synthesized[0]?.id).toBe('emma');
-    expect(synthesized[0]?.default).toBe(true);
-    expect(synthesized[0]?.skills).toEqual(['*']);
-  });
-
-  it('default binding sends everything to the chosen agent', () => {
-    const bindings = synthesizeDefaultBindings('emma');
-    expect(bindings).toHaveLength(1);
-    expect(bindings[0]?.agentId).toBe('emma');
-    expect(bindings[0]?.match.channel).toBe('telegram');
-    // No chatIds / userIds restriction = catch-all.
-    expect(bindings[0]?.match.chatIds).toBeUndefined();
-    expect(bindings[0]?.match.userIds).toBeUndefined();
-  });
-});

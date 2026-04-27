@@ -12,25 +12,9 @@ interface AgentView {
   model: string;
   haikuModel: string;
   skills: ReadonlyArray<string>;
-  /** True when the entry came from the new `agents:` block; false when
-   *  synthesised from the legacy `agent:` block during the deprecation
-   *  window. The UI uses this to show a "legacy single-agent" hint. */
-  fromLegacy: boolean;
 }
 
-function fromLegacy(c: Config): AgentView {
-  return {
-    id: 'emma',
-    name: c.agent.name,
-    default: true,
-    model: c.agent.model,
-    haikuModel: c.agent.haikuModel,
-    skills: ['*'],
-    fromLegacy: true,
-  };
-}
-
-function fromExplicit(a: AgentConfigEntry): AgentView {
+function toView(a: AgentConfigEntry): AgentView {
   return {
     id: a.id,
     name: a.name,
@@ -38,7 +22,6 @@ function fromExplicit(a: AgentConfigEntry): AgentView {
     model: a.model,
     haikuModel: a.haikuModel,
     skills: a.skills,
-    fromLegacy: false,
   };
 }
 
@@ -47,16 +30,11 @@ export const agentsRoutes =
   async (app) => {
     /**
      * GET /api/agents
-     * Lists configured agents. During the deprecation window, an
-     * install with only `agent:` (no `agents:`) returns a single
-     * synthesized 'emma' entry with `fromLegacy: true`.
+     * Lists configured agents. Schema guarantees at least one entry
+     * with exactly one default — no fallback path needed.
      */
     app.get('/api/agents', async () => {
       const config = deps.currentConfig();
-      const agents =
-        config.agents && config.agents.length > 0
-          ? config.agents.map(fromExplicit)
-          : [fromLegacy(config)];
-      return { agents };
+      return { agents: config.agents.map(toView) };
     });
   };

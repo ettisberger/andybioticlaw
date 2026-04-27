@@ -23,25 +23,6 @@ export const AgentRoutingConfig = z.object({
   minCharsForOpus: z.number().int().min(0).max(10_000).default(120),
 });
 
-export const AgentConfig = z.object({
-  name: z.string().min(1),
-  model: z.string().regex(ModelIdRegex, {
-    message:
-      'model must be a valid Claude model ID like "claude-opus-4-7", "claude-sonnet-4-6", or "claude-haiku-4-5-20251001"',
-  }),
-  /** Cheap fallback model used by the router when routing is enabled. */
-  haikuModel: z
-    .string()
-    .regex(ModelIdRegex, {
-      message:
-        'haikuModel must be a valid Claude model ID like "claude-haiku-4-5-20251001"',
-    })
-    .default('claude-haiku-4-5-20251001'),
-  credentialsDir: z.string().min(1),
-  streamIdleTimeoutSec: z.number().int().positive(),
-  routing: AgentRoutingConfig.default({ enabled: false, minCharsForOpus: 120 }),
-});
-
 export const TelegramDmConfig = z.object({
   allowedUserIds: z.array(z.number().int().positive()).default([]),
   runMode: z.literal('host'),
@@ -197,24 +178,28 @@ export type BindingRule = z.infer<typeof BindingRule>;
 export const Config = z.object({
   service: ServiceConfig,
   /**
-   * Single-agent block. Required during the deprecation window — the
-   * service still reads `config.agent.*` everywhere it always did. When
-   * `agents:` is also present, it takes precedence; this block is
-   * authoritative only when `agents:` is missing.
+   * Multi-agent definitions. Required: at least one entry, exactly
+   * one with `default: true`. Adding a second agent is a config edit
+   * + restart — see docs/ARCHITECTURE.md "Adding a second agent".
    */
-  agent: AgentConfig,
+  agents: z
+    .array(AgentConfigEntry)
+    .nonempty()
+    .refine(
+      (arr) => arr.filter((a) => a.default).length === 1,
+      'exactly one agent must have default: true',
+    )
+    .refine(
+      (arr) => new Set(arr.map((a) => a.id)).size === arr.length,
+      'agent ids must be unique',
+    ),
   /**
-   * Multi-agent definitions. Optional during the deprecation window:
-   * when missing, the loader generates `[{ id: 'emma', default: true, ... }]`
-   * from the legacy `agent:` block on first boot.
+   * Routing rules. May be empty — the resolver falls back to the
+   * default agent when no rule matches. Required for clarity:
+   * operators with multiple agents must spell out which channel maps
+   * to which agent.
    */
-  agents: z.array(AgentConfigEntry).nonempty().optional(),
-  /**
-   * Routing rules. Optional during the deprecation window; the loader
-   * synthesizes a single catch-all rule (`{ agentId: <default>, match: { channel: telegram } }`)
-   * when missing.
-   */
-  bindings: z.array(BindingRule).optional(),
+  bindings: z.array(BindingRule).default([]),
   telegram: TelegramConfig,
   budget: BudgetConfig,
   memory: MemoryConfig,
@@ -245,9 +230,9 @@ export const HOT_RELOADABLE_PATHS: ReadonlyArray<string> = [
   'telegram.streamEditIntervalMs',
   'telegram.longTaskNotifyAfterMs',
   'telegram.conversationHistoryLimit',
-  'agent.haikuModel',
-  'agent.routing.enabled',
-  'agent.routing.minCharsForOpus',
+  'agents.0.haikuModel',
+  'agents.0.routing.enabled',
+  'agents.0.routing.minCharsForOpus',
   'observability.heartbeatIntervalSec',
   'observability.heartbeatRetentionDays',
   'observability.errorsToTelegram',
@@ -262,10 +247,10 @@ export const RESTART_REQUIRED_PATHS: ReadonlyArray<string> = [
   'service.name',
   'service.dataDir',
   'service.timezone',
-  'agent.name',
-  'agent.model',
-  'agent.credentialsDir',
-  'agent.streamIdleTimeoutSec',
+  'agents.0.name',
+  'agents.0.model',
+  'agents.0.credentialsDir',
+  'agents.0.streamIdleTimeoutSec',
   'telegram.dm.allowedUserIds',
   'telegram.dm.runMode',
   'telegram.group.allowedGroupIds',

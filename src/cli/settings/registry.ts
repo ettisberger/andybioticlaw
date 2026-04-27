@@ -381,29 +381,13 @@ export function buildSettingsRegistry(): Map<string, SettingComponent> {
 }
 
 /**
- * "Agents" view — prints the configured agents. During the deprecation
- * window, an install with only the legacy `agent:` block shows a single
- * synthesized 'emma' line + the upgrade hint.
+ * "Agents" view — prints the configured agents.
  */
 async function showAgents(ctx: SettingsContext): Promise<void> {
   const { loadConfig } = await import('../../config/load.js');
   const config = loadConfig(ctx.configPath).config;
-  const agents = config.agents;
   ctx.stdout.write('\n');
-  if (!agents || agents.length === 0) {
-    ctx.stdout.write(
-      `  ${dim('(legacy single-agent config — synthesized as')} ${cyan('emma')}${dim(')')}\n`,
-    );
-    ctx.stdout.write(
-      `  ${sage('*')} emma  ${config.agent.name}  ${dim(config.agent.model)}\n`,
-    );
-    ctx.stdout.write(
-      `\n  ${dim('Add an explicit `agents:` block to config.yaml to declare more')}\n`,
-    );
-    ctx.stdout.write(`  ${dim('agents. See docs/ARCHITECTURE.md for the recipe.')}\n`);
-    return;
-  }
-  for (const a of agents) {
+  for (const a of config.agents) {
     const flag = a.default ? sage('*') : ' ';
     const skills = a.skills.join(', ');
     ctx.stdout.write(
