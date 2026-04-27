@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.22.2](https://github.com/ettisberger/andybioticlaw/compare/v0.22.1...v0.22.2) (2026-04-27)
+
+
+### Bug Fixes
+
+* **release:** drop SIGPIPE-prone tar|grep preflight ([9315260](https://github.com/ettisberger/andybioticlaw/commit/9315260e2851b465780cabc9c59149165643d507))
+
 ## [0.22.1](https://github.com/ettisberger/andybioticlaw/compare/v0.22.0...v0.22.1) (2026-04-27)
 
 
