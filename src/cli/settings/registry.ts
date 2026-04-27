@@ -353,7 +353,122 @@ export function buildSettingsRegistry(): Map<string, SettingComponent> {
     }),
   );
 
+  // --- Advanced (read-only views) -------------------------------------
+  // Surface the agent registry + the resolved policy file in the menu
+  // so the operator doesn't have to drop to a shell. These are
+  // intentionally view-only — full editing happens via direct file
+  // edits + `andybioticlaw policy reload` for syntax-checking.
+  registry.set(
+    'agents.show',
+    new ActionSetting({
+      id: 'agents.show',
+      label: 'Agents (read-only)',
+      renderMeta: () => '(list configured agents)',
+      action: showAgents,
+    }),
+  );
+  registry.set(
+    'policies.show',
+    new ActionSetting({
+      id: 'policies.show',
+      label: 'Policies (read-only)',
+      renderMeta: () => '(per-context schedule kinds + exec mode + skills)',
+      action: showPolicies,
+    }),
+  );
+
   return registry;
+}
+
+/**
+ * "Agents" view — prints the configured agents. During the deprecation
+ * window, an install with only the legacy `agent:` block shows a single
+ * synthesized 'emma' line + the upgrade hint.
+ */
+async function showAgents(ctx: SettingsContext): Promise<void> {
+  const { loadConfig } = await import('../../config/load.js');
+  const config = loadConfig(ctx.configPath).config;
+  const agents = config.agents;
+  ctx.stdout.write('\n');
+  if (!agents || agents.length === 0) {
+    ctx.stdout.write(
+      `  ${dim('(legacy single-agent config — synthesized as')} ${cyan('emma')}${dim(')')}\n`,
+    );
+    ctx.stdout.write(
+      `  ${sage('*')} emma  ${config.agent.name}  ${dim(config.agent.model)}\n`,
+    );
+    ctx.stdout.write(
+      `\n  ${dim('Add an explicit `agents:` block to config.yaml to declare more')}\n`,
+    );
+    ctx.stdout.write(`  ${dim('agents. See docs/ARCHITECTURE.md for the recipe.')}\n`);
+    return;
+  }
+  for (const a of agents) {
+    const flag = a.default ? sage('*') : ' ';
+    const skills = a.skills.join(', ');
+    ctx.stdout.write(
+      `  ${flag} ${cyan(a.id)}  ${a.name}  ${dim(a.model)}  ${dim(`skills=${skills}`)}\n`,
+    );
+  }
+}
+
+/**
+ * "Policies" view — prints every per-context resolved policy. Reads
+ * `data/policies.json` fresh each time. If the file is missing, points
+ * the operator at the auto-generation path.
+ */
+async function showPolicies(ctx: SettingsContext): Promise<void> {
+  const { loadPolicies, resolvePolicy } = await import('../../policies/repo.js');
+  const { policiesPath: ppath, expandPath } = await import('../../config/paths.js');
+  const { loadConfig, projectRoot } = await import('../../config/load.js');
+  const config = loadConfig(ctx.configPath).config;
+  const dataDir = expandPath(config.service.dataDir, projectRoot());
+  const path = ppath(dataDir);
+  ctx.stdout.write('\n');
+  let file;
+  try {
+    file = loadPolicies(path);
+  } catch (e) {
+    ctx.stdout.write(`  ${yellow('!')} ${(e as Error).message}\n`);
+    return;
+  }
+  if (!file) {
+    ctx.stdout.write(
+      `  ${dim('no policies file at')} ${cyan(path)}\n`,
+    );
+    ctx.stdout.write(
+      `  ${dim('start the service once and it will be auto-generated.')}\n`,
+    );
+    return;
+  }
+  const keys = Object.keys(file.contexts);
+  if (keys.length === 0) {
+    ctx.stdout.write(`  ${dim('(no per-context policies; only defaults apply)')}\n`);
+    return;
+  }
+  ctx.stdout.write(`  ${dim(`source: ${path}`)}\n\n`);
+  for (const key of keys) {
+    let resolved;
+    try {
+      resolved = resolvePolicy(file, key);
+    } catch (e) {
+      ctx.stdout.write(`  ${yellow('!')} ${cyan(key)}: ${(e as Error).message}\n`);
+      continue;
+    }
+    ctx.stdout.write(`  ${cyan(key)}\n`);
+    if (resolved._label) {
+      ctx.stdout.write(`    ${dim(resolved._label)}\n`);
+    }
+    ctx.stdout.write(
+      `    ${dim('schedule:')} ${resolved.scheduleKinds.join(', ')} ${dim(`(cap=${resolved.scheduleAgentTaskCap})`)}\n`,
+    );
+    ctx.stdout.write(
+      `    ${dim('exec:')}     ${resolved.execMode}` +
+        (resolved.execAllow.length > 0 ? ` ${dim(`(${resolved.execAllow.length} pattern(s))`)}` : '') +
+        '\n',
+    );
+    ctx.stdout.write(`    ${dim('skills:')}   ${resolved.skillsVisible.join(', ')}\n`);
+  }
 }
 
 /**

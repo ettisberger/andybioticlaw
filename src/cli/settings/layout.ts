@@ -62,4 +62,8 @@ export const SETTINGS_LAYOUT: ReadonlyArray<Section> = [
       'dashboard.basicAuth.passwordHash',
     ],
   },
+  {
+    title: 'Advanced',
+    settingIds: ['agents.show', 'policies.show'],
+  },
 ];
