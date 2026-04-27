@@ -55,7 +55,11 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build (root + web)
-        run: pnpm -r build
+        # `pnpm -r` only iterates workspace packages, and the root isn't a
+        # workspace member (see pnpm-workspace.yaml — only `web/` is). We
+        # need both: `pnpm build` produces dist/index.js (the systemd entry
+        # point), and the per-package build via `-r` produces web/dist/.
+        run: pnpm build && pnpm -r build
 
       - name: Package release tarball
         # Tarball ships:
@@ -96,9 +100,18 @@ jobs:
             ./ "$RELEASE_DIR/"
           tar -czf "$OUT" -C "$STAGING" "andybioticlaw-$TAG"
           ls -lh "$OUT"
-          # Sanity: tarball must contain dist/ + web/dist/ + package.json
-          # (otherwise install.sh fails its preflight).
-          tar tzf "$OUT" | grep -E "/(dist/index\.js|web/dist/index\.html|package\.json)$" | head
+          # Sanity: tarball MUST contain dist/index.js + web/dist/index.html
+          # + package.json (otherwise install.sh fails its preflight). The
+          # previous `grep ... | head` form was a no-op — it printed matches
+          # but didn't fail when files were missing, which is how v0.22.0
+          # shipped without dist/. This loop fails the workflow loudly.
+          for required in dist/index.js web/dist/index.html package.json; do
+            if ! tar tzf "$OUT" | grep -qE "/${required}$"; then
+              echo "ERROR: tarball missing required file: $required" >&2
+              exit 1
+            fi
+          done
+          echo "✓ tarball preflight: dist/index.js + web/dist/index.html + package.json all present"
 
       - name: Upload tarball to release
         env:

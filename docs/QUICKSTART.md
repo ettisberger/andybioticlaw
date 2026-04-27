@@ -84,9 +84,15 @@ installs the systemd unit + logrotate config, and symlinks
 > ```bash
 > git clone https://github.com/ettisberger/andybioticlaw.git ~/andybioticlaw
 > cd ~/andybioticlaw
-> pnpm install --frozen-lockfile && pnpm -r build
+> pnpm install --frozen-lockfile
+> pnpm build && pnpm -r build
 > ```
 > Then `sudo bash scripts/install.sh` as usual.
+>
+> Why two builds? `pnpm build` produces `dist/index.js` (the backend
+> entry point); `pnpm -r build` iterates workspace packages and builds
+> `web/dist/`. The root isn't a workspace member, so `pnpm -r` alone
+> would skip it.
 
 ## 4. Switch to the service user
 
