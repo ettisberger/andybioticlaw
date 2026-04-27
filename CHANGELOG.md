@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.22.5](https://github.com/ettisberger/andybioticlaw/compare/v0.22.4...v0.22.5) (2026-04-27)
+
+
+### Bug Fixes
+
+* **install:** chown home dir + verify deps landed ([c6dc321](https://github.com/ettisberger/andybioticlaw/commit/c6dc3214d1b86e42e51a2c02ff1b396cb0e7a8eb))
+
 ## [0.22.4](https://github.com/ettisberger/andybioticlaw/compare/v0.22.3...v0.22.4) (2026-04-27)
 
 
