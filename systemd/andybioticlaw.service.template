@@ -29,6 +29,11 @@ SendSIGKILL=yes
 
 # Environment
 Environment=NODE_ENV=production
+# Claude CLI typically installs to ~/.local/bin/claude (per `curl -fsSL
+# https://claude.ai/install.sh | bash`). systemd's default PATH does
+# NOT include user-local bins, so `claude auth status` would silently
+# fail with empty stdout. Append the per-user shim dirs explicitly.
+Environment=PATH=__SERVICE_HOME__/.local/bin:__SERVICE_HOME__/.claude/local:/usr/local/bin:/usr/bin:/bin
 # The service reads its `.env` file via src/config/load.ts; no EnvironmentFile= needed.
 
 # Sandboxing (Linux-only; ignored on development macOS).
