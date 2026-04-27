@@ -10,7 +10,6 @@ import { IntegerSetting } from './components/integer-setting.js';
 import { IntegerOrNullSetting } from './components/integer-or-null-setting.js';
 import { ListSetting } from './components/list-setting.js';
 import { SecretSetting, hashArgon2 } from './components/secret-setting.js';
-import { TimeSetting } from './components/time-setting.js';
 import {
   matchBool,
   matchInt,
@@ -103,8 +102,8 @@ export function buildSettingsRegistry(): Map<string, SettingComponent> {
     'agent.haikuModel',
     new EnumSetting({
       id: 'agent.haikuModel',
-      label: 'Cheap model (router)',
-      pathLabel: 'agent.haikuModel',
+      label: 'Cheap fallback model',
+      pathLabel: 'agents[0].haikuModel',
       restart: false,
       read: (ctx) =>
         matchString(
@@ -123,19 +122,22 @@ export function buildSettingsRegistry(): Map<string, SettingComponent> {
     'agent.routing.enabled',
     new BooleanSetting({
       id: 'agent.routing.enabled',
-      label: 'Cheap-model router',
+      label: 'Route simple DMs to Haiku (cost saver)',
       restart: false,
+      // Indent-flexible: the routing: block is now nested deeper
+      // under `agents:[].routing:` (4/6-space indent) than the
+      // pre-multi-agent shape (2/4-space). Use \s+ so both work.
       read: (ctx) =>
         matchBool(
           ctx.readYaml(),
-          /^  routing:\s*\n    enabled:\s*(true|false)\s*$/m,
+          /^\s+routing:\s*\n\s+enabled:\s*(true|false)\s*$/m,
           false,
         ),
       write: (ctx, next) => {
         const body = ctx.readYaml();
         ctx.writeYaml(
           body.replace(
-            /^(  routing:\s*\n    enabled:\s*)(true|false)\s*$/m,
+            /^(\s+routing:\s*\n\s+enabled:\s*)(true|false)\s*$/m,
             `$1${next}`,
           ),
         );
@@ -146,8 +148,8 @@ export function buildSettingsRegistry(): Map<string, SettingComponent> {
     'agent.routing.minCharsForOpus',
     new IntegerSetting({
       id: 'agent.routing.minCharsForOpus',
-      label: 'Min chars → Opus',
-      pathLabel: 'agent.routing.minCharsForOpus',
+      label: 'Length cutoff → Opus (chars)',
+      pathLabel: 'agents[0].routing.minCharsForOpus',
       restart: false,
       read: (ctx) =>
         matchInt(ctx.readYaml(), /^\s+minCharsForOpus:\s*(\d+)\s*$/m, 120),
@@ -243,56 +245,6 @@ export function buildSettingsRegistry(): Map<string, SettingComponent> {
         return key ? '(upload a local audio file)' : '(set API key first)';
       },
       action: runVoiceTest,
-    }),
-  );
-
-  // --- Briefings -------------------------------------------------------
-  registry.set(
-    'briefings.morning.enabled',
-    new BooleanSetting({
-      id: 'briefings.morning.enabled',
-      label: 'Morning briefing',
-      restart: false,
-      read: (ctx) => ctx.briefings.getStatus().morning.enabled,
-      write: (ctx, next) => {
-        const cur = ctx.briefings.getStatus().morning;
-        if (next) ctx.briefings.enable('morning', cur.time);
-        else ctx.briefings.disable('morning');
-      },
-    }),
-  );
-  registry.set(
-    'briefings.morning.time',
-    new TimeSetting({
-      id: 'briefings.morning.time',
-      label: 'Morning time',
-      restart: false,
-      read: (ctx) => ctx.briefings.getStatus().morning.time,
-      write: (ctx, next) => ctx.briefings.setTime('morning', next),
-    }),
-  );
-  registry.set(
-    'briefings.evening.enabled',
-    new BooleanSetting({
-      id: 'briefings.evening.enabled',
-      label: 'Evening briefing',
-      restart: false,
-      read: (ctx) => ctx.briefings.getStatus().evening.enabled,
-      write: (ctx, next) => {
-        const cur = ctx.briefings.getStatus().evening;
-        if (next) ctx.briefings.enable('evening', cur.time);
-        else ctx.briefings.disable('evening');
-      },
-    }),
-  );
-  registry.set(
-    'briefings.evening.time',
-    new TimeSetting({
-      id: 'briefings.evening.time',
-      label: 'Evening time',
-      restart: false,
-      read: (ctx) => ctx.briefings.getStatus().evening.time,
-      write: (ctx, next) => ctx.briefings.setTime('evening', next),
     }),
   );
 

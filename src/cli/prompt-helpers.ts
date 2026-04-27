@@ -30,6 +30,30 @@ export function releaseStdin(): void {
 }
 
 /**
+ * Block until the operator presses any key. Used as a "press any key
+ * to continue…" pause after an action setting prints output that
+ * would otherwise scroll away when the menu redraws. Resolves on the
+ * first chunk of input. No-op (resolves immediately) on non-TTY
+ * stdin so scripted runs don't hang.
+ */
+export function waitForKey(stdin: Stdin): Promise<void> {
+  return new Promise((resolve) => {
+    if (!stdin.setRawMode) {
+      resolve();
+      return;
+    }
+    stdin.setRawMode(true);
+    stdin.resume();
+    const onData = (): void => {
+      stdin.off('data', onData);
+      stdin.setRawMode!(false);
+      resolve();
+    };
+    stdin.on('data', onData);
+  });
+}
+
+/**
  * Low-level char-by-char input. `mask=true` echoes `*` per keystroke
  * (use for secrets). Backspace works; arrow keys are ignored.
  */

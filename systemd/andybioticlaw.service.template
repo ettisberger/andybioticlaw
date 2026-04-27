@@ -45,6 +45,11 @@ ReadWritePaths=__INSTALL_DIR__/data
 # the OAuth token in-place, which fails under ProtectHome=read-only
 # without this exception.
 ReadWritePaths=__SERVICE_HOME__/.claude
+# Claude CLI also writes a top-level `~/.claude.json` (project config +
+# session metadata) alongside the .claude/ dir. Without this exception
+# every memory/note/etc. write fails with EROFS when the CLI tries to
+# update its own state file.
+ReadWritePaths=__SERVICE_HOME__/.claude.json
 # Claude CLI's HTTP / tmp cache (XDG default). Without this, live sessions
 # fail with a generic "result event marked as error" and 0 tokens in/out.
 ReadWritePaths=__SERVICE_HOME__/.cache

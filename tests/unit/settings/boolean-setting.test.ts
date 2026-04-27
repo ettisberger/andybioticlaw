@@ -12,7 +12,6 @@ function makeCtx(overrides: Partial<SettingsContext> = {}): SettingsContext {
     configPath: '/tmp/config.yaml',
     envPath: '/tmp/.env',
     voiceState: {} as never,
-    briefings: {} as never,
     readYaml: () => '',
     writeYaml: vi.fn(),
     readEnv: () => ({}),

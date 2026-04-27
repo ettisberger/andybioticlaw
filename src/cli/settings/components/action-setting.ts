@@ -1,3 +1,5 @@
+import { dim } from '../../ansi.js';
+import { waitForKey } from '../../prompt-helpers.js';
 import type {
   SettingComponent,
   SettingRow,
@@ -39,6 +41,13 @@ export class ActionSetting implements SettingComponent {
 
   async handleSelect(ctx: SettingsContext): Promise<SettingSelectResult> {
     await this.opts.action(ctx);
+    // The settings menu redraws (and clears the screen above) on the
+    // very next loop iteration, so anything the action printed would
+    // scroll away before the operator could read it. Pause here on a
+    // single keypress so output (e.g. an Agents/Policies dump) stays
+    // visible until the operator chooses to dismiss it.
+    ctx.stdout.write(`\n  ${dim('press any key to continue…')}\n`);
+    await waitForKey(ctx.stdin);
     return { changed: false, restart: false };
   }
 }

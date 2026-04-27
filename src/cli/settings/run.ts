@@ -5,9 +5,7 @@ import { loadConfig, projectRoot } from '../../config/load.js';
 import { defaultConfigPath, defaultEnvPath, expandPath, sqliteDbPath } from '../../config/paths.js';
 import { openDatabase } from '../../db/index.js';
 import { createVoiceStateRepo } from '../../db/repositories/voice-state.js';
-import { createSchedulesRepo } from '../../db/repositories/schedules.js';
 import { existsSync } from 'node:fs';
-import { createBriefingManager } from '../briefings/manager.js';
 import { createSettingsContext } from './context.js';
 import { SETTINGS_LAYOUT } from './layout.js';
 import { buildSettingsRegistry } from './registry.js';
@@ -43,15 +41,12 @@ export async function runSettingsCommand(): Promise<void> {
 
   try {
     const voiceState = createVoiceStateRepo(dbHandle.db);
-    const schedulesRepo = createSchedulesRepo(dbHandle.db);
-    const briefings = createBriefingManager({ schedules: schedulesRepo });
     const ctx = createSettingsContext({
       stdin: process.stdin,
       stdout,
       configPath,
       envPath: defaultEnvPath(projectRoot()),
       voiceState,
-      briefings,
     });
     const registry = buildSettingsRegistry();
 

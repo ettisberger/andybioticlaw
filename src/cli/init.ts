@@ -1,10 +1,11 @@
-import { existsSync, readFileSync, writeFileSync, copyFileSync, chmodSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync, copyFileSync, chmodSync } from 'node:fs';
 import { resolve } from 'node:path';
 import argon2 from 'argon2';
 import { readEnvFile, writeEnvFileUpdates } from '../config/env-file.js';
 import { loadConfig, projectRoot } from '../config/load.js';
 import { getDefaultAgent } from '../config/agents-helper.js';
 import { defaultConfigPath, defaultEnvPath } from '../config/paths.js';
+import { loadManifest, SkillManifestError } from '../skills/manifest.js';
 import { bold, cyan, dim, green, lavender, sage, yellow } from './ansi.js';
 import {
   arrowPicker,
@@ -94,7 +95,7 @@ async function runInitCommandInner(): Promise<void> {
     const envUpdates: Record<string, string> = {};
 
     // --- 2. Telegram bot token --------------------------------------------
-    section(stdout, '1/5', 'Telegram bot token');
+    section(stdout, '1/6', 'Telegram bot token');
     if (envExisting.values.TELEGRAM_BOT_TOKEN) {
       stdout.write(`  ${sage('✓')} ${dim('TELEGRAM_BOT_TOKEN already set in .env — reusing')}\n`);
     } else {
@@ -110,7 +111,7 @@ async function runInitCommandInner(): Promise<void> {
     }
 
     // --- 3. Principal user id --------------------------------------------
-    section(stdout, '2/5', 'Principal Telegram user id');
+    section(stdout, '2/6', 'Principal Telegram user id');
     const currentAllowed = readAllowedUserIds(configPath);
     let principalUserId: number | null = null;
     if (currentAllowed.length > 0) {
@@ -135,7 +136,7 @@ async function runInitCommandInner(): Promise<void> {
     }
 
     // --- 4. Service timezone ---------------------------------------------
-    section(stdout, '3/5', 'Service timezone');
+    section(stdout, '3/6', 'Service timezone');
     const systemTz =
       Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Zurich';
     const currentTz = readTimezone(configPath);
@@ -150,12 +151,12 @@ async function runInitCommandInner(): Promise<void> {
       if (timezone === null) throw new InitAbortedError();
     }
 
-    // --- 5. Dashboard password -------------------------------------------
+    // --- 4b. Dashboard password ------------------------------------------
     // Default-on: config.example.yaml ships with basicAuth.enabled: true,
     // so the service boots only if we populate the hash OR explicitly
     // disable auth. Press-Enter path disables auth with a confirmation,
     // so localhost-only quick-try users aren't forced to pick a password.
-    section(stdout, '4/5', 'Dashboard basic-auth password');
+    section(stdout, '4/6', 'Dashboard basic-auth password');
     const currentHashLine = readPasswordHash(configPath);
     let dashboardPasswordHash: string | null = null;
     let disableDashboardAuth = false;
@@ -192,7 +193,7 @@ async function runInitCommandInner(): Promise<void> {
     //     `claude login` the operator runs after setup.
     // The service refuses to boot on ANTHROPIC_API_KEY-style auth, so
     // there's no "cheap" path that bypasses the subscription.
-    section(stdout, '5/5', 'Claude authentication');
+    section(stdout, '5/6', 'Claude authentication');
     if (envExisting.values.CLAUDE_CODE_OAUTH_TOKEN) {
       stdout.write(
         `  ${sage('✓')} ${dim('CLAUDE_CODE_OAUTH_TOKEN already set in .env — reusing')}\n`,
@@ -251,7 +252,39 @@ async function runInitCommandInner(): Promise<void> {
       }
     }
 
-    // --- 6. Write env updates --------------------------------------------
+    // --- 6. Skills selection ---------------------------------------------
+    // The shipped example sets `skills: ['*']` (= every enabled skill).
+    // On a fresh VPS we let the operator opt out of any they don't want
+    // — not every install needs Hue lights or email triage. If they keep
+    // all checked we keep the canonical `['*']` shorthand; otherwise we
+    // write an explicit list so future-shipped skills don't auto-enable.
+    section(stdout, '6/6', 'Skills');
+    const currentSkills = readSkillsList(configPath);
+    const skillsAlreadyCustomised =
+      currentSkills !== null && !(currentSkills.length === 1 && currentSkills[0] === '*');
+    let pickedSkills: string[] | '*' | null = null;
+    if (skillsAlreadyCustomised) {
+      stdout.write(
+        `  ${sage('✓')} ${dim(`agents[0].skills already customised (${JSON.stringify(currentSkills)}) — reusing`)}\n`,
+      );
+    } else {
+      const skillsDir = resolve(root, 'skills');
+      const available = scanShippedSkills(skillsDir);
+      if (available.length === 0) {
+        stdout.write(
+          `  ${yellow('!')} ${dim(`no skills found in ${skillsDir} — leaving skills: ['*']`)}\n`,
+        );
+      } else {
+        stdout.write(
+          `  ${dim('Pick which skills your agent can use. All checked by default — uncheck any you')}\n` +
+            `  ${dim('don\'t need. Skills require setup later (see skills/<name>/SKILL.md).')}\n\n`,
+        );
+        pickedSkills = await pickSkills(stdin, stdout, available);
+        if (pickedSkills === null) throw new InitAbortedError();
+      }
+    }
+
+    // --- 7. Write env updates --------------------------------------------
     if (Object.keys(envUpdates).length > 0) {
       writeEnvFileUpdates(envPath, envUpdates);
       stdout.write(
@@ -259,7 +292,7 @@ async function runInitCommandInner(): Promise<void> {
       );
     }
 
-    // --- 7. Patch config.yaml (line-oriented, preserves comments) --------
+    // --- 8. Patch config.yaml (line-oriented, preserves comments) --------
     const patches: Array<{ desc: string; regex: RegExp; replacement: string }> = [];
     if (principalUserId !== null) {
       patches.push({
@@ -286,10 +319,25 @@ async function runInitCommandInner(): Promise<void> {
       });
     }
     if (disableDashboardAuth) {
+      // Anchor the patch on `basicAuth:` parent so we don't accidentally
+      // flip `dashboard.enabled: true` (the OUTER dashboard toggle) to
+      // false — both lines match `^(\s+)enabled: true$` and JS regex with
+      // /m takes the first occurrence, which is the wrong one.
       patches.push({
         desc: 'dashboard.basicAuth.enabled',
-        regex: /^(\s+)enabled: true\s*$/m,
+        regex: /^(\s+basicAuth:[^\n]*\n\s+)enabled: true\s*$/m,
         replacement: `$1enabled: false`,
+      });
+    }
+    if (pickedSkills !== null) {
+      const rendered =
+        pickedSkills === '*'
+          ? `['*']`
+          : `[${pickedSkills.map((s) => `'${s}'`).join(', ')}]`;
+      patches.push({
+        desc: 'agents[0].skills',
+        regex: /^(\s+skills:\s*)\[.*\]\s*$/m,
+        replacement: `$1${rendered}`,
       });
     }
 
@@ -314,7 +362,7 @@ async function runInitCommandInner(): Promise<void> {
     (stdin as unknown as { pause?: () => void }).pause?.();
   }
 
-  // --- 8. Validate the result ------------------------------------------
+  // --- 9. Validate the result ------------------------------------------
   stdout.write('\n');
   try {
     const result = loadConfig();
@@ -329,7 +377,7 @@ async function runInitCommandInner(): Promise<void> {
     );
   }
 
-  // --- 9. Next steps ---------------------------------------------------
+  // --- 10. Next steps --------------------------------------------------
   // Detect whether we're running as the dedicated service user. On the
   // production install (user `andybioticlaw` via `sudo -iu …`) → surface
   // systemctl. On a dev machine (most likely `eta`/`root`/anything else)
@@ -497,6 +545,100 @@ function readPasswordHash(configPath: string): string {
   const body = readFileSync(configPath, 'utf8');
   const m = body.match(/^\s+passwordHash:\s*['"]?([^'"\s]*)['"]?\s*$/m);
   return m && m[1] !== undefined ? m[1] : '';
+}
+
+/**
+ * Read the current `agents[0].skills` list from config.yaml. Returns
+ * `null` if the line is missing, otherwise the parsed array (with `*`
+ * preserved as-is). Used to skip the picker when the operator has
+ * already customised skills past the example default.
+ */
+function readSkillsList(configPath: string): string[] | null {
+  const body = readFileSync(configPath, 'utf8');
+  const m = body.match(/^\s+skills:\s*\[(.*?)\]\s*$/m);
+  if (!m || m[1] === undefined) return null;
+  const inside = m[1].trim();
+  if (!inside) return [];
+  return inside
+    .split(',')
+    .map((s) => s.trim().replace(/^['"]|['"]$/g, ''))
+    .filter((s) => s.length > 0);
+}
+
+interface ShippedSkill {
+  name: string;
+  description: string;
+}
+
+/**
+ * Enumerate the shipped skill folders (skills/<name>) and return their
+ * name + description from `manifest.yaml`. Folders starting with `_`
+ * (e.g. `_template`) are skipped — same convention as the runtime
+ * loader. Manifest read failures fall back to a placeholder description
+ * so a single bad skill doesn't break the wizard.
+ */
+function scanShippedSkills(skillsDir: string): ShippedSkill[] {
+  if (!existsSync(skillsDir)) return [];
+  const out: ShippedSkill[] = [];
+  for (const entry of readdirSync(skillsDir)) {
+    if (entry === 'README.md' || entry.startsWith('_')) continue;
+    const full = resolve(skillsDir, entry);
+    try {
+      if (!statSync(full).isDirectory()) continue;
+    } catch {
+      continue;
+    }
+    try {
+      const { manifest } = loadManifest(full, entry);
+      out.push({ name: manifest.name, description: manifest.description });
+    } catch (e) {
+      if (e instanceof SkillManifestError) {
+        out.push({ name: entry, description: '(manifest invalid — see SKILL.md)' });
+      } else {
+        out.push({ name: entry, description: '(could not read manifest)' });
+      }
+    }
+  }
+  out.sort((a, b) => a.name.localeCompare(b.name));
+  return out;
+}
+
+/**
+ * Multi-select picker for skills. Every skill starts checked (matches
+ * the shipped `['*']` shorthand). Enter on a skill toggles it; Enter
+ * on the trailing "Done" row resolves with the selection. Returns
+ * `'*'` when the operator keeps everything checked (we preserve the
+ * canonical shorthand instead of writing the full list), otherwise an
+ * explicit name array. `null` on q / Ctrl-C.
+ */
+async function pickSkills(
+  stdin: NodeJS.ReadableStream & { setRawMode?: (mode: boolean) => void },
+  stdout: NodeJS.WritableStream,
+  available: ReadonlyArray<ShippedSkill>,
+): Promise<string[] | '*' | null> {
+  const selected = new Set<string>(available.map((s) => s.name));
+  const itemsThunk = () => [
+    ...available.map((s) => ({
+      label: s.name,
+      meta: `  ${s.description}`,
+      checked: selected.has(s.name),
+    })),
+    { label: 'Done', meta: '  (use the current selection)' },
+  ];
+  const idx = await arrowPicker(stdin, stdout, {
+    title: 'Skills available',
+    helpLine: '↑/↓ move · Enter toggle · select Done to confirm · q abort',
+    items: itemsThunk,
+    onToggle: (i) => {
+      const skill = available[i];
+      if (!skill) return;
+      if (selected.has(skill.name)) selected.delete(skill.name);
+      else selected.add(skill.name);
+    },
+  });
+  if (idx < 0) return null;
+  if (selected.size === available.length) return '*';
+  return available.filter((s) => selected.has(s.name)).map((s) => s.name);
 }
 
 /**

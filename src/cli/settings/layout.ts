@@ -29,15 +29,6 @@ export const SETTINGS_LAYOUT: ReadonlyArray<Section> = [
     ],
   },
   {
-    title: 'Briefings',
-    settingIds: [
-      'briefings.morning.enabled',
-      'briefings.morning.time',
-      'briefings.evening.enabled',
-      'briefings.evening.time',
-    ],
-  },
-  {
     title: 'Budget',
     settingIds: [
       'budget.dailyTokenLimit',

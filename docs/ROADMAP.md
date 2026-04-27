@@ -101,6 +101,12 @@ a one-line add to Backlog is enough — don't gate on a full spec.
 
 ## Shipped
 
+- **Briefings retired** — the dedicated morning + evening BriefingManager
+  + four Settings entries are gone. Operators set up their daily digest
+  as a regular `agent-task` schedule (created by Emma herself or via
+  `andybioticlaw schedule add --kind agent-task --message "…"`),
+  which is more flexible (any prompt, any cron, any number of slots)
+  and removes a parallel codepath that was easy to forget about.
 - **Emma can create `agent-task` schedules** — the daily-digest
   pattern. The CLI gate at `src/cli/admin.ts` previously refused
   every kind except `reminder` when `ANDYBIOTICLAW_AGENT_CAN_BASH`

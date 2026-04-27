@@ -1,5 +1,4 @@
 import type { VoiceStateRepo } from '../../db/repositories/voice-state.js';
-import type { BriefingManager } from '../briefings/manager.js';
 
 /**
  * Contract every Settings component implements.
@@ -34,8 +33,6 @@ export interface SettingsContext {
   envPath: string;
   /** SQLite-backed voice-input toggle. */
   voiceState: VoiceStateRepo;
-  /** Proactive briefings CRUD (morning + evening schedules). */
-  briefings: BriefingManager;
 
   // --- per-frame read/write facade ------------------------------------
   readYaml(): string;

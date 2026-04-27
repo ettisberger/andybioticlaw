@@ -171,17 +171,21 @@ chown "$SERVICE_USER:$SERVICE_GROUP" "$HOME_DIR"
 chmod 755 "$HOME_DIR"
 echo "✓ home dir $HOME_DIR is owned by $SERVICE_USER"
 
-# Pre-create dirs the systemd unit's ReadWritePaths expects. If either
+# Pre-create paths the systemd unit's ReadWritePaths expects. If any
 # is missing at service-start, systemd's namespace setup fails with
 # `status=226/NAMESPACE` and the service refuses to boot. `~/.cache`
-# is normally created by corepack later, but `~/.claude` only exists
-# after the operator runs `claude login` / `claude setup-token` — which
-# happens AFTER install.sh, so the unit would otherwise fail on first
-# `systemctl start` until the operator authenticates Claude.
+# is normally created by corepack later, but `~/.claude` and the
+# top-level `~/.claude.json` file are only created by `claude login` /
+# `claude setup-token` — which happens AFTER install.sh, so the unit
+# would otherwise fail on first `systemctl start` until the operator
+# authenticates Claude.
 mkdir -p "$HOME_DIR/.cache" "$HOME_DIR/.claude"
-chown "$SERVICE_USER:$SERVICE_GROUP" "$HOME_DIR/.cache" "$HOME_DIR/.claude"
-chmod 700 "$HOME_DIR/.claude"   # OAuth tokens — same posture as DB
-echo "✓ pre-created ~/.cache + ~/.claude for the systemd sandbox"
+touch "$HOME_DIR/.claude.json"
+chown "$SERVICE_USER:$SERVICE_GROUP" \
+  "$HOME_DIR/.cache" "$HOME_DIR/.claude" "$HOME_DIR/.claude.json"
+chmod 700 "$HOME_DIR/.claude"        # OAuth tokens — same posture as DB
+chmod 600 "$HOME_DIR/.claude.json"   # written by the CLI; no group/other access
+echo "✓ pre-created ~/.cache + ~/.claude + ~/.claude.json for the systemd sandbox"
 
 # ---------------------------------------------------------------------------
 # 3. Copy source tree into INSTALL_DIR

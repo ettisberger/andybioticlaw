@@ -12,7 +12,6 @@ function makeCtx(yaml: string): SettingsContext {
     configPath: '/tmp/config.yaml',
     envPath: '/tmp/.env',
     voiceState: {} as never,
-    briefings: {} as never,
     readYaml: () => body,
     writeYaml: (next) => {
       body = next;
