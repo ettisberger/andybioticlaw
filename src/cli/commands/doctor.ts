@@ -27,8 +27,11 @@ import {
   expandPath,
   logsDir,
   pidFilePath,
+  policiesPath,
   sqliteDbPath,
 } from '../../config/paths.js';
+import { loadPolicies, resolvePolicy } from '../../policies/repo.js';
+import { contextKey as makeContextKey } from '../../agent/runtime-context.js';
 import { openDatabase } from '../../db/index.js';
 import { createSkillRegistry } from '../../skills/registry.js';
 import { loadSkills } from '../../skills/loader.js';
@@ -100,6 +103,13 @@ async function collectRows(opts: DoctorOptions): Promise<DoctorResult> {
   rows.push(await checkTelegram(config.telegram.dm.allowedUserIds));
   rows.push(await checkDashboard(config.dashboard));
   rows.push(checkServiceRunning(dataDir));
+  rows.push(checkAgents(config));
+  rows.push(
+    checkPolicies(
+      policiesPath(dataDir),
+      config.telegram.dm.allowedUserIds[0] ?? null,
+    ),
+  );
 
   // For skill / schedule / budget checks we need an open DB.
   let dbHandle: ReturnType<typeof openDatabase> | null = null;
@@ -818,6 +828,137 @@ export function checkLogs(logsDirPath: string): DoctorRow {
   } catch (e) {
     return { name: 'Logs', status: 'fail', detail: (e as Error).message };
   }
+}
+
+/**
+ * Reports the configured agents (from `agents:` block) or — if absent
+ * during the deprecation window — synthesizes a single 'emma' from the
+ * legacy `agent:` block. Validates that exactly one agent has
+ * `default: true` and that ids are unique.
+ */
+export function checkAgents(config: {
+  agent?: { name: string } | undefined;
+  agents?: ReadonlyArray<{ id: string; name: string; default: boolean }> | undefined;
+}): DoctorRow {
+  const agents = config.agents ?? null;
+  if (!agents || agents.length === 0) {
+    // Deprecation-window install — no `agents:` block yet. Synthesize
+    // info for the operator so doctor still reports something sensible.
+    if (config.agent) {
+      return {
+        name: 'Agents',
+        status: 'ok',
+        detail: `1 agent (legacy single-agent config — '${config.agent.name}' as 'emma')`,
+        extras: [
+          'add an `agents:` block to config.yaml to declare multi-agent explicitly',
+          'auto-synthesised: id=emma, default=true, skills=*',
+        ],
+      };
+    }
+    return {
+      name: 'Agents',
+      status: 'fail',
+      detail: 'neither agent: nor agents: configured',
+    };
+  }
+  const defaults = agents.filter((a) => a.default);
+  if (defaults.length === 0) {
+    return {
+      name: 'Agents',
+      status: 'fail',
+      detail: `${agents.length} agent(s) but none marked default: true`,
+    };
+  }
+  if (defaults.length > 1) {
+    return {
+      name: 'Agents',
+      status: 'fail',
+      detail: `${defaults.length} agents marked default — exactly one must be`,
+      extras: defaults.map((a) => `default: ${a.id} (${a.name})`),
+    };
+  }
+  const ids = new Set<string>();
+  for (const a of agents) {
+    if (ids.has(a.id)) {
+      return {
+        name: 'Agents',
+        status: 'fail',
+        detail: `duplicate agent id: ${a.id}`,
+      };
+    }
+    ids.add(a.id);
+  }
+  return {
+    name: 'Agents',
+    status: 'ok',
+    detail: `${agents.length} agent(s), default=${defaults[0]!.id}`,
+    extras: agents.map(
+      (a) => `${a.default ? '*' : ' '} ${a.id} (${a.name})`,
+    ),
+  };
+}
+
+/**
+ * Reports the policies file's presence + that the principal context
+ * resolves cleanly. `null` principalUserId is a warn (operator hasn't
+ * set telegram.dm.allowedUserIds yet); missing file is a warn (will
+ * auto-generate on first boot); a parse error is a fail.
+ */
+export function checkPolicies(
+  filePath: string,
+  principalUserId: number | null,
+): DoctorRow {
+  let file: ReturnType<typeof loadPolicies>;
+  try {
+    file = loadPolicies(filePath);
+  } catch (e) {
+    return {
+      name: 'Policies',
+      status: 'fail',
+      detail: (e as Error).message,
+    };
+  }
+  if (!file) {
+    return {
+      name: 'Policies',
+      status: 'warn',
+      detail: `${filePath} missing — will auto-generate on next service boot`,
+    };
+  }
+  if (principalUserId === null) {
+    return {
+      name: 'Policies',
+      status: 'warn',
+      detail: `${Object.keys(file.contexts).length} context(s); no principal id configured`,
+    };
+  }
+  // Resolve the principal context as a smoke test of the file's shape.
+  const principalKey = makeContextKey({
+    agentId: 'emma',
+    channel: 'telegram',
+    chatId: principalUserId,
+  });
+  let resolved;
+  try {
+    resolved = resolvePolicy(file, principalKey);
+  } catch (e) {
+    return {
+      name: 'Policies',
+      status: 'fail',
+      detail: `principal context resolves with error: ${(e as Error).message}`,
+    };
+  }
+  return {
+    name: 'Policies',
+    status: 'ok',
+    detail: `${Object.keys(file.contexts).length} context(s); principal execMode=${resolved.execMode}`,
+    extras: [
+      `principal context: ${principalKey}`,
+      `scheduleKinds: ${resolved.scheduleKinds.join(', ')}`,
+      `scheduleAgentTaskCap: ${resolved.scheduleAgentTaskCap}`,
+      `skillsVisible: ${resolved.skillsVisible.join(', ')}`,
+    ],
+  };
 }
 
 // ---------------------------------------------------------------------------
