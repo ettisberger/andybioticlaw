@@ -30,6 +30,8 @@ import { sessionsRoutes } from './routes/sessions.js';
 import { schedulesRoutes } from './routes/schedules.js';
 import { memoryRoutes } from './routes/memory.js';
 import { notesRoutes } from './routes/notes.js';
+import { policiesRoutes } from './routes/policies.js';
+import { agentsRoutes } from './routes/agents.js';
 import { skillsRoutes } from './routes/skills.js';
 import { configRoutes } from './routes/config.js';
 import { auditRoutes } from './routes/audit.js';
@@ -65,6 +67,9 @@ export interface DashboardDeps {
   logPath: string;
   /** Absolute path to the built frontend's dist dir (served as static). */
   frontendDistDir: string;
+  /** Resolves the absolute path to data/policies.json. Lazy so the
+   *  route always reads the current state. */
+  policiesPath: () => string;
   /** Called when the scheduler should re-read DB state (after API mutations). */
   onSchedulesChanged: () => void;
   rateLimitTracker: RateLimitTracker;
@@ -270,6 +275,14 @@ export function createDashboard(deps: DashboardDeps): DashboardService {
   );
 
   app.register(skillsRoutes({ skills: deps.skills }));
+
+  app.register(agentsRoutes({ currentConfig: deps.currentConfig }));
+
+  app.register(
+    policiesRoutes({
+      policiesPath: deps.policiesPath,
+    }),
+  );
 
   app.register(configRoutes({ currentConfig: deps.currentConfig }));
 

@@ -9,6 +9,8 @@ const NAV_ITEMS = [
   { to: '/schedules', label: 'Schedules' },
   { to: '/memory', label: 'Memory' },
   { to: '/notes', label: 'Notes' },
+  { to: '/agents', label: 'Agents' },
+  { to: '/policies', label: 'Policies' },
   { to: '/skills', label: 'Skills' },
   { to: '/logs', label: 'Logs' },
   { to: '/config', label: 'Config' },

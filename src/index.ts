@@ -450,6 +450,7 @@ async function main(): Promise<void> {
     authMethod: () => authMethod,
     logPath: resolve(logsDir(dataDir), 'andybioticlaw.log'),
     frontendDistDir: resolve(projectRoot(), 'web', 'dist'),
+    policiesPath: () => policiesFilePath,
     onSchedulesChanged: () => scheduler?.refresh(),
     rateLimitTracker,
     liveSessions,

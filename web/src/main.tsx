@@ -7,8 +7,10 @@ import { OverviewPage } from './pages/OverviewPage';
 import { SessionsPage } from './pages/SessionsPage';
 import { SessionDetailPage } from './pages/SessionDetailPage';
 import { SchedulesPage } from './pages/SchedulesPage';
+import { AgentsPage } from './pages/AgentsPage';
 import { MemoryPage } from './pages/MemoryPage';
 import { NotesPage } from './pages/NotesPage';
+import { PoliciesPage } from './pages/PoliciesPage';
 import { SkillsPage } from './pages/SkillsPage';
 import { LogsPage } from './pages/LogsPage';
 import { ConfigPage } from './pages/ConfigPage';
@@ -46,6 +48,8 @@ ReactDOM.createRoot(root).render(
           <Route path="/schedules" element={<SchedulesPage />} />
           <Route path="/memory" element={<MemoryPage />} />
           <Route path="/notes" element={<NotesPage />} />
+          <Route path="/agents" element={<AgentsPage />} />
+          <Route path="/policies" element={<PoliciesPage />} />
           <Route path="/skills" element={<SkillsPage />} />
           <Route path="/logs" element={<LogsPage />} />
           <Route path="/config" element={<ConfigPage />} />
