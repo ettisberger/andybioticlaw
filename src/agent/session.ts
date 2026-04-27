@@ -7,6 +7,7 @@ import type { MessagesRepo } from '../db/repositories/messages.js';
 import type { AuditRepo } from '../db/repositories/audit.js';
 import type { MemoryRepo } from '../db/repositories/memory.js';
 import type { MemoryManager } from '../memory/manager.js';
+import type { ResolvedPolicy } from '../policies/schema.js';
 import { snapshotToContextFragment } from '../memory/manager.js';
 import type { SkillRegistry } from '../skills/registry.js';
 import { buildMcpConfig, mcpConfigPath, writeMcpConfig } from '../skills/mcp.js';
@@ -91,6 +92,15 @@ export interface SessionExecuteDeps {
    * in-flight state. Omitted in tests.
    */
   liveSessions?: LiveSessionsTracker;
+  /**
+   * Resolves the per-context permission policy at session start. When
+   * present, the harness writes a `.claude/settings.json` into the
+   * session workspace and passes it to Claude via `--settings`. Skills'
+   * `exec_allow` patterns are merged in. When absent (legacy callers /
+   * tests), the runner keeps its today's behaviour: `bypassPermissions`
+   * with no settings file.
+   */
+  resolvePolicy?: (contextKey: string) => ResolvedPolicy;
 }
 
 export interface SessionExecuteResult {
@@ -221,6 +231,57 @@ async function runOne(
   const mcpPath = mcpConfigPath(sessionDir);
   writeMcpConfig(mcpPath, mcpConfigObject);
 
+  // Per-session .claude/settings.json. Only generated when the caller
+  // provides a policy resolver — otherwise we keep today's
+  // `--permission-mode bypassPermissions` behaviour for backward compat
+  // with tests + legacy callers.
+  let claudeSettingsPath: string | undefined;
+  let permissionMode: 'bypassPermissions' | 'default' = 'bypassPermissions';
+  if (deps.resolvePolicy) {
+    const { contextKey: makeContextKey } = await import('./runtime-context.js');
+    const { buildClaudeSessionSettings } = await import('./claude-settings.js');
+    const ctxKey = makeContextKey({
+      agentId: input.agentId,
+      channel: 'telegram',
+      // RuntimeContext expects a numeric chat id; SessionExecuteInput
+      // carries it as a string. Coerce here — Telegram chat ids fit in
+      // a JS safe-int. Non-numeric chat ids (rare; e.g. tests passing
+      // 'test-chat') fall back to NaN which the resolver treats as a
+      // miss → defaults policy.
+      chatId: Number(input.chatId),
+    });
+    let resolved;
+    try {
+      resolved = deps.resolvePolicy(ctxKey);
+    } catch (e) {
+      deps.logger.warn(
+        { err: (e as Error).message, ctxKey },
+        'policy resolution failed — falling back to bypassPermissions',
+      );
+      resolved = null;
+    }
+    if (resolved) {
+      const settings = buildClaudeSessionSettings({
+        policy: resolved,
+        skills: activeSkills.map((s) => ({ name: s.name, execAllow: s.execAllow })),
+        contextKey: ctxKey,
+      });
+      // Claude Code reads `.claude/settings.json` in the cwd OR the
+      // exact path passed via `--settings`. We use the `--settings`
+      // form so the file lives inside the session workspace and gets
+      // cleaned up with the rest of session artifacts.
+      const { writeFileSync, mkdirSync, existsSync: exists } = await import('node:fs');
+      const { resolve: rpath } = await import('node:path');
+      const settingsDir = rpath(sessionDir, '.claude');
+      if (!exists(settingsDir)) mkdirSync(settingsDir, { recursive: true });
+      claudeSettingsPath = rpath(settingsDir, 'settings.json');
+      writeFileSync(claudeSettingsPath, JSON.stringify(settings, null, 2) + '\n', {
+        mode: 0o600,
+      });
+      permissionMode = settings.permissions.defaultMode;
+    }
+  }
+
   // Per-skill env additions.
   //
   //  - Secrets: only injected if the skill declares them in required_secrets.
@@ -282,6 +343,8 @@ async function runOne(
     streamIdleTimeoutMs: input.streamIdleTimeoutMs,
     signal: input.signal,
     mcpConfigPath: mcpPath,
+    permissionMode,
+    ...(claudeSettingsPath ? { settingsPath: claudeSettingsPath } : {}),
     extraEnv,
     onDelta: (t) => {
       try {

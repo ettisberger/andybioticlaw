@@ -16,7 +16,7 @@ import {
   pidFilePath,
   workspacesDir,
 } from './config/paths.js';
-import { loadPolicies, savePolicies } from './policies/repo.js';
+import { loadPolicies, resolvePolicy as resolvePolicyFn, savePolicies } from './policies/repo.js';
 import { synthesizeDefaultPolicies } from './policies/auto-generate.js';
 import { openDatabase } from './db/index.js';
 import { createAuditRepo } from './db/repositories/audit.js';
@@ -309,6 +309,19 @@ async function main(): Promise<void> {
       sessionWorkspaceRoot: dmWorkspace,
       resolveSkillSecret: (skillName, secretName) =>
         secrets.getSecret(secretName, { skill: skillName }),
+      // Re-load + resolve on every session so operator edits to
+      // policies.json take effect without a service restart. Cheap
+      // (small JSON, parsed once per session — same shape as the
+      // dashboard route's read-fresh approach).
+      resolvePolicy: (contextKey) => {
+        const file = loadPolicies(policiesFilePath);
+        if (!file) {
+          // policies.json was deleted between boot and the session;
+          // fall back to the in-memory default we generated at startup.
+          return resolvePolicyFn(policies, contextKey);
+        }
+        return resolvePolicyFn(file, contextKey);
+      },
       rateLimitTracker,
       liveSessions,
       voiceState: voiceStateRepo,

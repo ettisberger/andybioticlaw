@@ -15,6 +15,7 @@ import type {
   SessionExecuteResult,
 } from '../agent/session.js';
 import type { SkillRegistry } from '../skills/registry.js';
+import type { ResolvedPolicy } from '../policies/schema.js';
 import { createChatRunner, createQueueManager } from '../agent/queue.js';
 import type { RateLimitTracker } from '../agent/rate-limit-tracker.js';
 import type { LiveSessionsTracker } from '../observability/live-sessions.js';
@@ -70,6 +71,11 @@ export interface BotDeps {
   sessionWorkspaceRoot: string;
   /** Resolves a skill's scoped secret. Throws if out of scope (audited). */
   resolveSkillSecret: (skillName: string, secretName: string) => string | undefined;
+  /** Resolves per-context policy. When set, the harness writes a
+   *  `.claude/settings.json` per session. Optional during the
+   *  rollout — when absent, today's `bypassPermissions` behaviour
+   *  is preserved. */
+  resolvePolicy?: (contextKey: string) => ResolvedPolicy;
   /** Rate-limit tracker — captures CLI `rate_limit_event` payloads for dashboard. */
   rateLimitTracker?: RateLimitTracker;
   /** In-flight session state for the dashboard's live view. */
@@ -146,6 +152,7 @@ export function createTelegramService(deps: BotDeps): TelegramService {
             logger: deps.logger,
             ...(deps.rateLimitTracker ? { rateLimitTracker: deps.rateLimitTracker } : {}),
             ...(deps.liveSessions ? { liveSessions: deps.liveSessions } : {}),
+            ...(deps.resolvePolicy ? { resolvePolicy: deps.resolvePolicy } : {}),
           });
         },
         onDrop: (req) => {

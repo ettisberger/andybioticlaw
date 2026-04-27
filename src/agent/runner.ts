@@ -35,6 +35,19 @@ export interface RunClaudeInput {
   onApiKeyBilling?: (apiKeySource: string) => boolean;
   /** Absolute path to an MCP config JSON file (forwarded as --mcp-config). Optional. */
   mcpConfigPath?: string;
+  /**
+   * Absolute path to a generated `.claude/settings.json`. Forwarded as
+   * `--settings`. When set, Claude Code uses the file's `permissions.allow`
+   * + `defaultMode` for tool gating. Optional — when absent, the runner
+   * keeps today's behaviour (no settings file, bypass via flag).
+   */
+  settingsPath?: string;
+  /**
+   * Permission mode forwarded to Claude CLI. Defaults to `bypassPermissions`
+   * (today's behaviour); `default` engages tool-allowlist enforcement using
+   * the `--settings` file's allow patterns.
+   */
+  permissionMode?: 'bypassPermissions' | 'default';
   /** Additional env vars to merge into the subprocess env AFTER filtering API-billing vars. */
   extraEnv?: Record<string, string>;
 }
@@ -140,13 +153,16 @@ export function runClaude(input: RunClaudeInput): Promise<RunClaudeResult> {
     '--system-prompt',
     input.systemPrompt,
     '--permission-mode',
-    'bypassPermissions',
+    input.permissionMode ?? 'bypassPermissions',
   ];
   if (input.allowedTools && input.allowedTools !== 'all') {
     args.push('--allowedTools', input.allowedTools);
   }
   if (input.mcpConfigPath) {
     args.push('--mcp-config', input.mcpConfigPath);
+  }
+  if (input.settingsPath) {
+    args.push('--settings', input.settingsPath);
   }
 
   const baseEnv = buildClaudeEnv();
