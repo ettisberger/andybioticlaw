@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.22.3](https://github.com/ettisberger/andybioticlaw/compare/v0.22.2...v0.22.3) (2026-04-27)
+
+
+### Features
+
+* **agent:** per-session .claude/settings.json driven by policy + skill exec_allow ([f749ad9](https://github.com/ettisberger/andybioticlaw/commit/f749ad96d9eeba371a6656343dce018109013047))
+* **cli/doctor:** Agents + Policies health rows ([c2febe6](https://github.com/ettisberger/andybioticlaw/commit/c2febe6aee81a4c3ffd78540a7096d6703f48380))
+* **cli/settings:** Advanced section with Agents + Policies views ([add4326](https://github.com/ettisberger/andybioticlaw/commit/add4326cdc3d2279a0c1d8e76ccf89cf8c3ffc59))
+* **cli:** schedule shape-flags + policy/agent subcommands ([d70491e](https://github.com/ettisberger/andybioticlaw/commit/d70491e162e208358ffbaf0498fcda0c28333751))
+* **dashboard:** /agents + /policies read-only pages ([3d1b001](https://github.com/ettisberger/andybioticlaw/commit/3d1b0019ebec88c28c6c6fa7627bc66e986d38e6))
+* **dashboard:** single + bulk session delete with orphan cleanup ([bac24f9](https://github.com/ettisberger/andybioticlaw/commit/bac24f94af8217ae34d7488d3273073d8c6e77f2))
+* drop legacy single-agent paths in favor of policies ([700136b](https://github.com/ettisberger/andybioticlaw/commit/700136b32842885eac9ccfb8eeff65eebe1f74a9))
+
 ## [0.22.2](https://github.com/ettisberger/andybioticlaw/compare/v0.22.1...v0.22.2) (2026-04-27)
 
 
