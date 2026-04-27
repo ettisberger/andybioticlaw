@@ -158,6 +158,19 @@ else
   echo "✓ user $SERVICE_USER already exists"
 fi
 
+# Ensure the home dir exists AND is owned by the service user. When the
+# user pre-exists from a partial install (or manual cleanup), `useradd
+# --create-home` is skipped above, and a later `mkdir -p` would create
+# /home/$USER as root. Without write access to its own home, the user
+# can't create ~/.cache, which breaks `corepack` → `pnpm install`. So
+# we explicitly fix it here, even on the "user already exists" path.
+if [[ ! -d "$HOME_DIR" ]]; then
+  mkdir -p "$HOME_DIR"
+fi
+chown "$SERVICE_USER:$SERVICE_GROUP" "$HOME_DIR"
+chmod 755 "$HOME_DIR"
+echo "✓ home dir $HOME_DIR is owned by $SERVICE_USER"
+
 # ---------------------------------------------------------------------------
 # 3. Copy source tree into INSTALL_DIR
 # ---------------------------------------------------------------------------
@@ -190,7 +203,23 @@ echo "✓ ownership + permissions set (0700)"
 # 4. Production deps (native modules compiled natively for this host)
 # ---------------------------------------------------------------------------
 echo "installing production dependencies (compiles better-sqlite3 + argon2 for this arch)…"
+# Sanity: pnpm must be reachable for the service user via corepack
+# shims, AND the user needs write access to its own home dir so
+# corepack can create ~/.cache. The HOME_DIR chown above handles the
+# latter; this check catches a missing pnpm shim before the install
+# step fails opaquely.
+if ! sudo -u "$SERVICE_USER" -H bash -lc 'command -v pnpm' >/dev/null 2>&1; then
+  echo "✗ pnpm not on PATH for $SERVICE_USER. Run as root:" >&2
+  echo "    corepack enable pnpm" >&2
+  exit 1
+fi
 sudo -u "$SERVICE_USER" -H bash -lc "cd '$INSTALL_DIR' && pnpm install --prod --frozen-lockfile"
+# Verify deps actually landed — a silent pnpm failure would otherwise
+# leave node_modules empty and the service crashes at first import.
+if [[ ! -d "$INSTALL_DIR/node_modules/commander" ]]; then
+  echo "✗ pnpm install completed but node_modules/commander missing — install failed silently" >&2
+  exit 1
+fi
 echo "✓ deps installed"
 
 if [[ ! -f "$INSTALL_DIR/web/dist/index.html" ]]; then
