@@ -123,9 +123,99 @@ export const SkillsConfig = z.object({
   autoLoadOnStart: z.boolean(),
 });
 
+/**
+ * One-line ASCII slug. Used as the stable id for both agents and policy
+ * contexts so the same string can appear in URLs, log lines, and DB
+ * columns without quoting or escaping.
+ */
+const SlugId = z
+  .string()
+  .regex(/^[a-z][a-z0-9-]{0,31}$/, 'must be lowercase alphanumeric/hyphen, 1-32 chars, starting with a letter');
+
+/**
+ * Per-agent definition. Each agent gets its own model, system prompt,
+ * skill visibility, and Telegram bot token. The default install ships
+ * with one agent ('emma'); additional agents are added by appending
+ * entries here + a binding rule + a policy block in policies.json.
+ *
+ * Mirrors the OpenClaw `agents.list` shape (see docs/ARCHITECTURE.md).
+ */
+export const AgentConfigEntry = z.object({
+  id: SlugId,
+  /** Human-readable display name. Substituted into `system.base.md`. */
+  name: z.string().min(1).max(64),
+  /** Exactly one agent in the list must have `default: true` — the
+   *  resolver falls back to it for any binding-miss. */
+  default: z.boolean().default(false),
+  /** Primary model id. Same regex as the legacy `agent.model`. */
+  model: z.string().regex(ModelIdRegex, 'invalid agent.model'),
+  /** Cheap fallback model used by the router when routing.enabled. */
+  haikuModel: z.string().regex(ModelIdRegex, 'invalid agent.haikuModel').default('claude-haiku-4-5-20251001'),
+  /** Where Claude credentials live. Usually shared across agents. */
+  credentialsDir: z.string().min(1),
+  /** Per-session timeout — same as legacy `agent.streamIdleTimeoutSec`. */
+  streamIdleTimeoutSec: z.number().int().positive().default(300),
+  /** Cron-router toggle. */
+  routing: AgentRoutingConfig.default({ enabled: false, minCharsForOpus: 120 }),
+  /** Skills visible to this agent. `["*"]` means all enabled skills.
+   *  Required at agent creation — forces explicit thought about scope
+   *  when adding a second agent. */
+  skills: z.array(z.union([z.literal('*'), SlugId])).nonempty(),
+  /** Env-var name holding this agent's Telegram bot token. Optional —
+   *  defaults to `TELEGRAM_BOT_TOKEN` when only one agent exists. */
+  tokenEnvVar: z.string().regex(/^[A-Z][A-Z0-9_]*$/).optional(),
+  /** Override for the system prompt path. Defaults to the bundled
+   *  `system.base.md`. Useful when each agent needs a distinct persona. */
+  systemPromptFile: z.string().min(1).optional(),
+  /** Per-agent workspace dir. When unset, all agents share the legacy
+   *  `data/workspaces/`. When multiple agents exist, each should have
+   *  its own directory to keep skill state from leaking across agents. */
+  workspace: z.string().min(1).optional(),
+});
+export type AgentConfigEntry = z.infer<typeof AgentConfigEntry>;
+
+/**
+ * Routing rule mapping incoming messages → agentId. Deterministic
+ * precedence: rules higher up the array win, with the default agent
+ * (per `agents[].default: true`) used when no rule matches. Mirrors
+ * OpenClaw's `bindings`.
+ */
+export const BindingRule = z.object({
+  agentId: SlugId,
+  /** What kind of incoming source this rule matches. */
+  match: z.object({
+    /** Channel — currently only telegram. Designed extensible. */
+    channel: z.enum(['telegram']),
+    /** When set: rule fires only for these telegram chat ids
+     *  (DMs use the user id; groups use the negative chat id). */
+    chatIds: z.array(z.number().int()).optional(),
+    /** When set: rule fires only for these telegram user ids. */
+    userIds: z.array(z.number().int().positive()).optional(),
+  }),
+});
+export type BindingRule = z.infer<typeof BindingRule>;
+
 export const Config = z.object({
   service: ServiceConfig,
+  /**
+   * Single-agent block. Required during the deprecation window — the
+   * service still reads `config.agent.*` everywhere it always did. When
+   * `agents:` is also present, it takes precedence; this block is
+   * authoritative only when `agents:` is missing.
+   */
   agent: AgentConfig,
+  /**
+   * Multi-agent definitions. Optional during the deprecation window:
+   * when missing, the loader generates `[{ id: 'emma', default: true, ... }]`
+   * from the legacy `agent:` block on first boot.
+   */
+  agents: z.array(AgentConfigEntry).nonempty().optional(),
+  /**
+   * Routing rules. Optional during the deprecation window; the loader
+   * synthesizes a single catch-all rule (`{ agentId: <default>, match: { channel: telegram } }`)
+   * when missing.
+   */
+  bindings: z.array(BindingRule).optional(),
   telegram: TelegramConfig,
   budget: BudgetConfig,
   memory: MemoryConfig,
