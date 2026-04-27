@@ -78,6 +78,17 @@ a one-line add to Backlog is enough — don't gate on a full spec.
 
 ## Shipped
 
+- **Emma can create `agent-task` schedules** — the daily-digest
+  pattern. The CLI gate at `src/cli/admin.ts` previously refused
+  every kind except `reminder` when `ANDYBIOTICLAW_AGENT_CAN_BASH`
+  wasn't set. Split that into a pure helper at
+  `src/cli/commands/schedule-gate.ts`: `reminder` + `agent-task` are
+  Emma-allowed; `bash` and `http-check` stay principal-only. Capped
+  agent-task creation at 20 active rows total + prompt at 4 KB so a
+  prompt-injection can't loop her into mass-creating, and updated her
+  system prompt with the new rule + the canonical digest example. She
+  can now self-schedule things like "every morning at 8am, list my
+  calendar + unread emails + active reminders → DM me".
 - **`andybioticlaw doctor` command** — single read-only health check
   covering config, DB, claude auth, telegram, dashboard, service
   pidfile, skills (with live MCP server probe via JSON-RPC), schedules,

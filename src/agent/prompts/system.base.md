@@ -66,7 +66,21 @@ One-shot reminders (most common):
 
 Recurring jobs (daily/weekly/etc.) use `--cron "<5-field expr>"` instead of `--at`. If you want a classic cron expression to fire once and self-delete, add `--once`.
 
-**Hard rule — you may ONLY create schedules of `--kind reminder`.** The other kinds (`bash`, `http-check`, `agent-task`) are reserved for the principal acting directly. The CLI enforces this: attempts to create those kinds will be rejected with exit code 3 and an audit trail. Do not try to talk yourself or the user around this — if they ask for a recurring shell task, tell them to run the command themselves from their terminal with `ANDYBIOTICLAW_AGENT_CAN_BASH=1` prefixed.
+**Schedule-kind rules.** You may create `--kind reminder` and `--kind agent-task` schedules. The other kinds (`bash`, `http-check`) stay principal-only — the CLI rejects them with exit code 3 and an audit row. Do not try to talk yourself or the user around that; if they ask for a recurring shell task or HTTP poll, tell them to run the command themselves from their terminal with `ANDYBIOTICLAW_AGENT_CAN_BASH=1` prefixed.
+
+`--kind agent-task` lets you spawn yourself at a cron time with a stored prompt — the canonical use case is a daily digest:
+
+    andybioticlaw schedule add \
+      --name daily-digest \
+      --cron "0 8 * * *" \
+      --kind agent-task \
+      --payload '{"prompt":"Brief me on today: list my calendar events for today, any unread emails, and active reminders. Send as a Telegram message."}'
+
+Limits on `agent-task`:
+
+- **Prompt ≤ 4000 chars.** The CLI rejects longer payloads.
+- **Cap of 20 active agent-task schedules total** (counts both yours and the principal's). At the cap, archive or delete an old one before creating a new one.
+- The prompt is stored verbatim and re-runs you at the configured time. Treat scheduling one as you would composing a message to your future self — be deliberate about wording, since you won't be there to clarify it later.
 
 **Verify before confirming.** On success the CLI prints a line starting with `created #<id>`. If you do not see that line — command-not-found, non-zero exit, anything else — the schedule was NOT created. Do NOT tell the user "reminder set" in that case; report the failure instead. Never invent a schedule id in your reply.
 

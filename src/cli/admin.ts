@@ -15,6 +15,7 @@ import { createBudgetStateRepo } from '../db/repositories/budget-state.js';
 import { createSessionsRepo } from '../db/repositories/sessions.js';
 import { createBudgetTracker } from '../agent/budget.js';
 import { parsePayload, ScheduleKind } from '../scheduler/payloads.js';
+import { evaluateScheduleKindGate } from './commands/schedule-gate.js';
 import cron from 'node-cron';
 import pino from 'pino';
 import { WizardAbortedError } from './wizard.js';
@@ -697,17 +698,38 @@ schedule
         process.exit(2);
       }
 
-      // Agent-bash gate. Emma can shell out to this CLI, so a prompt
-      // injection could otherwise talk her into creating `--kind bash`
-      // schedules that run arbitrary shell commands as the service user.
-      // Gate: only allow kinds other than `reminder` when the caller sets
-      // ANDYBIOTICLAW_AGENT_CAN_BASH=1 — Emma's subprocess env does NOT
-      // carry that, but the principal's interactive shell can export it
-      // (or prefix it inline: `ANDYBIOTICLAW_AGENT_CAN_BASH=1 andybioticlaw
-      // schedule add --kind bash ...`). On rejection we write an audit
-      // row the principal can spot in the dashboard.
+      // Agent gate. Emma can shell out to this CLI, so a prompt injection
+      // could otherwise talk her into creating `--kind bash` schedules
+      // that run arbitrary shell commands as the service user.
+      //
+      // The gate:
+      //   - With ANDYBIOTICLAW_AGENT_CAN_BASH=1 set: anything goes (the
+      //     principal is acting directly via their shell).
+      //   - Without it: only `reminder` + `agent-task` allowed (Emma's
+      //     self-service surface — agent-task just re-runs Emma with a
+      //     prompt, same risk profile as a normal DM). `bash` and
+      //     `http-check` stay principal-only.
+      //   - `agent-task` is also capped at AGENT_TASK_SCHEDULE_CAP active
+      //     rows so a hostile prompt can't loop Emma into mass-creating.
+      //
+      // See `evaluateScheduleKindGate` for the matrix.
       const agentCanBash = process.env.ANDYBIOTICLAW_AGENT_CAN_BASH === '1';
-      if (!agentCanBash && kindRes.data !== 'reminder') {
+      let agentTaskCount = 0;
+      if (kindRes.data === 'agent-task' && !agentCanBash) {
+        const { dbHandle } = openRuntime();
+        try {
+          const repo = createSchedulesRepo(dbHandle.db);
+          agentTaskCount = repo.list().filter((s) => s.kind === 'agent-task').length;
+        } finally {
+          dbHandle.close();
+        }
+      }
+      const gate = evaluateScheduleKindGate({
+        kind: kindRes.data,
+        agentCanBash,
+        agentTaskCount,
+      });
+      if (!gate.ok) {
         const { dbHandle } = openRuntime();
         try {
           const auditRepo = createAuditRepo(dbHandle.db);
@@ -718,15 +740,14 @@ schedule
               attemptedKind: kindRes.data,
               name: opts.name,
               cron: cronExpr,
-              reason: 'ANDYBIOTICLAW_AGENT_CAN_BASH not set',
+              reason: gate.reason,
             },
           });
         } finally {
           dbHandle.close();
         }
         process.stderr.write(
-          `refusing to create schedule of kind "${kindRes.data}" — only 'reminder' is permitted\n` +
-            `when ANDYBIOTICLAW_AGENT_CAN_BASH is not set.\n` +
+          `refusing to create schedule of kind "${kindRes.data}": ${gate.reason}\n` +
             `If you (the principal) really want this, prefix the command:\n` +
             `  ANDYBIOTICLAW_AGENT_CAN_BASH=1 andybioticlaw schedule add ...\n`,
         );

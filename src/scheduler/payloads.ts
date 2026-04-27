@@ -25,7 +25,10 @@ export const HttpCheckPayload = z.object({
 export type HttpCheckPayload = z.infer<typeof HttpCheckPayload>;
 
 export const AgentTaskPayload = z.object({
-  prompt: z.string().min(1),
+  // 4000-char cap matches `ReminderPayload.text`. Generous for digest-style
+  // prompts (~1000 tokens of instruction) but small enough that an injected
+  // payload can't balloon to MBs of stored text fired daily.
+  prompt: z.string().min(1).max(4000),
   /**
    * Telegram chat to stream/send the response to. If omitted, the scheduler
    * uses the principal user (first entry in telegram.dm.allowedUserIds).
