@@ -16,6 +16,7 @@ function skill(
     aptDependencies: [],
     systemCommands: [],
     mcpServers: [],
+    execAllow: [],
     manifestPath: `/tmp/${name}/manifest.yaml`,
     skillMdPath: `/tmp/${name}/SKILL.md`,
     skillDir: `/tmp/${name}`,

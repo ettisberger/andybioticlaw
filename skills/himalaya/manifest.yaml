@@ -23,6 +23,15 @@ required_secrets:
 system_commands:
   - himalaya
 
+# Bash-tool patterns Emma needs allowed when this skill is active.
+# Merged into the per-session .claude/settings.json by the harness
+# at session-start (step 4 of the multi-agent refactor). Without these,
+# tightening the principal context's execMode from 'full' to 'allowlist'
+# would silently break email — Emma calls `himalaya` directly via her
+# Bash tool because there's no MCP server (see mcp_servers: [] below).
+exec_allow:
+  - "Bash(himalaya *)"
+
 # No MCP server — Emma uses her built-in Bash tool to shell out to `himalaya`.
 # Per-session config is written to $HOME/.config/himalaya/config.toml and
 # references the env vars, so credentials only live in .env.

@@ -68,6 +68,23 @@ export const SkillManifest = z.object({
   apt_dependencies: z.array(z.string()).default([]),
   system_commands: z.array(z.string()).default([]),
   mcp_servers: z.array(McpServerConfig).default([]),
+  /**
+   * Bash-tool patterns this skill needs the agent to be allowed to run.
+   * Same shape as Claude Code's `permissions.allow` — `Bash(<glob>)`.
+   * Step 4 of the multi-agent refactor merges these into the per-session
+   * `.claude/settings.json` so a skill that shells out (e.g. himalaya)
+   * still works after the permission-mode switch from `bypassPermissions`
+   * to `default`. Until then this list is parsed but not enforced.
+   *
+   * Examples:
+   *   - "Bash(himalaya *)"      — himalaya skill: any himalaya invocation
+   *   - "Bash(git status*)"     — read-only git
+   *   - "Bash(curl https://api.example.com/*)" — limited HTTP
+   *
+   * Intentionally NOT a wildcard `["*"]` shorthand — skills should
+   * declare exactly what they need, so the operator can audit on enable.
+   */
+  exec_allow: z.array(z.string()).default([]),
   /** Optional CLI wizard triggered by `andybioticlaw skill setup <name>`. */
   setup_wizard: SetupWizard.optional(),
 });

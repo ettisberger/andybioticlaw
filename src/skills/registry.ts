@@ -12,6 +12,10 @@ export interface SkillRecord {
   aptDependencies: readonly string[];
   systemCommands: readonly string[];
   mcpServers: SkillManifest['mcp_servers'];
+  /** Bash-tool patterns the skill needs allowed in the agent session.
+   *  Merged into `.claude/settings.json` per-session at session-start
+   *  by the harness (step 4 of the multi-agent refactor). */
+  execAllow: readonly string[];
   /** Setup-wizard definition (for `andybioticlaw skill setup <name>`), if any. */
   setupWizard?: SkillManifest['setup_wizard'];
   manifestPath: string;
