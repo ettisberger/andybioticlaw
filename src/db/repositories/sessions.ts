@@ -24,6 +24,9 @@ export interface SessionRecord {
   error: string | null;
   workspace_path: string | null;
   model: string | null;
+  /** Which agent ran this session. Always set; defaults to 'emma' for
+   *  rows created before migration 0009. */
+  agent_id: string;
 }
 
 export interface CreateSessionInput {
@@ -34,6 +37,9 @@ export interface CreateSessionInput {
   input_preview: string;
   model: string;
   workspace_path?: string;
+  /** Which agent owns this session. Required for new rows; the harness
+   *  resolves it from the binding rules at session-start. */
+  agent_id: string;
 }
 
 export interface UpdateSessionInput {
@@ -110,8 +116,8 @@ export interface SessionsRepo {
 
 export function createSessionsRepo(db: Database): SessionsRepo {
   const insert = db.prepare(
-    `INSERT INTO sessions (id, source, source_ref, status, input_preview, started_at, model, workspace_path, tokens_input, tokens_output)
-     VALUES (@id, @source, @source_ref, @status, @input_preview, @started_at, @model, @workspace_path, 0, 0)`,
+    `INSERT INTO sessions (id, source, source_ref, status, input_preview, started_at, model, workspace_path, agent_id, tokens_input, tokens_output)
+     VALUES (@id, @source, @source_ref, @status, @input_preview, @started_at, @model, @workspace_path, @agent_id, 0, 0)`,
   );
 
   const selectOne = db.prepare<{ id: string }, SessionRecord>(
@@ -192,6 +198,7 @@ export function createSessionsRepo(db: Database): SessionsRepo {
         started_at: Date.now(),
         model: input.model,
         workspace_path: input.workspace_path ?? null,
+        agent_id: input.agent_id,
       });
     },
     update(id, patch) {

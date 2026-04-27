@@ -33,6 +33,10 @@ export interface SessionExecuteInput {
   model: string;
   timezone: string;
   agentName: string;
+  /** Stable id of the agent running this session — recorded on the
+   *  sessions table so per-agent dashboards / metrics work after the
+   *  multi-agent split. Today everyone is 'emma'. */
+  agentId: string;
   allowedTools: string;
   streamIdleTimeoutMs: number;
   cwd: string;
@@ -127,6 +131,7 @@ export async function executeSession(
     status: 'running',
     input_preview: input.userMessage,
     model: input.model,
+    agent_id: input.agentId,
   });
 
   deps.liveSessions?.start({

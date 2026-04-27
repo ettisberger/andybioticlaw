@@ -20,6 +20,7 @@ function makeDb() {
     '0003_pending_email_sends.sql',
     '0004_schedules_one_shot.sql',
     '0005_budget_state.sql',
+    '0009_agents_and_context.sql',
   ];
   for (const file of migrations) {
     db.exec(

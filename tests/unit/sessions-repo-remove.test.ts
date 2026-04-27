@@ -44,6 +44,7 @@ function seedSession(db: Database.Database, id: string) {
     status: 'running',
     input_preview: 'hi',
     model: 'claude-opus-4-7',
+    agent_id: 'emma',
   });
   // Sessions only become deletable from the dashboard when not running, but
   // the repo allows any status. Mark completed so the test mirrors real usage.

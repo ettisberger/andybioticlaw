@@ -13,26 +13,14 @@ import { createSessionsRepo } from '../../src/db/repositories/sessions.js';
 describe('orphan recovery on boot', () => {
   function makeDb() {
     const db = new Database(':memory:');
-    db.exec(
-      readFileSync(
-        resolve(__dirname, '..', '..', 'src', 'db', 'migrations', '0001_init.sql'),
-        'utf8',
-      ),
-    );
-    db.exec(
-      readFileSync(
-        resolve(
-          __dirname,
-          '..',
-          '..',
-          'src',
-          'db',
-          'migrations',
-          '0002_memory_proposals_skill_state.sql',
-        ),
-        'utf8',
-      ),
-    );
+    const migDir = resolve(__dirname, '..', '..', 'src', 'db', 'migrations');
+    for (const f of [
+      '0001_init.sql',
+      '0002_memory_proposals_skill_state.sql',
+      '0009_agents_and_context.sql',
+    ]) {
+      db.exec(readFileSync(resolve(migDir, f), 'utf8'));
+    }
     return db;
   }
 
@@ -40,10 +28,10 @@ describe('orphan recovery on boot', () => {
     const db = makeDb();
     const repo = createSessionsRepo(db);
 
-    repo.create({ id: 's-running-1', source: 'dm', source_ref: 'chat-A', status: 'running', input_preview: 'a', model: 'm' });
-    repo.create({ id: 's-running-2', source: 'dm', source_ref: 'chat-A', status: 'running', input_preview: 'b', model: 'm' });
-    repo.create({ id: 's-queued-1',  source: 'dm', source_ref: 'chat-B', status: 'queued',  input_preview: 'c', model: 'm' });
-    repo.create({ id: 's-done-1',    source: 'dm', source_ref: 'chat-A', status: 'completed', input_preview: 'd', model: 'm' });
+    repo.create({ id: 's-running-1', source: 'dm', source_ref: 'chat-A', status: 'running', input_preview: 'a', model: 'm', agent_id: 'emma' });
+    repo.create({ id: 's-running-2', source: 'dm', source_ref: 'chat-A', status: 'running', input_preview: 'b', model: 'm', agent_id: 'emma' });
+    repo.create({ id: 's-queued-1',  source: 'dm', source_ref: 'chat-B', status: 'queued',  input_preview: 'c', model: 'm', agent_id: 'emma' });
+    repo.create({ id: 's-done-1',    source: 'dm', source_ref: 'chat-A', status: 'completed', input_preview: 'd', model: 'm', agent_id: 'emma' });
 
     const result = repo.markRunningAsOrphaned();
     expect(result.count).toBe(3);

@@ -29,6 +29,8 @@ import { registerMemoryCallbacks } from './handlers/memory-callbacks.js';
 export interface BotConfigView {
   botToken: string;
   agentName: string;
+  /** Stable agent id (e.g. 'emma'). Threaded onto every session row. */
+  agentId: string;
   model: string;
   timezone: string;
   cwd: string;
@@ -189,6 +191,7 @@ export function createTelegramService(deps: BotDeps): TelegramService {
     queue,
     cwd: deps.config.cwd,
     agentName: deps.config.agentName,
+      agentId: deps.config.agentId,
     model: deps.config.model,
     ...(deps.config.chooseModel ? { chooseModel: deps.config.chooseModel } : {}),
     timezone: deps.config.timezone,

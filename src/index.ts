@@ -247,6 +247,7 @@ async function main(): Promise<void> {
       config: {
         botToken,
         agentName: config.agent.name,
+        agentId: 'emma',
         model: config.agent.model,
         timezone: config.service.timezone,
         cwd: dmWorkspace,
@@ -317,6 +318,7 @@ async function main(): Promise<void> {
         model: modelOverride ?? config.agent.model,
         timezone: config.service.timezone,
         agentName: config.agent.name,
+        agentId: 'emma',
         allowedTools: config.agent.allowedTools,
         streamIdleTimeoutMs: config.agent.streamIdleTimeoutSec * 1000,
         cwd: dmWorkspace,
@@ -379,6 +381,7 @@ async function main(): Promise<void> {
         queue: telegram.queue,
         cwd: dmWorkspace,
         agentName: config.agent.name,
+        agentId: 'emma',
         model: config.agent.model,
         timezone: config.service.timezone,
         memoryAutoAccept: () => config.memory.autoAccept,

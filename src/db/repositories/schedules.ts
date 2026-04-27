@@ -7,6 +7,10 @@ export interface ScheduleRecord {
   cron_expr: string;
   kind: ScheduleKind;
   payload: string; // JSON string
+  /** Context this schedule fires under, e.g. "emma:dm:18998064". Nullable
+   *  for rows created before migration 0009 — the dispatcher falls back
+   *  to the default agent's principal-DM context when null. */
+  context: string | null;
   enabled: 0 | 1;
   /**
    * 1 = fire on every cron match forever (classic cron job).
@@ -29,6 +33,10 @@ export interface CreateScheduleInput {
   cron_expr: string;
   kind: ScheduleKind;
   payload: string; // JSON string
+  /** Context this schedule fires under. Optional for backward compat
+   *  with the old --kind/--payload CLI; new flag-based syntax always
+   *  passes this through. */
+  context?: string | null;
   enabled?: boolean;
   /** Default: true (classic recurring). Pass false for one-shot semantics. */
   recurring?: boolean;
@@ -100,8 +108,8 @@ const ALLOWED_SCHEDULE_UPDATE_KEYS: readonly (keyof UpdateScheduleInput)[] = [
 
 export function createSchedulesRepo(db: Database): SchedulesRepo {
   const insert = db.prepare(
-    `INSERT INTO schedules (name, cron_expr, kind, payload, enabled, recurring, budget_tokens_per_day, budget_used_today, created_at)
-     VALUES (@name, @cron_expr, @kind, @payload, @enabled, @recurring, @budget_tokens_per_day, 0, @created_at)`,
+    `INSERT INTO schedules (name, cron_expr, kind, payload, context, enabled, recurring, budget_tokens_per_day, budget_used_today, created_at)
+     VALUES (@name, @cron_expr, @kind, @payload, @context, @enabled, @recurring, @budget_tokens_per_day, 0, @created_at)`,
   );
   const selectOne = db.prepare<{ id: number }, ScheduleRecord>(
     `SELECT * FROM schedules WHERE id = @id`,
@@ -149,6 +157,7 @@ export function createSchedulesRepo(db: Database): SchedulesRepo {
         cron_expr: input.cron_expr,
         kind: input.kind,
         payload: input.payload,
+        context: input.context ?? null,
         enabled: input.enabled === false ? 0 : 1,
         recurring: input.recurring === false ? 0 : 1,
         budget_tokens_per_day: input.budget_tokens_per_day ?? null,

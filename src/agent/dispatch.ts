@@ -27,6 +27,9 @@ export interface DispatchDeps {
   queue: QueueManager<SessionExecuteInput, SessionExecuteResult>;
   cwd: string;
   agentName: string;
+  /** Stable agent id (e.g. 'emma'). Carried onto every session row so
+   *  per-agent dashboards / metrics work after multi-agent lands. */
+  agentId: string;
   model: string;
   /**
    * Optional per-message model chooser. When set, called with the user's
@@ -179,6 +182,7 @@ export async function dispatchUserPrompt(
     model: deps.chooseModel ? deps.chooseModel(req.userText) : deps.model,
     timezone: deps.timezone,
     agentName: deps.agentName,
+    agentId: deps.agentId,
     allowedTools: deps.allowedTools(),
     streamIdleTimeoutMs: deps.streamIdleTimeoutMs(),
     cwd: deps.cwd,

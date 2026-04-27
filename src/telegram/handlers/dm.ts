@@ -49,6 +49,9 @@ export interface DmHandlerDeps {
   queue: QueueManager<SessionExecuteInput, SessionExecuteResult>;
   cwd: string;
   agentName: string;
+  /** Stable agent id (e.g. 'emma'). Recorded on session rows for the
+   *  multi-agent split — today everyone is 'emma'. */
+  agentId: string;
   model: string;
   /** Opt-in per-message router (Opus↔Haiku). If absent, `model` is always used. */
   chooseModel?: (userText: string) => string;
@@ -88,6 +91,7 @@ function dispatchDepsFromHandler(deps: DmHandlerDeps): DispatchDeps {
     queue: deps.queue,
     cwd: deps.cwd,
     agentName: deps.agentName,
+    agentId: deps.agentId,
     model: deps.model,
     ...(deps.chooseModel ? { chooseModel: deps.chooseModel } : {}),
     timezone: deps.timezone,

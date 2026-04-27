@@ -22,6 +22,7 @@ const MIGRATIONS = [
   '0001_init.sql',
   '0002_memory_proposals_skill_state.sql',
   '0004_schedules_one_shot.sql',
+  '0009_agents_and_context.sql',
 ];
 
 function makeDb() {

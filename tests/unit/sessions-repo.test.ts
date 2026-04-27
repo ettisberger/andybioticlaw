@@ -7,11 +7,10 @@ import { createMessagesRepo } from '../../src/db/repositories/messages.js';
 
 function makeDb() {
   const db = new Database(':memory:');
-  const sql = readFileSync(
-    resolve(__dirname, '..', '..', 'src', 'db', 'migrations', '0001_init.sql'),
-    'utf8',
-  );
-  db.exec(sql);
+  const migDir = resolve(__dirname, '..', '..', 'src', 'db', 'migrations');
+  for (const f of ['0001_init.sql', '0009_agents_and_context.sql']) {
+    db.exec(readFileSync(resolve(migDir, f), 'utf8'));
+  }
   return db;
 }
 
@@ -31,6 +30,7 @@ describe('SessionsRepo', () => {
       status: 'running',
       input_preview: 'hello',
       model: 'claude-opus-4-7',
+      agent_id: 'emma',
     });
     repo.update('s1', { status: 'completed', tokens_input: 50, tokens_output: 20, ended_at: Date.now() });
     const r = repo.get('s1');
@@ -49,6 +49,7 @@ describe('SessionsRepo', () => {
       status: 'running',
       input_preview: 'a',
       model: 'm',
+      agent_id: 'emma',
     });
     repo.create({
       id: 's2',
@@ -57,6 +58,7 @@ describe('SessionsRepo', () => {
       status: 'queued',
       input_preview: 'b',
       model: 'm',
+      agent_id: 'emma',
     });
     repo.create({
       id: 's3',
@@ -65,6 +67,7 @@ describe('SessionsRepo', () => {
       status: 'completed',
       input_preview: 'c',
       model: 'm',
+      agent_id: 'emma',
     });
     const result = repo.markRunningAsOrphaned();
     expect(result.count).toBe(2);
@@ -79,6 +82,7 @@ describe('SessionsRepo', () => {
     repo.create({
       id: 's1', source: 'dm', source_ref: 'c1', status: 'completed',
       input_preview: '', model: 'm',
+      agent_id: 'emma',
     });
     repo.update('s1', { tokens_input: 100, tokens_output: 50 });
 
@@ -96,6 +100,7 @@ describe('SessionsRepo', () => {
       status: 'completed',
       input_preview: '',
       model: 'claude-opus-4-7',
+      agent_id: 'emma',
     });
     repo.update('in', { tokens_input: 10, tokens_output: 5 });
 
@@ -115,6 +120,7 @@ describe('SessionsRepo', () => {
       id: 'opus-1',
       source: 'dm', source_ref: 'c1', status: 'completed',
       input_preview: '', model: 'claude-opus-4-7',
+      agent_id: 'emma',
     });
     repo.update('opus-1', { tokens_input: 100, tokens_output: 20 });
 
@@ -122,6 +128,7 @@ describe('SessionsRepo', () => {
       id: 'opus-2',
       source: 'dm', source_ref: 'c1', status: 'completed',
       input_preview: '', model: 'claude-opus-4-7',
+      agent_id: 'emma',
     });
     repo.update('opus-2', { tokens_input: 50, tokens_output: 10 });
 
@@ -129,6 +136,7 @@ describe('SessionsRepo', () => {
       id: 'haiku-1',
       source: 'dm', source_ref: 'c1', status: 'completed',
       input_preview: '', model: 'claude-haiku-4-5',
+      agent_id: 'emma',
     });
     repo.update('haiku-1', { tokens_input: 30, tokens_output: 5 });
 
@@ -148,12 +156,14 @@ describe('SessionsRepo', () => {
       id: 'a',
       source: 'dm', source_ref: 'c1', status: 'completed',
       input_preview: '', model: 'claude-opus-4-7',
+      agent_id: 'emma',
     });
     repo.update('a', { tokens_input: 100, tokens_output: 50 });
     repo.create({
       id: 'b',
       source: 'dm', source_ref: 'c1', status: 'completed',
       input_preview: '', model: 'claude-opus-4-7',
+      agent_id: 'emma',
     });
     repo.update('b', { tokens_input: 10, tokens_output: 5 });
 
@@ -182,6 +192,7 @@ describe('MessagesRepo', () => {
       status: 'running',
       input_preview: '',
       model: 'm',
+      agent_id: 'emma',
     });
   });
 
@@ -209,6 +220,7 @@ describe('MessagesRepo', () => {
       status: 'running',
       input_preview: '',
       model: 'm',
+      agent_id: 'emma',
     });
     repo.insert({ session_id: 's1', chat_id: 'c1', role: 'user', content: 'a' });
     repo.insert({ session_id: 's2', chat_id: 'c2', role: 'user', content: 'b' });

@@ -13,15 +13,14 @@ const logger = pino({ level: 'silent' });
 
 function makeDb() {
   const db = new Database(':memory:');
-  db.exec(
-    readFileSync(resolve(__dirname, '..', '..', 'src', 'db', 'migrations', '0001_init.sql'), 'utf8'),
-  );
-  db.exec(
-    readFileSync(
-      resolve(__dirname, '..', '..', 'src', 'db', 'migrations', '0002_memory_proposals_skill_state.sql'),
-      'utf8',
-    ),
-  );
+  const migDir = resolve(__dirname, '..', '..', 'src', 'db', 'migrations');
+  for (const f of [
+    '0001_init.sql',
+    '0002_memory_proposals_skill_state.sql',
+    '0009_agents_and_context.sql',
+  ]) {
+    db.exec(readFileSync(resolve(migDir, f), 'utf8'));
+  }
   return db;
 }
 
@@ -56,6 +55,7 @@ describe('sweepSessionWorkspaces', () => {
       status: 'failed',
       input_preview: 'x',
       model: 'm',
+      agent_id: 'emma',
     });
     repo.create({
       id: oldCompletedId,
@@ -64,6 +64,7 @@ describe('sweepSessionWorkspaces', () => {
       status: 'completed',
       input_preview: 'y',
       model: 'm',
+      agent_id: 'emma',
     });
     makeDir(oldFailedId, 48 * 3600 * 1000);
     makeDir(oldCompletedId, 48 * 3600 * 1000);
@@ -88,6 +89,7 @@ describe('sweepSessionWorkspaces', () => {
       status: 'completed',
       input_preview: 'x',
       model: 'm',
+      agent_id: 'emma',
     });
     makeDir(id, 2 * 3600 * 1000); // 2h old — below default 24h threshold
 
@@ -112,6 +114,7 @@ describe('sweepSessionWorkspaces', () => {
       status: 'running',
       input_preview: 'x',
       model: 'm',
+      agent_id: 'emma',
     });
     repo.create({
       id: queuedId,
@@ -120,6 +123,7 @@ describe('sweepSessionWorkspaces', () => {
       status: 'queued',
       input_preview: 'y',
       model: 'm',
+      agent_id: 'emma',
     });
     makeDir(runningId, 48 * 3600 * 1000);
     makeDir(queuedId, 48 * 3600 * 1000);

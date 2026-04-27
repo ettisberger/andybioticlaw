@@ -18,7 +18,7 @@ describe('migration runner — fresh boot', () => {
     try {
       const { db, close } = openDatabase(dbPath, logger);
 
-      // Expected tables per the current migration set (0001..0008).
+      // Expected tables per the current migration set (0001..0009).
       const tables = db
         .prepare<[], { name: string }>(
           `SELECT name FROM sqlite_master WHERE type='table' ORDER BY name`,
@@ -86,7 +86,19 @@ describe('migration runner — fresh boot', () => {
         .prepare<[], { version: number }>('SELECT version FROM schema_version ORDER BY version')
         .all()
         .map((r) => r.version);
-      expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+      // Migration 0009 added sessions.agent_id + schedules.context.
+      const sessionCols = db
+        .prepare<[], { name: string }>(`PRAGMA table_info(sessions)`)
+        .all()
+        .map((r) => r.name);
+      expect(sessionCols).toContain('agent_id');
+      const scheduleCols2 = db
+        .prepare<[], { name: string }>(`PRAGMA table_info(schedules)`)
+        .all()
+        .map((r) => r.name);
+      expect(scheduleCols2).toContain('context');
+
+      expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
 
       close();
     } finally {
@@ -105,7 +117,7 @@ describe('migration runner — fresh boot', () => {
       const rows = second.db
         .prepare<[], { n: number }>('SELECT COUNT(*) AS n FROM schema_version')
         .all();
-      expect(rows[0]!.n).toBe(8);
+      expect(rows[0]!.n).toBe(9);
       second.close();
     } finally {
       rmSync(dir, { recursive: true, force: true });
