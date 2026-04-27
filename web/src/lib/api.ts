@@ -51,15 +51,20 @@ export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
   return (await r.json()) as T;
 }
 
-export async function apiDelete<T>(path: string): Promise<T> {
+export async function apiDelete<T>(path: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = {};
   const csrf = readCsrfToken();
   if (csrf) headers['X-CSRF-Token'] = csrf;
-  const r = await fetch(path, {
+  const init: RequestInit = {
     method: 'DELETE',
     credentials: 'same-origin',
     headers,
-  });
+  };
+  if (body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+    init.body = JSON.stringify(body);
+  }
+  const r = await fetch(path, init);
   if (!r.ok) {
     const j = await safeJson(r);
     throw new ApiError(r.status, j, `DELETE ${path} → ${r.status}`);

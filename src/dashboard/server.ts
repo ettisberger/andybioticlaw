@@ -241,6 +241,7 @@ export function createDashboard(deps: DashboardDeps): DashboardService {
     sessionsRoutes({
       sessions: deps.sessions,
       messages: deps.messages,
+      audit: deps.audit,
       dispatch: deps.dispatch,
       principalUserId: deps.principalUserId,
       liveSessions: deps.liveSessions,

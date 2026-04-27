@@ -76,6 +76,19 @@ export interface SessionsRepo {
   update(id: string, patch: UpdateSessionInput): void;
   get(id: string): SessionRecord | null;
   markRunningAsOrphaned(): { count: number; chatIds: string[] };
+  /**
+   * Hard-delete a session by id. `messages` cascade automatically (FK).
+   * Also cleans non-FK orphans in `memory_proposals` and
+   * `pending_email_sends` whose session_id columns point at this row.
+   * Returns `{ session, messages, proposals, emailSends }` row counts so
+   * callers can audit / show a confirmation.
+   */
+  remove(id: string): {
+    session: number;
+    messages: number;
+    proposals: number;
+    emailSends: number;
+  };
   list(opts?: { status?: SessionStatus; limit?: number }): SessionRecord[];
   tokensUsedBetween(fromMs: number, toMs: number): number;
   /** Sum of `tokens_input + tokens_output` for sessions started since `fromMs`. */
@@ -213,6 +226,50 @@ export function createSessionsRepo(db: Database): SessionsRepo {
         ),
       );
       return { count: rows.length, chatIds };
+    },
+    remove(id) {
+      // Wrap in a transaction so a partial failure (e.g. broken DB write
+      // mid-statement) leaves the row set consistent — either the session
+      // and all its dependents are gone, or nothing is.
+      const tx = db.transaction((sessionId: string) => {
+        // messages cascade via FK ON DELETE CASCADE — count first so the
+        // caller can audit + show "deleted N messages".
+        const msgCount = db
+          .prepare<{ id: string }, { n: number }>(
+            `SELECT COUNT(*) AS n FROM messages WHERE session_id = @id`,
+          )
+          .get({ id: sessionId });
+        const proposalCount = db
+          .prepare<{ id: string }, { n: number }>(
+            `SELECT COUNT(*) AS n FROM memory_proposals WHERE session_id = @id`,
+          )
+          .get({ id: sessionId });
+        const emailCount = db
+          .prepare<{ id: string }, { n: number }>(
+            `SELECT COUNT(*) AS n FROM pending_email_sends
+             WHERE propose_session_id = @id OR commit_session_id = @id`,
+          )
+          .get({ id: sessionId });
+
+        db.prepare(`DELETE FROM memory_proposals WHERE session_id = @id`).run({
+          id: sessionId,
+        });
+        db.prepare(
+          `DELETE FROM pending_email_sends
+           WHERE propose_session_id = @id OR commit_session_id = @id`,
+        ).run({ id: sessionId });
+        const sessionResult = db
+          .prepare(`DELETE FROM sessions WHERE id = @id`)
+          .run({ id: sessionId });
+
+        return {
+          session: sessionResult.changes,
+          messages: msgCount?.n ?? 0,
+          proposals: proposalCount?.n ?? 0,
+          emailSends: emailCount?.n ?? 0,
+        };
+      });
+      return tx(id);
     },
     tokensUsedBetween(fromMs, toMs) {
       const row = tokensSum.get({ from: fromMs, to: toMs });

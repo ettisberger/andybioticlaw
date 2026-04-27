@@ -1,8 +1,21 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { apiGet, apiPost, formatTs, truncate } from '../lib/api';
+import { ApiError, apiDelete, apiGet, apiPost, formatTs, truncate } from '../lib/api';
 import { Badge, Button, ErrorBanner, PageTitle, Table, Td, Th, Empty } from '../components/ui';
 import { estimateUsd, formatUsd } from '../lib/pricing';
+
+/**
+ * Sessions that are still in flight cannot be deleted (server refuses
+ * with 409). The UI hides the checkbox + per-row delete on these statuses
+ * so the user doesn't try and get a confusing error.
+ */
+const DELETABLE_STATUSES = new Set([
+  'completed',
+  'cancelled',
+  'failed',
+  'crashed',
+  'orphaned',
+]);
 
 interface SessionRow {
   id: string;
@@ -47,6 +60,7 @@ export function SessionsPage() {
   const [error, setError] = useState<string | null>(null);
   const [retryMsg, setRetryMsg] = useState<string | null>(null);
   const [live, setLive] = useState<LiveSession[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   async function load() {
     try {
@@ -56,6 +70,92 @@ export function SessionsPage() {
       setError(null);
     } catch (e) {
       setError((e as Error).message);
+    }
+  }
+
+  // Drop ids from `selectedIds` that no longer appear in `rows` so a stale
+  // selection (e.g. after a filter change) doesn't bulk-delete invisible rows.
+  const visibleSelectedCount = useMemo(() => {
+    const visibleIds = new Set(rows.map((r) => r.id));
+    let n = 0;
+    for (const id of selectedIds) if (visibleIds.has(id)) n++;
+    return n;
+  }, [rows, selectedIds]);
+
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAllVisible() {
+    const deletable = rows.filter((r) => DELETABLE_STATUSES.has(r.status));
+    const allSelected = deletable.every((r) => selectedIds.has(r.id));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allSelected) {
+        for (const r of deletable) next.delete(r.id);
+      } else {
+        for (const r of deletable) next.add(r.id);
+      }
+      return next;
+    });
+  }
+
+  async function handleDelete(id: string) {
+    if (!window.confirm(`Permanently delete session ${id.slice(0, 8)}…?\n\nThis also removes its messages and any related memory proposals / pending email sends.`)) {
+      return;
+    }
+    try {
+      const r = await apiDelete<{
+        ok: true;
+        messages: number;
+        proposals: number;
+        emailSends: number;
+      }>(`/api/sessions/${id}`);
+      const extras: string[] = [];
+      if (r.messages > 0) extras.push(`${r.messages} message${r.messages === 1 ? '' : 's'}`);
+      if (r.proposals > 0) extras.push(`${r.proposals} proposal${r.proposals === 1 ? '' : 's'}`);
+      if (r.emailSends > 0) extras.push(`${r.emailSends} email send${r.emailSends === 1 ? '' : 's'}`);
+      const tail = extras.length > 0 ? ` (+ ${extras.join(', ')})` : '';
+      setRetryMsg(`deleted ${id.slice(0, 8)}…${tail}`);
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      await load();
+    } catch (e) {
+      const err = e as ApiError;
+      setRetryMsg(
+        `delete failed: ${(err.body as { error?: string } | null)?.error ?? err.message}`,
+      );
+    }
+  }
+
+  async function handleBulkDelete() {
+    const ids = rows.filter((r) => selectedIds.has(r.id)).map((r) => r.id);
+    if (ids.length === 0) return;
+    if (!window.confirm(`Permanently delete ${ids.length} session${ids.length === 1 ? '' : 's'}?\n\nThis also removes their messages and any related memory proposals / pending email sends.`)) {
+      return;
+    }
+    try {
+      const r = await apiDelete<{
+        deleted: Array<{ id: string }>;
+        skipped: Array<{ id: string; reason: string }>;
+        notFound: string[];
+      }>(`/api/sessions`, { ids });
+      const parts: string[] = [`deleted ${r.deleted.length}`];
+      if (r.skipped.length > 0) parts.push(`skipped ${r.skipped.length}`);
+      if (r.notFound.length > 0) parts.push(`${r.notFound.length} already gone`);
+      setRetryMsg(parts.join(', '));
+      setSelectedIds(new Set());
+      await load();
+    } catch (e) {
+      setRetryMsg(`bulk delete failed: ${(e as Error).message}`);
     }
   }
 
@@ -133,7 +233,7 @@ export function SessionsPage() {
         </div>
       )}
 
-      <div className="mb-3 flex gap-1.5 flex-wrap">
+      <div className="mb-3 flex gap-1.5 flex-wrap items-center">
         {FILTERS.map((f) => (
           <button
             key={f.label}
@@ -147,6 +247,11 @@ export function SessionsPage() {
             {f.label}
           </button>
         ))}
+        {visibleSelectedCount > 0 && (
+          <Button variant="danger" onClick={() => void handleBulkDelete()}>
+            Delete {visibleSelectedCount} selected
+          </Button>
+        )}
       </div>
 
       {rows.length === 0 ? (
@@ -155,6 +260,19 @@ export function SessionsPage() {
         <Table>
           <thead>
             <tr>
+              <Th className="w-8">
+                <input
+                  type="checkbox"
+                  aria-label="Select all deletable sessions"
+                  checked={
+                    rows.filter((r) => DELETABLE_STATUSES.has(r.status)).length > 0 &&
+                    rows
+                      .filter((r) => DELETABLE_STATUSES.has(r.status))
+                      .every((r) => selectedIds.has(r.id))
+                  }
+                  onChange={toggleSelectAllVisible}
+                />
+              </Th>
               <Th>Status</Th>
               <Th>Id</Th>
               <Th>Started</Th>
@@ -167,8 +285,19 @@ export function SessionsPage() {
           <tbody>
             {rows.map((s) => {
               const retriable = ['failed', 'crashed', 'orphaned', 'cancelled'].includes(s.status);
+              const deletable = DELETABLE_STATUSES.has(s.status);
               return (
                 <tr key={s.id} className="hover:bg-surface-muted/50">
+                  <Td>
+                    {deletable ? (
+                      <input
+                        type="checkbox"
+                        aria-label={`Select session ${s.id.slice(0, 8)}`}
+                        checked={selectedIds.has(s.id)}
+                        onChange={() => toggleSelected(s.id)}
+                      />
+                    ) : null}
+                  </Td>
                   <Td>
                     <Badge tone={statusTone(s.status)}>{s.status}</Badge>
                   </Td>
@@ -188,11 +317,18 @@ export function SessionsPage() {
                   </Td>
                   <Td className="text-xs text-ink">{truncate(s.input_preview, 80)}</Td>
                   <Td>
-                    {retriable && (
-                      <Button variant="ghost" onClick={() => handleRetry(s.id)}>
-                        retry
-                      </Button>
-                    )}
+                    <div className="flex items-center gap-1">
+                      {retriable && (
+                        <Button variant="ghost" onClick={() => handleRetry(s.id)}>
+                          retry
+                        </Button>
+                      )}
+                      {deletable && (
+                        <Button variant="ghost" onClick={() => void handleDelete(s.id)}>
+                          delete
+                        </Button>
+                      )}
+                    </div>
                   </Td>
                 </tr>
               );
