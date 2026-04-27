@@ -102,11 +102,17 @@ jobs:
           ls -lh "$OUT"
           # Sanity: tarball MUST contain dist/index.js + web/dist/index.html
           # + package.json (otherwise install.sh fails its preflight). The
-          # previous `grep ... | head` form was a no-op — it printed matches
-          # but didn't fail when files were missing, which is how v0.22.0
-          # shipped without dist/. This loop fails the workflow loudly.
+          # very first form was `grep ... | head` — a no-op that printed
+          # matches but didn't fail. The next form (`tar tzf | grep -qE`)
+          # was worse: under `set -euo pipefail`, when grep -q matched and
+          # exited early, tar got SIGPIPE on its next write, pipefail flipped
+          # the pipeline to non-zero, the `!` inverted that to truthy, and
+          # the loop falsely reported every file as missing — that's how
+          # v0.22.1 was tagged without a tarball asset. Capture the listing
+          # ONCE into a variable, then grep against it. No pipe, no SIGPIPE.
+          contents="$(tar tzf "$OUT")"
           for required in dist/index.js web/dist/index.html package.json; do
-            if ! tar tzf "$OUT" | grep -qE "/${required}$"; then
+            if ! grep -qE "/${required}$" <<<"$contents"; then
               echo "ERROR: tarball missing required file: $required" >&2
               exit 1
             fi
