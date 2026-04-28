@@ -309,9 +309,18 @@ Remaining steps (one-time):
   1. Switch to the service user:
        sudo -iu $SERVICE_USER
 
-  2. Log into Claude (subscription credentials):
+  2. Install Claude Code CLI for THIS user (if not already), then
+     authenticate against your subscription. Pick ONE auth path:
+
+       # Install (run as $SERVICE_USER so the binary lands somewhere
+       # the systemd unit's PATH can see — ~/.local/bin):
+       curl -fsSL https://claude.ai/install.sh | bash
+
+       # Auth (recommended): long-lived OAuth token for unattended servers
+       claude setup-token       # → prints sk-ant-oat-…; paste into wizard step 5
+
+       # Auth (alternative): interactive session (re-login every few months)
        claude login
-     (OAuth flow — open the URL, paste the code back.)
 
   3. Launch the interactive menu and run setup:
        andybioticlaw
@@ -322,12 +331,17 @@ Remaining steps (one-time):
        systemctl start andybioticlaw
        systemctl status andybioticlaw
 
-  5. Follow logs:
+  5. Verify all subsystems are healthy (run AFTER the service has booted):
+       sudo -u $SERVICE_USER andybioticlaw doctor
+     (Expect all-✓. A yellow ! on Database before the first boot is fine —
+      it turns ✓ once the service has run once and created the DB file.)
+
+  6. Follow logs:
        journalctl -u andybioticlaw -f
      or:
        tail -f $INSTALL_DIR/data/logs/andybioticlaw.log
 
-  6. (Optional) Expose the dashboard beyond 127.0.0.1:18790.
+  7. (Optional) Expose the dashboard beyond 127.0.0.1:18790.
      See docs/DEPLOYMENT.md § 10 for reverse-proxy + basic-auth.
 
 Backups are NOT handled by this service — use your VPS provider's

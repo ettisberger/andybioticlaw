@@ -89,13 +89,11 @@ sudo corepack enable pnpm
 pnpm -v
 ```
 
-Claude Code CLI (uses subscription auth):
-
-```bash
-# Official install script; check https://docs.claude.com/ for the latest.
-curl -fsSL https://claude.ai/install.sh | sudo bash
-claude --version
-```
+> The `claude` CLI is installed in § 6 below — **as the
+> `andybioticlaw` service user**, so the binary lands in that
+> user's `~/.local/bin/` and the systemd unit's `PATH` can find
+> it. Don't install it as root or your admin user here — the
+> service won't see it.
 
 ## 4. Get the source on the box
 
@@ -180,13 +178,21 @@ It **does not** start the service yet — a few manual steps remain.
 > **Custom install dir** (rare): pass `ANDYBIOTICLAW_INSTALL_DIR`
 > before the command. Default is `/home/andybioticlaw/.andybioticlaw`.
 
-## 6. Switch to the service user + authenticate the Claude CLI
+## 6. Switch to the service user + install + authenticate the Claude CLI
 
-Subscription credentials live in the service user's home. Open a shell
-as that user:
+Subscription credentials AND the `claude` binary itself live in the
+service user's home. Open a shell as that user:
 
 ```bash
 sudo -iu andybioticlaw
+```
+
+Install the CLI (lands in `~/.local/bin/claude`, which the systemd
+unit's `PATH` is configured to see):
+
+```bash
+curl -fsSL https://claude.ai/install.sh | bash
+claude --version
 ```
 
 Now pick one of the two subscription-auth paths. Both route to the same
@@ -283,6 +289,17 @@ sudo -u andybioticlaw tail -f /home/andybioticlaw/.andybioticlaw/data/logs/andyb
 ```
 
 Send a DM to your bot — you should get a reply.
+
+Verify every subsystem is wired up:
+
+```bash
+sudo -u andybioticlaw andybioticlaw doctor
+```
+
+Expect all-✓ across config, DB, claude auth, telegram, dashboard,
+skills, schedules, budget, disk, and logs. Any red ✗ prints a
+one-line hint about the failing check; `--verbose` adds extra
+detail per row, `--json` is machine-readable for scripting.
 
 ## 9. Back up `data/` (your responsibility)
 

@@ -18,23 +18,33 @@ A single-operator, self-hosted AI agent. Telegram on the front, the Claude CLI o
 ## Install
 
 ```bash
-# 1. Download + extract the latest release
+# 1. System dependencies (Ubuntu/Debian — adjust apt for other distros)
+sudo apt-get update
+sudo apt-get install -y curl ca-certificates sqlite3 logrotate git \
+  build-essential python3 python3-dev
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs
+sudo corepack enable pnpm
+
+# 2. Download + extract the latest release
 mkdir -p ~/andybioticlaw && cd ~/andybioticlaw
 curl -fsSL https://github.com/ettisberger/andybioticlaw/releases/latest/download/andybioticlaw.tar.gz \
   | tar xz --strip-components=1
 
-# 2. Install (creates the `andybioticlaw` system user + systemd unit + logrotate)
+# 3. Install (creates the `andybioticlaw` system user + systemd unit + logrotate)
 sudo bash scripts/install.sh
 
-# 3. As the service user: authenticate Claude + run the setup wizard
+# 4. As the service user: install + authenticate Claude, then run the setup wizard
 sudo -iu andybioticlaw
+curl -fsSL https://claude.ai/install.sh | bash   # installs into ~/.local/bin
 claude setup-token      # long-lived OAuth token, recommended — paste into wizard step 5
                         #   (or `claude login` for interactive session auth)
 andybioticlaw           # interactive menu → "Run setup wizard"
 exit
 
-# 4. Start
+# 5. Start + verify
 sudo systemctl start andybioticlaw
+sudo -u andybioticlaw andybioticlaw doctor   # expect all-✓
 sudo journalctl -u andybioticlaw -f
 ```
 

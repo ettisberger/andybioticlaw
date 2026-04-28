@@ -212,10 +212,13 @@ export async function checkConfig(configPath?: string): Promise<DoctorRow> {
 
 export async function checkDatabase(dbPath: string): Promise<DoctorRow> {
   if (!existsSync(dbPath)) {
+    // Warn (not fail) — the service creates the DB on first boot, and
+    // we want a fresh-install operator to be able to run `doctor`
+    // before `systemctl start` without seeing a misleading red ✗.
     return {
       name: 'Database',
-      status: 'fail',
-      detail: `${dbPath} missing — run the service once to create it`,
+      status: 'warn',
+      detail: `${dbPath} missing — service hasn't booted yet (run \`systemctl start andybioticlaw\`)`,
     };
   }
   try {

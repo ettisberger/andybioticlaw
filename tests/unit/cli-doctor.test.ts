@@ -55,11 +55,12 @@ describe('doctor — checkDatabase', () => {
     if (dir) rmSync(dir, { recursive: true, force: true });
   });
 
-  it('fails when the DB file does not exist', async () => {
+  it('warns (not fails) when the DB file does not exist — fresh install before first boot', async () => {
     dir = freshTmp('doctor-db');
     const row = await checkDatabase(resolve(dir, 'nope.db'));
-    expect(row.status).toBe('fail');
+    expect(row.status).toBe('warn');
     expect(row.detail).toMatch(/missing/);
+    expect(row.detail).toMatch(/systemctl start/);
   });
 
   it('passes on a DB that has been created and migrated', async () => {

@@ -48,9 +48,6 @@ apt-get install -y \
 curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
 apt-get install -y nodejs
 corepack enable pnpm
-
-# Claude Code CLI
-curl -fsSL https://claude.ai/install.sh | bash
 ```
 
 Check everything answers:
@@ -58,8 +55,13 @@ Check everything answers:
 ```bash
 node -v        # v20.x or newer
 pnpm -v
-claude --version
 ```
+
+> The `claude` CLI is installed in step 5 below — **as the
+> `andybioticlaw` service user**, so the binary lands in that user's
+> `~/.local/bin/` and the systemd unit's `PATH` can find it. Don't
+> install it as root or your admin user here — the service won't
+> see it.
 
 ## 3. Download and install
 
@@ -104,9 +106,19 @@ You are now in a shell as the `andybioticlaw` service user. Everything
 from here runs with the service's own home + permissions — including the
 Claude OAuth credentials which must land in this user's `~/.claude/`.
 
-## 5. Authenticate the Claude CLI
+## 5. Install + authenticate the Claude CLI
 
-Two ways, both subscription-billed (NOT pay-as-you-go API credits). Pick one:
+First, install the CLI **for this user** (we deferred it from step 2
+on purpose — the binary needs to live where the service user can
+reach it):
+
+```bash
+curl -fsSL https://claude.ai/install.sh | bash
+claude --version    # should answer
+```
+
+Then pick one of the two subscription-auth paths below. Both are
+subscription-billed — NOT pay-as-you-go API credits.
 
 ### 5a. Long-lived OAuth token (recommended for unattended servers)
 
@@ -214,6 +226,18 @@ If it doesn't, check:
   currently-loaded config so you can spot a bad user id or timezone.
 - BotFather: confirm no second process is polling the same token (the
   Telegram API enforces exclusivity).
+
+## 9. Verify everything is healthy
+
+One read-only end-to-end check covering config, DB, claude auth,
+telegram, dashboard, skills, schedules, budget, disk, and logs:
+
+```bash
+sudo -u andybioticlaw andybioticlaw doctor
+```
+
+All-✓ means every subsystem is wired correctly. A red ✗ on any row
+prints a one-line hint about what's wrong and where to look.
 
 ## Updating later
 
