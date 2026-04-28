@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.22.12](https://github.com/ettisberger/andybioticlaw/compare/v0.22.11...v0.22.12) (2026-04-28)
+
+
+### Features
+
+* complete multi-agent runtime (routing, credentials, skills, scheduler) ([fd6f2e5](https://github.com/ettisberger/andybioticlaw/commit/fd6f2e5b4334aa0bd4204f265d158278a00be6e7))
+
 ## [0.22.11](https://github.com/ettisberger/andybioticlaw/compare/v0.22.10...v0.22.11) (2026-04-28)
 
 
