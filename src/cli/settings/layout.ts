@@ -15,17 +15,16 @@ export interface Section {
 export const SETTINGS_LAYOUT: ReadonlyArray<Section> = [
   {
     title: 'General',
-    settingIds: ['memory.autoAccept'],
+    settingIds: ['memory.autoAccept', 'service.logLevel'],
   },
   {
-    title: 'Agent',
+    title: 'Telegram',
     settingIds: [
-      'agent.model',
-      'service.logLevel',
       'telegram.conversationHistoryLimit',
-      'agent.routing.enabled',
-      'agent.haikuModel',
-      'agent.routing.minCharsForOpus',
+      'telegram.allowedUserIds',
+      'voice.enabled',
+      'voice.groqKey',
+      'voice.test',
     ],
   },
   {
@@ -34,15 +33,6 @@ export const SETTINGS_LAYOUT: ReadonlyArray<Section> = [
       'budget.dailyTokenLimit',
       'budget.perSessionTokenLimit',
       'messages.retentionDays',
-    ],
-  },
-  {
-    title: 'Telegram',
-    settingIds: [
-      'telegram.allowedUserIds',
-      'voice.enabled',
-      'voice.groqKey',
-      'voice.test',
     ],
   },
   {

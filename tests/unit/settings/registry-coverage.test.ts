@@ -36,12 +36,10 @@ type Expectation =
  */
 const EXPECTATIONS: Record<string, Expectation> = {
   'memory.autoAccept': { kind: 'bool', checked: true },
-  'agent.model': { kind: 'meta', metaIncludes: 'claude-opus-4-7' },
   'service.logLevel': { kind: 'meta', metaIncludes: 'info' },
   'telegram.conversationHistoryLimit': { kind: 'meta', metaIncludes: '50' },
-  'agent.routing.enabled': { kind: 'bool', checked: false },
-  'agent.haikuModel': { kind: 'meta', metaIncludes: 'claude-haiku' },
-  'agent.routing.minCharsForOpus': { kind: 'meta', metaIncludes: '120' },
+  // Per-agent settings (model / haikuModel / routing / skills) moved
+  // to the dashboard's /agents page — no CLI rows to assert here.
   // Integers render with thousand separators (e.g. "2,000,000").
   'budget.dailyTokenLimit': { kind: 'meta', metaIncludes: '2,000,000' },
   'budget.perSessionTokenLimit': { kind: 'meta', metaIncludes: '200,000' },

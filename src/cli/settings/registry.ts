@@ -47,25 +47,12 @@ export function buildSettingsRegistry(): Map<string, SettingComponent> {
     }),
   );
 
-  // --- Agent -----------------------------------------------------------
-  const MODELS = [
-    { value: 'claude-opus-4-7', label: 'claude-opus-4-7  (current flagship)' },
-    { value: 'claude-opus-4-6', label: 'claude-opus-4-6  (previous Opus)' },
-    { value: 'claude-sonnet-4-6', label: 'claude-sonnet-4-6  (mid-tier)' },
-    { value: 'claude-haiku-4-5-20251001', label: 'claude-haiku-4-5  (cheapest)' },
-  ];
-  registry.set(
-    'agent.model',
-    new EnumSetting({
-      id: 'agent.model',
-      label: 'Model',
-      pathLabel: 'agent.model',
-      restart: true,
-      read: (ctx) => matchString(ctx.readYaml(), /^\s+model:\s*(\S+)\s*$/m, 'claude-opus-4-7'),
-      patchRegex: /^(\s+model:\s*).*$/m,
-      options: MODELS,
-    }),
-  );
+  // --- Service ---------------------------------------------------------
+  // Per-agent settings (model / cheap fallback / router / skills) live
+  // on the dashboard now: open /agents in a browser and click Edit on a
+  // row. The CLI used to surface them but only ever edited the FIRST
+  // agent (silent foot-gun once a second agent gets added), and a
+  // dropdown in a browser is plain nicer than an arrow-key picker.
   const LOG_LEVELS = [
     { value: 'debug' },
     { value: 'info' },
@@ -96,66 +83,6 @@ export function buildSettingsRegistry(): Map<string, SettingComponent> {
       patchRegex: /^(\s+conversationHistoryLimit:\s*)\d+\s*$/m,
       bounds: { min: 0, max: 500 },
       format: (n) => `${n} msgs`,
-    }),
-  );
-  registry.set(
-    'agent.haikuModel',
-    new EnumSetting({
-      id: 'agent.haikuModel',
-      label: 'Cheap fallback model',
-      pathLabel: 'agents[0].haikuModel',
-      restart: false,
-      read: (ctx) =>
-        matchString(
-          ctx.readYaml(),
-          /^\s+haikuModel:\s*(\S+)\s*$/m,
-          'claude-haiku-4-5-20251001',
-        ),
-      patchRegex: /^(\s+haikuModel:\s*).*$/m,
-      options: [
-        { value: 'claude-haiku-4-5-20251001', label: 'claude-haiku-4-5  (cheapest)' },
-        { value: 'claude-sonnet-4-6', label: 'claude-sonnet-4-6  (mid-tier)' },
-      ],
-    }),
-  );
-  registry.set(
-    'agent.routing.enabled',
-    new BooleanSetting({
-      id: 'agent.routing.enabled',
-      label: 'Route simple DMs to Haiku (cost saver)',
-      restart: false,
-      // Indent-flexible: the routing: block is now nested deeper
-      // under `agents:[].routing:` (4/6-space indent) than the
-      // pre-multi-agent shape (2/4-space). Use \s+ so both work.
-      read: (ctx) =>
-        matchBool(
-          ctx.readYaml(),
-          /^\s+routing:\s*\n\s+enabled:\s*(true|false)\s*$/m,
-          false,
-        ),
-      write: (ctx, next) => {
-        const body = ctx.readYaml();
-        ctx.writeYaml(
-          body.replace(
-            /^(\s+routing:\s*\n\s+enabled:\s*)(true|false)\s*$/m,
-            `$1${next}`,
-          ),
-        );
-      },
-    }),
-  );
-  registry.set(
-    'agent.routing.minCharsForOpus',
-    new IntegerSetting({
-      id: 'agent.routing.minCharsForOpus',
-      label: 'Length cutoff → Opus (chars)',
-      pathLabel: 'agents[0].routing.minCharsForOpus',
-      restart: false,
-      read: (ctx) =>
-        matchInt(ctx.readYaml(), /^\s+minCharsForOpus:\s*(\d+)\s*$/m, 120),
-      patchRegex: /^(\s+minCharsForOpus:\s*)\d+\s*$/m,
-      bounds: { min: 0, max: 10_000 },
-      format: (n) => `${n} chars`,
     }),
   );
 

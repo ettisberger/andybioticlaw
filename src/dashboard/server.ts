@@ -72,6 +72,15 @@ export interface DashboardDeps {
   policiesPath: () => string;
   /** Called when the scheduler should re-read DB state (after API mutations). */
   onSchedulesChanged: () => void;
+  /** Absolute path to the editable config.yaml. Used by the agent-edit endpoint. */
+  configPath: string;
+  /**
+   * Trigger an in-process config reload (same path SIGHUP would
+   * take). Used by the agent-edit endpoint after writing config.yaml
+   * so the running service picks up hot-reloadable field changes
+   * without a manual SIGHUP.
+   */
+  reloadConfig: () => void;
   rateLimitTracker: RateLimitTracker;
   liveSessions: LiveSessionsTracker;
   /** Returns the cached Telegram bot profile (username, avatar bytes), or
@@ -276,7 +285,14 @@ export function createDashboard(deps: DashboardDeps): DashboardService {
 
   app.register(skillsRoutes({ skills: deps.skills }));
 
-  app.register(agentsRoutes({ currentConfig: deps.currentConfig }));
+  app.register(
+    agentsRoutes({
+      currentConfig: deps.currentConfig,
+      configPath: deps.configPath,
+      reload: deps.reloadConfig,
+      audit: deps.audit,
+    }),
+  );
 
   app.register(
     policiesRoutes({

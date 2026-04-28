@@ -463,6 +463,8 @@ async function main(): Promise<void> {
     frontendDistDir: resolve(projectRoot(), 'web', 'dist'),
     policiesPath: () => policiesFilePath,
     onSchedulesChanged: () => scheduler?.refresh(),
+    configPath: loaded.configPath,
+    reloadConfig: () => reloader.reload(),
     rateLimitTracker,
     liveSessions,
     botProfile: () => telegram?.profile() ?? null,
