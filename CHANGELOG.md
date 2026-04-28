@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.22.15](https://github.com/ettisberger/andybioticlaw/compare/v0.22.14...v0.22.15) (2026-04-28)
+
+
+### Bug Fixes
+
+* **systemd:** ReadWritePaths covers config/ — dashboard agent edits ([fa12433](https://github.com/ettisberger/andybioticlaw/commit/fa12433e0a5bc95f8fc09c61c34566b46ceeed2f))
+
 ## [0.22.14](https://github.com/ettisberger/andybioticlaw/compare/v0.22.13...v0.22.14) (2026-04-28)
 
 
