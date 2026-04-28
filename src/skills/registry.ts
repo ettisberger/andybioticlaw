@@ -32,6 +32,21 @@ export interface SkillRegistry {
   requiredSecretsTable(): ReadonlyMap<string, ReadonlyArray<string>>;
   /** Currently-enabled skills in the given session scope. */
   activeFor(sessionScope: 'dm' | 'group'): SkillRecord[];
+  /**
+   * Skills filtered by:
+   *   1. enabled + matching `sessionScope` (same as `activeFor`)
+   *   2. agent's `skills` config (`['*']` = all; explicit list = subset)
+   *   3. policy's `skillsVisible` (`['*']` = all; explicit list = subset)
+   *
+   * The intersection is the only set the agent should see in this
+   * session. Used by `src/agent/session.ts` to assemble the per-session
+   * MCP config + Claude `settings.json`.
+   */
+  activeForAgent(
+    sessionScope: 'dm' | 'group',
+    agentSkills: ReadonlyArray<string>,
+    policySkillsVisible: ReadonlyArray<string>,
+  ): SkillRecord[];
   /** Persist enable/disable in skill_state. */
   setEnabled(name: string, enabled: boolean): void;
   /** Record an install (idempotent). */
@@ -124,6 +139,17 @@ export function createSkillRegistry(db: Database): SkillRegistry {
       return Array.from(table.values()).filter(
         (s) => s.enabled && s.scope.includes(sessionScope),
       );
+    },
+    activeForAgent(sessionScope, agentSkills, policySkillsVisible) {
+      const wildcardAgent = agentSkills.includes('*');
+      const wildcardPolicy = policySkillsVisible.includes('*');
+      return Array.from(table.values()).filter((s) => {
+        if (!s.enabled) return false;
+        if (!s.scope.includes(sessionScope)) return false;
+        if (!wildcardAgent && !agentSkills.includes(s.name)) return false;
+        if (!wildcardPolicy && !policySkillsVisible.includes(s.name)) return false;
+        return true;
+      });
     },
     setEnabled(name, enabled) {
       setEnabledStmt.run({ name, enabled: enabled ? 1 : 0, ts: Date.now() });

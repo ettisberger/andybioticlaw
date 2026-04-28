@@ -37,6 +37,13 @@ export interface SchedulerEngineDeps {
     scheduleName: string;
     modelOverride?: string;
     signal: AbortSignal;
+    /**
+     * The schedule's persisted context key (`<agentId>:<channel>:<chatId>`)
+     * from migration 0009. `null` for rows created before that migration —
+     * the builder falls back to the default agent. Lets a schedule fire
+     * under a non-default agent's persona, model, skills, and credentials.
+     */
+    contextKey: string | null;
   }) => SessionExecuteInput;
   /** Principal user id for default chat id resolution. */
   principalChatId: number | null;
@@ -84,7 +91,7 @@ export function createSchedulerEngine(deps: SchedulerEngineDeps): SchedulerEngin
 
   async function submitAgentTask(
     args: AgentTaskSubmitInput,
-    _schedule: ScheduleRecord,
+    schedule: ScheduleRecord,
   ): Promise<SessionExecuteResult> {
     const sessionId = randomUUID();
     const controller = new AbortController();
@@ -103,6 +110,7 @@ export function createSchedulerEngine(deps: SchedulerEngineDeps): SchedulerEngin
       scheduleName: args.scheduleName,
       ...(args.modelOverride ? { modelOverride: args.modelOverride } : {}),
       signal: controller.signal,
+      contextKey: schedule.context,
     });
 
     const req: SessionExecuteInput = { ...base, sink };

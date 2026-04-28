@@ -21,7 +21,7 @@ import type {
   SessionExecuteInput,
   SessionExecuteResult,
 } from '../agent/session.js';
-import type { Config } from '../config/schema.js';
+import type { AgentConfigEntry, Config } from '../config/schema.js';
 import type { DispatchDeps } from '../agent/dispatch.js';
 import type { RateLimitTracker } from '../agent/rate-limit-tracker.js';
 import type { LiveSessionsTracker } from '../observability/live-sessions.js';
@@ -72,6 +72,12 @@ export interface DashboardDeps {
   policiesPath: () => string;
   /** Called when the scheduler should re-read DB state (after API mutations). */
   onSchedulesChanged: () => void;
+  /**
+   * Resolve an agent by id from the live config; falls back to the
+   * default agent if the id is missing or no longer present. Used by
+   * the retry endpoint so a retried session uses the same agent.
+   */
+  resolveAgentById: (agentId: string) => AgentConfigEntry;
   /** Absolute path to the editable config.yaml. Used by the agent-edit endpoint. */
   configPath: string;
   /**
@@ -259,6 +265,7 @@ export function createDashboard(deps: DashboardDeps): DashboardService {
       dispatch: deps.dispatch,
       principalUserId: deps.principalUserId,
       liveSessions: deps.liveSessions,
+      resolveAgentById: deps.resolveAgentById,
     }),
   );
 

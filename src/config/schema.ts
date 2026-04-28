@@ -230,9 +230,6 @@ export const HOT_RELOADABLE_PATHS: ReadonlyArray<string> = [
   'telegram.streamEditIntervalMs',
   'telegram.longTaskNotifyAfterMs',
   'telegram.conversationHistoryLimit',
-  'agents.0.haikuModel',
-  'agents.0.routing.enabled',
-  'agents.0.routing.minCharsForOpus',
   'observability.heartbeatIntervalSec',
   'observability.heartbeatRetentionDays',
   'observability.errorsToTelegram',
@@ -247,10 +244,6 @@ export const RESTART_REQUIRED_PATHS: ReadonlyArray<string> = [
   'service.name',
   'service.dataDir',
   'service.timezone',
-  'agents.0.name',
-  'agents.0.model',
-  'agents.0.credentialsDir',
-  'agents.0.streamIdleTimeoutSec',
   'telegram.dm.allowedUserIds',
   'telegram.dm.runMode',
   'telegram.group.allowedGroupIds',
@@ -265,3 +258,56 @@ export const RESTART_REQUIRED_PATHS: ReadonlyArray<string> = [
   'skills.dir',
   'skills.autoLoadOnStart',
 ];
+
+/**
+ * Per-agent fields that are hot-reloadable for ANY agent index. Used by
+ * `isHotReloadable()` below to classify `agents.<i>.<field>` paths
+ * without enumerating every agent statically — adding a second agent
+ * doesn't require a schema.ts edit.
+ */
+const HOT_RELOADABLE_AGENT_FIELDS = new Set<string>([
+  'haikuModel',
+  'routing.enabled',
+  'routing.minCharsForOpus',
+]);
+
+/**
+ * Per-agent fields that require a restart for ANY agent index. Notable
+ * inclusion: `skills` — skills are loaded at boot from disk into a
+ * registry, so changing the agent's `skills` filter requires a restart
+ * to take effect.
+ */
+const RESTART_REQUIRED_AGENT_FIELDS = new Set<string>([
+  'name',
+  'model',
+  'credentialsDir',
+  'streamIdleTimeoutSec',
+  'skills',
+  'systemPromptFile',
+  'tokenEnvVar',
+]);
+
+/**
+ * True iff the dotted path identifies a field whose change should
+ * apply live (no restart). Handles the literal `HOT_RELOADABLE_PATHS`
+ * list AND the dynamic `agents.<i>.<field>` pattern for any agent
+ * index.
+ */
+export function isHotReloadable(path: string): boolean {
+  if (HOT_RELOADABLE_PATHS.includes(path)) return true;
+  const m = path.match(/^agents\.\d+\.(.+)$/);
+  if (!m) return false;
+  return HOT_RELOADABLE_AGENT_FIELDS.has(m[1]!);
+}
+
+/**
+ * True iff the dotted path identifies a field whose change requires
+ * a full service restart. Handles the literal
+ * `RESTART_REQUIRED_PATHS` list AND the `agents.<i>.<field>` pattern.
+ */
+export function isRestartRequired(path: string): boolean {
+  if (RESTART_REQUIRED_PATHS.includes(path)) return true;
+  const m = path.match(/^agents\.\d+\.(.+)$/);
+  if (!m) return false;
+  return RESTART_REQUIRED_AGENT_FIELDS.has(m[1]!);
+}

@@ -195,21 +195,34 @@ host shape.
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**Adding a second agent** (e.g. work-Emma in a separate group):
+**Adding a second agent** (e.g. a "work" agent in a separate group
+chat). One Telegram bot token covers every agent — the binding rules
+decide which agent answers each chat.
 
-1. Append a second entry to `agents:` with its own `id`, `name`,
-   `tokenEnvVar`, `skills: [...]`, optional `workspace`.
-2. Add a binding rule directing the relevant chat or user id to it:
-   `{ agentId: 'work-emma', match: { channel: 'telegram', chatIds: [-100123] } }`.
-3. Add a policy entry under `data/policies.json`'s `contexts` keyed by
-   `work-emma:telegram:-100123` with the appropriate restrictions.
-4. Set `TELEGRAM_BOT_TOKEN_WORK_EMMA` in `.env`.
+1. Append a second entry to `agents:` (see the commented-out example
+   in `config/config.example.yaml`). Required fields: `id`, `name`,
+   `default: false`, `model`, `haikuModel`, `credentialsDir`,
+   `streamIdleTimeoutSec`, `skills`, `routing`. Optional:
+   `tokenEnvVar` (separate Claude OAuth token),
+   `systemPromptFile` (per-agent system-prompt override).
+2. Add a binding rule directing the relevant chat or user id to the
+   new agent:
+   `{ agentId: 'work', match: { channel: 'telegram', chatIds: [-100123] } }`.
+3. (Optional but recommended) Add a policy entry under
+   `data/policies.json`'s `contexts` keyed by `work:telegram:-100123`
+   to constrain `execMode`, `execAllow`, `scheduleKinds`, and
+   `skillsVisible` for this agent in that chat.
+4. (Optional) If you set `tokenEnvVar`, put the actual token in
+   `.env` under that name.
 5. Restart.
 
-No code change. The harness wires up an additional grammy listener,
-threads the agentId through every session, and looks up policies by
-context key. Skills, memory, schedules, and the audit log all gain
-a per-agent dimension automatically.
+No code change required. At runtime, every incoming message goes
+through `resolveBinding()` (`src/agent/runtime-context.ts:67`) to
+pick the agent. The dispatcher then threads that agent's id, name,
+model, skills, system prompt, and OAuth token through to the spawned
+Claude session. Skills, memory, schedules, and the audit log all
+gain a per-agent dimension automatically via the
+`<agentId>:<channel>:<chatId>` context key.
 
 ## Key invariants
 

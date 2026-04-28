@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bootstrapEnv, loadConfig, ConfigLoadError, projectRoot } from './config/load.js';
 import { getDefaultAgent } from './config/agents-helper.js';
+import { resolveBinding } from './agent/runtime-context.js';
 import { createReloadController } from './config/reload.js';
 import {
   createSecretsManager,
@@ -47,7 +48,6 @@ import { createVoiceStateRepo } from './db/repositories/voice-state.js';
 import { createSchedulerEngine } from './scheduler/engine.js';
 import { createDashboard } from './dashboard/server.js';
 import type { DispatchDeps } from './agent/dispatch.js';
-import { chooseModel } from './agent/route.js';
 import type { Logger } from 'pino';
 import { dirname } from 'node:path';
 
@@ -89,6 +89,38 @@ async function main(): Promise<void> {
       dataDir,
     },
     `andybioticlaw starting (agent: ${getDefaultAgent(config).name}, model: ${getDefaultAgent(config).model})`,
+  );
+
+  // Multi-agent boot summary — make it obvious at startup which agents
+  // are configured + how routing is set up. For a single-Emma setup
+  // this is one line; for multi-agent it lists each + counts bindings.
+  for (const a of config.agents) {
+    const flag = a.default ? ' (default)' : '';
+    const skills = a.skills.includes('*')
+      ? '*'
+      : a.skills.length === 0
+        ? '(none)'
+        : a.skills.join(',');
+    const routing = a.routing.enabled
+      ? `on(>=${a.routing.minCharsForOpus} chars → Opus)`
+      : 'off';
+    logger.info(
+      {
+        agentId: a.id,
+        model: a.model,
+        haikuModel: a.haikuModel,
+        skills: a.skills,
+        routingEnabled: a.routing.enabled,
+        ...(a.tokenEnvVar ? { tokenEnvVar: a.tokenEnvVar } : {}),
+      },
+      `agent ${a.id}${flag}  model=${a.model}  skills=[${skills}]  routing=${routing}`,
+    );
+  }
+  logger.info(
+    { count: config.bindings.length },
+    `bindings: ${config.bindings.length} rule(s)${
+      config.bindings.length === 0 ? ' — all messages → default agent' : ''
+    }`,
   );
 
   const bus = createEventBus();
@@ -296,22 +328,32 @@ async function main(): Promise<void> {
     telegram = createTelegramService({
       config: {
         botToken,
-        agentName: getDefaultAgent(config).name,
-        agentId: 'emma',
-        model: getDefaultAgent(config).model,
         timezone: config.service.timezone,
         cwd: dmWorkspace,
-        streamIdleTimeoutMs: () => getDefaultAgent(config).streamIdleTimeoutSec * 1000,
         streamEditIntervalMs: () => config.telegram.streamEditIntervalMs,
         longTaskNotifyAfterMs: () => config.telegram.longTaskNotifyAfterMs,
         conversationHistoryLimit: () => config.telegram.conversationHistoryLimit,
         memoryAutoAccept: () => config.memory.autoAccept,
         voiceMaxDurationSec: () => config.telegram.voice.maxDurationSec,
         voiceLanguage: () => config.telegram.voice.language,
-        // Route DM prompts to Haiku when the operator has opted in. Reads
-        // the current config on every call so hot-reloads take effect
-        // without reconstructing the telegram service.
-        chooseModel: (userText) => chooseModel(userText, config).model,
+        // Per-message agent resolution. Reads `agents:` + `bindings:`
+        // off the live `config` capture (refreshed on hot-reload) so a
+        // newly-added binding rule routes the very next message.
+        resolveAgent: (chatId, userId) => {
+          const ctx = resolveBinding(
+            { channel: 'telegram', chatId, userId },
+            config.bindings,
+            config.agents,
+          );
+          const agent = config.agents.find((a) => a.id === ctx.agentId);
+          if (!agent) {
+            // Should be unreachable — schema enforces every binding's
+            // agentId is real, and resolveBinding falls back to the
+            // default agent. Defensive: return the default.
+            return getDefaultAgent(config);
+          }
+          return agent;
+        },
       },
       logger,
       audit,
@@ -371,28 +413,64 @@ async function main(): Promise<void> {
       principalChatId: principalUserId,
       timezone: config.service.timezone,
       notifyPrincipal: (text) => telegram!.notifyPrincipal(text),
-      buildSchedulerSessionInput: ({ sessionId, chatId, userMessage, scheduleName, modelOverride, signal }) => ({
-        chatId,
-        source: 'schedule',
-        userMessage,
-        principalUserId,
-        principalLabel: `scheduler:${scheduleName}`,
-        model: modelOverride ?? getDefaultAgent(config).model,
-        timezone: config.service.timezone,
-        agentName: getDefaultAgent(config).name,
-        agentId: 'emma',
-        streamIdleTimeoutMs: getDefaultAgent(config).streamIdleTimeoutSec * 1000,
-        cwd: dmWorkspace,
-        sessionWorkspaceRoot: dmWorkspace,
-        conversationHistoryLimit: config.telegram.conversationHistoryLimit,
-        sessionIdOverride: sessionId,
-        signal,
-        // Placeholder sink — the real one (createSchedulerTelegramSink)
-        // is attached by the engine before calling queue.submit.
-        sink: { onDelta: () => {}, onEnd: async () => {} },
-        dbPath,
-        memoryProposalServer,
-      }),
+      buildSchedulerSessionInput: ({ sessionId, chatId, userMessage, scheduleName, modelOverride, signal, contextKey }) => {
+        // Parse the schedule's stored context key
+        // (`<agentId>:<channel>:<chatId>`) and resolve the agent. If the
+        // schedule was created before migration 0009 (context = null), or
+        // the referenced agent has been removed since, fall back to the
+        // default agent and audit the drift so the operator can fix the
+        // schedule (or delete it).
+        let scheduleAgent = getDefaultAgent(config);
+        if (contextKey) {
+          const parsed = contextKey.split(':');
+          const agentIdFromCtx = parsed[0];
+          if (agentIdFromCtx) {
+            const found = config.agents.find((a) => a.id === agentIdFromCtx);
+            if (found) {
+              scheduleAgent = found;
+            } else {
+              audit.record({
+                kind: 'schedule_agent_unknown',
+                actor: 'scheduler',
+                detail: {
+                  contextKey,
+                  scheduleName,
+                  fallbackAgentId: scheduleAgent.id,
+                },
+              });
+            }
+          }
+        }
+        return {
+          chatId,
+          source: 'schedule',
+          userMessage,
+          principalUserId,
+          principalLabel: `scheduler:${scheduleName}`,
+          model: modelOverride ?? scheduleAgent.model,
+          timezone: config.service.timezone,
+          agentName: scheduleAgent.name,
+          agentId: scheduleAgent.id,
+          agentSkills: scheduleAgent.skills,
+          ...(scheduleAgent.systemPromptFile
+            ? { agentSystemPromptFile: scheduleAgent.systemPromptFile }
+            : {}),
+          ...(scheduleAgent.tokenEnvVar
+            ? { agentTokenEnvVar: scheduleAgent.tokenEnvVar }
+            : {}),
+          streamIdleTimeoutMs: scheduleAgent.streamIdleTimeoutSec * 1000,
+          cwd: dmWorkspace,
+          sessionWorkspaceRoot: dmWorkspace,
+          conversationHistoryLimit: config.telegram.conversationHistoryLimit,
+          sessionIdOverride: sessionId,
+          signal,
+          // Placeholder sink — the real one (createSchedulerTelegramSink)
+          // is attached by the engine before calling queue.submit.
+          sink: { onDelta: () => {}, onEnd: async () => {} },
+          dbPath,
+          memoryProposalServer,
+        };
+      },
     });
     scheduler.refresh();
 
@@ -441,12 +519,8 @@ async function main(): Promise<void> {
         errors,
         queue: telegram.queue,
         cwd: dmWorkspace,
-        agentName: getDefaultAgent(config).name,
-        agentId: 'emma',
-        model: getDefaultAgent(config).model,
         timezone: config.service.timezone,
         memoryAutoAccept: () => config.memory.autoAccept,
-        streamIdleTimeoutMs: () => getDefaultAgent(config).streamIdleTimeoutSec * 1000,
         streamEditIntervalMs: () => config.telegram.streamEditIntervalMs,
         longTaskNotifyAfterMs: () => config.telegram.longTaskNotifyAfterMs,
         conversationHistoryLimit: () => config.telegram.conversationHistoryLimit,
@@ -484,6 +558,8 @@ async function main(): Promise<void> {
     frontendDistDir: resolve(projectRoot(), 'web', 'dist'),
     policiesPath: () => policiesFilePath,
     onSchedulesChanged: () => scheduler?.refresh(),
+    resolveAgentById: (agentId) =>
+      config.agents.find((a) => a.id === agentId) ?? getDefaultAgent(config),
     configPath: loaded.configPath,
     reloadConfig: () => reloader.reload(),
     rateLimitTracker,

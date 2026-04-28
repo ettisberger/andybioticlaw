@@ -1,6 +1,10 @@
 import type { Logger } from 'pino';
 import type { Config } from './schema.js';
-import { HOT_RELOADABLE_PATHS, RESTART_REQUIRED_PATHS } from './schema.js';
+import {
+  HOT_RELOADABLE_PATHS,
+  RESTART_REQUIRED_PATHS,
+  isHotReloadable,
+} from './schema.js';
 import { loadConfig, ConfigLoadError } from './load.js';
 import type { AppEventBus } from '../events/bus.js';
 
@@ -34,9 +38,46 @@ function equalDeep(a: unknown, b: unknown): boolean {
   return true;
 }
 
+/**
+ * Per-agent fields to include in the diff for every configured agent.
+ * Combined at runtime with the static `HOT_RELOADABLE_PATHS` +
+ * `RESTART_REQUIRED_PATHS` so the diff covers `agents.<i>.<field>` for
+ * any number of agents without listing each index in schema.ts.
+ */
+const PER_AGENT_FIELDS = [
+  'name',
+  'model',
+  'haikuModel',
+  'skills',
+  'credentialsDir',
+  'streamIdleTimeoutSec',
+  'routing.enabled',
+  'routing.minCharsForOpus',
+  'systemPromptFile',
+  'tokenEnvVar',
+] as const;
+
+function buildPathList(cfg: Config): string[] {
+  const out = [...HOT_RELOADABLE_PATHS, ...RESTART_REQUIRED_PATHS];
+  // Cover every configured agent. `oldCfg.agents.length` and
+  // `newCfg.agents.length` may differ across reload — caller passes
+  // the larger of the two so additions and removals both surface.
+  const maxAgents = cfg.agents.length;
+  for (let i = 0; i < maxAgents; i++) {
+    for (const field of PER_AGENT_FIELDS) {
+      out.push(`agents.${i}.${field}`);
+    }
+  }
+  return out;
+}
+
 function diff(oldCfg: Config, newCfg: Config): ChangedField[] {
   const changed: ChangedField[] = [];
-  const all = [...HOT_RELOADABLE_PATHS, ...RESTART_REQUIRED_PATHS];
+  // Take the wider of the two so an agent being added or removed
+  // shows up in the diff (the missing side reads as `undefined`).
+  const widerCfg =
+    newCfg.agents.length >= oldCfg.agents.length ? newCfg : oldCfg;
+  const all = buildPathList(widerCfg);
   for (const path of all) {
     const from = getByPath(oldCfg, path);
     const to = getByPath(newCfg, path);
@@ -45,7 +86,7 @@ function diff(oldCfg: Config, newCfg: Config): ChangedField[] {
         path,
         from,
         to,
-        hotReloadable: (HOT_RELOADABLE_PATHS as readonly string[]).includes(path),
+        hotReloadable: isHotReloadable(path),
       });
     }
   }

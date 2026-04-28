@@ -139,10 +139,11 @@ a one-line add to Backlog is enough — don't gate on a full spec.
   `frameworkEnv` so any future skill MCP server gets
   `ANDYBIOTICLAW_DB_PATH` + `PATH` / `HOME` automatically — no manifest
   boilerplate needed.
-- **Proactive briefings** — morning + evening DMs from Emma at operator-
-  configured times. Wraps the existing `agent-task` scheduler kind.
-  Toggled from the Settings menu under "Briefings".
-  *(see `feat: proactive briefings + model routing + memory hygiene + roadmap`)*
+- **~~Proactive briefings~~** *(shipped, then retired)* — originally
+  morning + evening DMs at configured times via a dedicated
+  BriefingManager. Retired in favour of `--message` agent-task
+  schedules (operator-controlled, more flexible). See the "Briefings
+  retired" entry above for the rationale.
 - **Model routing (Opus ↔ Haiku)** — opt-in heuristic router (length +
   keyword + `/opus` / `/haiku` slash prefix) at `src/agent/route.ts`.
   Toggled from Settings → Agent → "Cheap-model router".

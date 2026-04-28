@@ -46,6 +46,30 @@ agents:
     routing:
       enabled: false
       minCharsForOpus: 120
+  #
+  # Adding a second agent (commented-out example — uncomment + edit):
+  # Each agent is a distinct Claude Code persona that can have its own
+  # model, skills allowlist, OAuth token, and system-prompt file.
+  #
+  # - id: work
+  #   name: Work
+  #   default: false
+  #   model: claude-sonnet-4-6
+  #   haikuModel: claude-haiku-4-5-20251001
+  #   credentialsDir: ~/.claude          # share Emma's auth, or set a sibling dir
+  #   streamIdleTimeoutSec: 120
+  #   skills: [notes, himalaya]          # narrow skill list (vs. ['*'])
+  #   # Optional: a separate Claude OAuth token for this agent. The runner
+  #   # reads `process.env[tokenEnvVar]` and injects it as
+  #   # CLAUDE_CODE_OAUTH_TOKEN for sessions of this agent. Useful when
+  #   # one agent runs on a personal Pro plan and another on a Team plan.
+  #   tokenEnvVar: WORK_CLAUDE_TOKEN
+  #   # Optional: per-agent system prompt override. Path is relative to
+  #   # the install dir; if unset, the bundled `system.base.md` is used.
+  #   # systemPromptFile: prompts/work-agent.md
+  #   routing:
+  #     enabled: true
+  #     minCharsForOpus: 80
 
 # Routing rules — map incoming messages to a specific agent. Empty
 # array means everything goes to the default agent above.

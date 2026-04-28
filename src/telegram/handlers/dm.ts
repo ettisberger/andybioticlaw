@@ -17,6 +17,7 @@ import type {
 import { dispatchUserPrompt } from '../../agent/dispatch.js';
 import type { DispatchDeps } from '../../agent/dispatch.js';
 import type { VoiceStateRepo } from '../../db/repositories/voice-state.js';
+import type { AgentConfigEntry } from '../../config/schema.js';
 import { downloadVoiceMessage, transcribeWithGroq } from '../voice.js';
 
 export interface TelegramSubmitOptions {
@@ -48,17 +49,15 @@ export interface DmHandlerDeps {
   errors: ErrorReporter;
   queue: QueueManager<SessionExecuteInput, SessionExecuteResult>;
   cwd: string;
-  agentName: string;
-  /** Stable agent id (e.g. 'emma'). Recorded on session rows for the
-   *  multi-agent split — today everyone is 'emma'. */
-  agentId: string;
-  model: string;
-  /** Opt-in per-message router (Opus↔Haiku). If absent, `model` is always used. */
-  chooseModel?: (userText: string) => string;
+  /**
+   * Per-message agent resolver. Reads the live `agents:` + `bindings:`
+   * config so a hot-reloaded binding rule routes the very next message.
+   * Receives the chat id and (for DMs, redundantly) the from-user id.
+   */
+  resolveAgent: (chatId: number, userId: number) => AgentConfigEntry;
   timezone: string;
   principalUserId: number | null;
   memoryAutoAccept: () => boolean;
-  streamIdleTimeoutMs: () => number;
   streamEditIntervalMs: () => number;
   longTaskNotifyAfterMs: () => number;
   conversationHistoryLimit: () => number;
@@ -89,13 +88,8 @@ function dispatchDepsFromHandler(deps: DmHandlerDeps): DispatchDeps {
     errors: deps.errors,
     queue: deps.queue,
     cwd: deps.cwd,
-    agentName: deps.agentName,
-    agentId: deps.agentId,
-    model: deps.model,
-    ...(deps.chooseModel ? { chooseModel: deps.chooseModel } : {}),
     timezone: deps.timezone,
     memoryAutoAccept: deps.memoryAutoAccept,
-    streamIdleTimeoutMs: deps.streamIdleTimeoutMs,
     streamEditIntervalMs: deps.streamEditIntervalMs,
     longTaskNotifyAfterMs: deps.longTaskNotifyAfterMs,
     conversationHistoryLimit: deps.conversationHistoryLimit,
@@ -112,6 +106,12 @@ export function registerDmHandler(deps: DmHandlerDeps): TelegramDmSubmit {
   const submit: TelegramDmSubmit = async (ctx, userText, opts) => {
     if (!ctx.chat || ctx.chat.type !== 'private') return;
 
+    // Resolve the agent for THIS message via the live bindings table.
+    // For a single-agent setup with empty bindings, this returns the
+    // default agent — same behavior as before the multi-agent runtime
+    // landed.
+    const agent = deps.resolveAgent(ctx.chat.id, ctx.from?.id ?? ctx.chat.id);
+
     const outcome = await dispatchUserPrompt(
       {
         chatId: ctx.chat.id,
@@ -122,6 +122,7 @@ export function registerDmHandler(deps: DmHandlerDeps): TelegramDmSubmit {
       },
       dispatchDeps,
       deps.principalUserId,
+      agent,
     );
 
     if (outcome.kind === 'refused') {

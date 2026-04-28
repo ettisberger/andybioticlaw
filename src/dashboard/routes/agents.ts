@@ -4,10 +4,7 @@ import type {
   AgentConfigEntry,
   Config,
 } from '../../config/schema.js';
-import {
-  HOT_RELOADABLE_PATHS,
-  RESTART_REQUIRED_PATHS,
-} from '../../config/schema.js';
+import { isHotReloadable } from '../../config/schema.js';
 import { loadConfig } from '../../config/load.js';
 import {
   applyAgentPatch,
@@ -130,12 +127,9 @@ function parsePatch(
 }
 
 /**
- * For a given patch, classify which fields are hot-reloadable. We
- * use the per-agent variant of the path (`agents.<index>.field`) so
- * the answer is correct even after a multi-agent setup; today the
- * lists in schema.ts only enumerate `agents.0.*` so non-default
- * agents always count as restart-required (acceptable — no second
- * agent today, and we'd revisit when it arrives).
+ * For a given patch, classify which fields require a restart. Uses
+ * `isHotReloadable()` from `src/config/schema.ts` which knows the
+ * per-agent pattern, so this works for any `agentIndex` (not just 0).
  */
 function fieldsRequiringRestart(
   patch: AgentPatch,
@@ -151,9 +145,7 @@ function fieldsRequiringRestart(
     touched.push(`agents.${agentIndex}.routing.minCharsForOpus`);
   if (patch.skills !== undefined) touched.push(`agents.${agentIndex}.skills`);
 
-  const hot = new Set(HOT_RELOADABLE_PATHS);
-  const restart = new Set(RESTART_REQUIRED_PATHS);
-  return touched.filter((p) => !hot.has(p) || restart.has(p));
+  return touched.filter((p) => !isHotReloadable(p));
 }
 
 export const agentsRoutes =

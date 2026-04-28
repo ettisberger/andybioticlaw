@@ -13,7 +13,16 @@ import type { QueueManager } from './queue.js';
 import type { SessionExecuteInput, SessionExecuteResult } from './session.js';
 import { QueueCancelledError } from './queue.js';
 import { createTelegramStreamSink } from '../telegram/streaming.js';
+import type { AgentConfigEntry } from '../config/schema.js';
+import { chooseModel as routeChooseModel } from './route.js';
 
+/**
+ * Cross-cutting deps shared by every agent in the service. Per-message
+ * (per-agent) fields — name, id, model, routing, streamIdleTimeoutMs —
+ * come from the `agent` parameter to `dispatchUserPrompt`, NOT from
+ * this struct. That's what makes multi-agent dispatch possible: a
+ * single deps object plus a per-message agent resolution.
+ */
 export interface DispatchDeps {
   api: Api;
   logger: Logger;
@@ -26,20 +35,8 @@ export interface DispatchDeps {
   errors: ErrorReporter;
   queue: QueueManager<SessionExecuteInput, SessionExecuteResult>;
   cwd: string;
-  agentName: string;
-  /** Stable agent id (e.g. 'emma'). Carried onto every session row so
-   *  per-agent dashboards / metrics work after multi-agent lands. */
-  agentId: string;
-  model: string;
-  /**
-   * Optional per-message model chooser. When set, called with the user's
-   * prompt text to pick a model id. When absent, `model` is used.
-   * Used by the opt-in Opus↔Haiku router (see `src/agent/route.ts`).
-   */
-  chooseModel?: (userText: string) => string;
   timezone: string;
   memoryAutoAccept: () => boolean;
-  streamIdleTimeoutMs: () => number;
   streamEditIntervalMs: () => number;
   longTaskNotifyAfterMs: () => number;
   conversationHistoryLimit: () => number;
@@ -78,6 +75,7 @@ export async function dispatchUserPrompt(
   req: DispatchRequest,
   deps: DispatchDeps,
   principalUserId: number | null,
+  agent: AgentConfigEntry,
 ): Promise<DispatchOutcome> {
   const chatIdStr = String(req.chatId);
 
@@ -178,11 +176,17 @@ export async function dispatchUserPrompt(
     principalLabel: req.fromUserId
       ? `Telegram user ${req.fromUserId}`
       : `${req.origin} (principal)`,
-    model: deps.chooseModel ? deps.chooseModel(req.userText) : deps.model,
+    // Per-agent routing: each agent has its own routing config; the
+    // chooser reads agent.routing every call so live dashboard edits
+    // to routing.enabled / minCharsForOpus take effect immediately.
+    model: routeChooseModel(req.userText, agent).model,
     timezone: deps.timezone,
-    agentName: deps.agentName,
-    agentId: deps.agentId,
-    streamIdleTimeoutMs: deps.streamIdleTimeoutMs(),
+    agentName: agent.name,
+    agentId: agent.id,
+    agentSkills: agent.skills,
+    ...(agent.systemPromptFile ? { agentSystemPromptFile: agent.systemPromptFile } : {}),
+    ...(agent.tokenEnvVar ? { agentTokenEnvVar: agent.tokenEnvVar } : {}),
+    streamIdleTimeoutMs: agent.streamIdleTimeoutSec * 1000,
     cwd: deps.cwd,
     sessionWorkspaceRoot: deps.sessionWorkspaceRoot,
     conversationHistoryLimit: deps.conversationHistoryLimit(),

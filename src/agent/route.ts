@@ -10,8 +10,7 @@
  * path is in docs/ROADMAP.md.
  */
 
-import type { Config } from '../config/schema.js';
-import { getDefaultAgent } from '../config/agents-helper.js';
+import type { AgentConfigEntry } from '../config/schema.js';
 
 /**
  * Keywords that strongly indicate a long-form / synthesis task and
@@ -63,13 +62,21 @@ export interface ChooseModelResult {
 }
 
 /**
- * Decide which Claude model to use for a given user message. Pure;
- * trivially unit-testable.
+ * Decide which Claude model to use for a given user message + agent.
+ * Pure; trivially unit-testable.
+ *
+ * Per-agent (post-multi-agent runtime): each agent has its own
+ * `model` / `haikuModel` / `routing` config — this function reads
+ * those from the agent passed in. The DM dispatcher resolves the
+ * agent before calling here.
  */
-export function chooseModel(userMessage: string, config: Config): ChooseModelResult {
-  const primary = getDefaultAgent(config).model;
-  const haiku = getDefaultAgent(config).haikuModel;
-  const routing = getDefaultAgent(config).routing;
+export function chooseModel(
+  userMessage: string,
+  agent: AgentConfigEntry,
+): ChooseModelResult {
+  const primary = agent.model;
+  const haiku = agent.haikuModel;
+  const routing = agent.routing;
 
   // Routing disabled → always primary (current behaviour).
   if (!routing.enabled) {

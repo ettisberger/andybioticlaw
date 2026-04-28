@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import type { SessionsRepo, SessionStatus } from '../../db/repositories/sessions.js';
 import type { MessagesRepo } from '../../db/repositories/messages.js';
 import type { AuditRepo } from '../../db/repositories/audit.js';
+import type { AgentConfigEntry } from '../../config/schema.js';
 import type { DispatchDeps } from '../../agent/dispatch.js';
 import type { LiveSessionsTracker } from '../../observability/live-sessions.js';
 import { dispatchUserPrompt } from '../../agent/dispatch.js';
@@ -14,6 +15,13 @@ export interface SessionsRoutesDeps {
   dispatch: DispatchDeps | null;
   principalUserId: number | null;
   liveSessions: LiveSessionsTracker;
+  /**
+   * Resolve an agent by id from the live config — used by the retry
+   * endpoint so a retried session uses the same agent that ran it
+   * originally (falls back to the default agent if the original was
+   * deleted).
+   */
+  resolveAgentById: (agentId: string) => AgentConfigEntry;
 }
 
 export const sessionsRoutes =
@@ -87,6 +95,12 @@ export const sessionsRoutes =
           return { error: `invalid chatId on prior session: ${prior.source_ref}` };
         }
 
+        // Look up the prior session's agent so the retry uses the same
+        // persona. If the agent has been removed from config since the
+        // original ran, resolveAgentById falls back to the default
+        // agent.
+        const agent = deps.resolveAgentById(prior.agent_id ?? '');
+
         const outcome = await dispatchUserPrompt(
           {
             chatId,
@@ -97,6 +111,7 @@ export const sessionsRoutes =
           },
           deps.dispatch,
           deps.principalUserId,
+          agent,
         );
 
         if (outcome.kind === 'refused') {

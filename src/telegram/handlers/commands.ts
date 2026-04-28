@@ -3,6 +3,7 @@ import type { Logger } from 'pino';
 import type { SessionsRepo } from '../../db/repositories/sessions.js';
 import type { AuditRepo } from '../../db/repositories/audit.js';
 import type { BudgetTracker } from '../../agent/budget.js';
+import type { AgentConfigEntry } from '../../config/schema.js';
 import type { TelegramDmSubmit } from './dm.js';
 import type { TelegramCancel } from './dm.js';
 
@@ -10,8 +11,11 @@ export interface CommandsDeps {
   sessions: SessionsRepo;
   budget: BudgetTracker;
   audit: AuditRepo;
-  agentName: string;
-  model: string;
+  /**
+   * Resolve the agent for a given chat. Used by /start + /status + /help
+   * so each chat sees the agent that actually answers it (per bindings).
+   */
+  resolveAgent: (chatId: number, userId: number) => AgentConfigEntry;
   logger: Logger;
   submit: TelegramDmSubmit;
   cancel: TelegramCancel;
@@ -43,15 +47,19 @@ export const TELEGRAM_MENU_COMMANDS: Array<{
 
 export function registerCommands(bot: Bot, deps: CommandsDeps): void {
   bot.command('start', async (ctx) => {
+    if (!ctx.chat) return;
+    const agent = deps.resolveAgent(ctx.chat.id, ctx.from?.id ?? ctx.chat.id);
     await ctx.reply(
-      `👋 Hi, I'm ${deps.agentName} (model: ${deps.model}).\n\nSend me a message and I'll answer, streamed back as edits.\n\nCommands: /help, /status, /cancel, /retry <session-id>`,
+      `👋 Hi, I'm ${agent.name} (model: ${agent.model}).\n\nSend me a message and I'll answer, streamed back as edits.\n\nCommands: /help, /status, /cancel, /retry <session-id>`,
     );
   });
 
   bot.command('help', async (ctx) => {
+    if (!ctx.chat) return;
+    const agent = deps.resolveAgent(ctx.chat.id, ctx.from?.id ?? ctx.chat.id);
     await ctx.reply(
       [
-        `*${deps.agentName}* commands`,
+        `*${agent.name}* commands`,
         '',
         '/start — show this intro',
         '/help — this message',
@@ -66,6 +74,8 @@ export function registerCommands(bot: Bot, deps: CommandsDeps): void {
   });
 
   bot.command('status', async (ctx) => {
+    if (!ctx.chat) return;
+    const agent = deps.resolveAgent(ctx.chat.id, ctx.from?.id ?? ctx.chat.id);
     const s = deps.budget.status();
     const reset = new Date(s.window.nextResetMs).toLocaleString('en-GB', {
       timeZone: 'UTC',
@@ -73,8 +83,8 @@ export function registerCommands(bot: Bot, deps: CommandsDeps): void {
     });
     await ctx.reply(
       [
-        `*${deps.agentName}* — status`,
-        `Model: ${deps.model}`,
+        `*${agent.name}* — status`,
+        `Model: ${agent.model}`,
         ``,
         `Daily tokens: ${s.used.toLocaleString()} / ${s.dailyLimit.toLocaleString()} (${Math.round((s.used / Math.max(1, s.dailyLimit)) * 100)}%)`,
         `Remaining:    ${s.remaining.toLocaleString()}`,

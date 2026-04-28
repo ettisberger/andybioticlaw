@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { chooseModel } from '../../src/agent/route.js';
-import type { Config } from '../../src/config/schema.js';
+import type { AgentConfigEntry } from '../../src/config/schema.js';
 
 /**
  * The cheap-model router is heuristic. These tests pin each branch of
@@ -11,23 +11,20 @@ import type { Config } from '../../src/config/schema.js';
 function cfg(
   overrides: Partial<{ enabled: boolean; minCharsForOpus: number }> = {},
   enabled = true,
-): Config {
-  // Only the fields chooseModel reads; everything else is `{}` cast
-  // through `as unknown as Config` — the test is about the router, not
-  // the full schema shape.
+): AgentConfigEntry {
+  // Only the fields chooseModel reads; everything else is filler so
+  // the AgentConfigEntry shape parses.
   return {
-    agents: [
-      {
-        id: 'emma',
-        name: 'Emma',
-        default: true,
-        model: 'claude-opus-4-7',
-        haikuModel: 'claude-haiku-4-5-20251001',
-        routing: { enabled, minCharsForOpus: 120, ...overrides },
-        skills: ['*'],
-      },
-    ],
-  } as unknown as Config;
+    id: 'emma',
+    name: 'Emma',
+    default: true,
+    model: 'claude-opus-4-7',
+    haikuModel: 'claude-haiku-4-5-20251001',
+    credentialsDir: '~/.claude',
+    streamIdleTimeoutSec: 300,
+    skills: ['*'],
+    routing: { enabled, minCharsForOpus: 120, ...overrides },
+  };
 }
 
 describe('chooseModel — routing disabled', () => {

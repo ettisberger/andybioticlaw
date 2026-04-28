@@ -14,6 +14,7 @@ import { buildMcpConfig, mcpConfigPath, writeMcpConfig } from '../skills/mcp.js'
 import { assembleContext } from './context.js';
 import type { ContextAssemblyInput, SkillPromptSnapshot } from './context.js';
 import { runClaude } from './runner.js';
+import { projectRoot } from '../config/load.js';
 import type { RunClaudeResult } from './runner.js';
 import type { RateLimitTracker } from './rate-limit-tracker.js';
 import type { LiveSessionsTracker } from '../observability/live-sessions.js';
@@ -35,9 +36,33 @@ export interface SessionExecuteInput {
   timezone: string;
   agentName: string;
   /** Stable id of the agent running this session — recorded on the
-   *  sessions table so per-agent dashboards / metrics work after the
-   *  multi-agent split. Today everyone is 'emma'. */
+   *  sessions table so per-agent dashboards / metrics work. */
   agentId: string;
+  /**
+   * The agent's `skills` config: `['*']` for "all enabled skills",
+   * or an explicit subset list. Combined with the resolved policy's
+   * `skillsVisible` to decide what skills this session sees. Defaults
+   * to `['*']` so legacy / test callers that omit it preserve today's
+   * behaviour (= every enabled skill).
+   */
+  agentSkills?: ReadonlyArray<string>;
+  /**
+   * Optional per-agent system prompt override. When set, the prompt
+   * assembly reads this file (resolved against project root) instead
+   * of the bundled `system.base.md`. Lets a non-default agent ship
+   * its own persona + voice.
+   */
+  agentSystemPromptFile?: string;
+  /**
+   * Optional name of the env var holding this agent's long-lived
+   * Claude OAuth token. When set, the runner reads
+   * `process.env[agentTokenEnvVar]` and injects it as
+   * `CLAUDE_CODE_OAUTH_TOKEN` into the spawned session — this is how
+   * two agents on one host can use two different subscriptions.
+   * Unset → fall back to whatever `CLAUDE_CODE_OAUTH_TOKEN` is in
+   * the parent process env (today's single-agent default).
+   */
+  agentTokenEnvVar?: string;
   streamIdleTimeoutMs: number;
   cwd: string;
   /** Where per-session artifacts (.mcp.json) are written. Usually a workspaces subdir. */
@@ -173,7 +198,43 @@ async function runOne(
   const history = historyRaw.slice(0, -1);
 
   const sessionScope = input.source === 'group' ? 'group' : 'dm';
-  const activeSkills = deps.skills.activeFor(sessionScope);
+
+  // Resolve the per-context policy FIRST so we can intersect its
+  // `skillsVisible` with the agent's `skills` config when filtering
+  // the registry. The policy is also used later to write the per-
+  // session `.claude/settings.json`. Resolving once up-front avoids
+  // a second resolvePolicy call.
+  let resolvedPolicyForSession: ResolvedPolicy | null = null;
+  let policyContextKey: string | null = null;
+  if (deps.resolvePolicy) {
+    const { contextKey: makeContextKey } = await import('./runtime-context.js');
+    policyContextKey = makeContextKey({
+      agentId: input.agentId,
+      channel: 'telegram',
+      chatId: Number(input.chatId),
+    });
+    try {
+      resolvedPolicyForSession = deps.resolvePolicy(policyContextKey);
+    } catch (e) {
+      deps.logger.warn(
+        { err: (e as Error).message, ctxKey: policyContextKey },
+        'policy resolution failed — falling back to bypassPermissions',
+      );
+    }
+  }
+
+  // Filter the skill registry by agent.skills × policy.skillsVisible.
+  // Defaults: if the input doesn't supply agent.skills (legacy callers
+  // / tests), behave as if `['*']`; if no policy, behave as if
+  // `['*']`. So today's tests + dispatchers without policy keep their
+  // current "every enabled skill" behaviour.
+  const agentSkills = input.agentSkills ?? ['*'];
+  const policySkillsVisible = resolvedPolicyForSession?.skillsVisible ?? ['*'];
+  const activeSkills = deps.skills.activeForAgent(
+    sessionScope,
+    agentSkills,
+    policySkillsVisible,
+  );
   const skillNames = activeSkills.map((s) => s.name);
 
   const memorySnapshot = deps.memoryManager.snapshot(
@@ -236,49 +297,26 @@ async function runOne(
   // with tests + legacy callers.
   let claudeSettingsPath: string | undefined;
   let permissionMode: 'bypassPermissions' | 'default' = 'bypassPermissions';
-  if (deps.resolvePolicy) {
-    const { contextKey: makeContextKey } = await import('./runtime-context.js');
+  if (resolvedPolicyForSession && policyContextKey) {
     const { buildClaudeSessionSettings } = await import('./claude-settings.js');
-    const ctxKey = makeContextKey({
-      agentId: input.agentId,
-      channel: 'telegram',
-      // RuntimeContext expects a numeric chat id; SessionExecuteInput
-      // carries it as a string. Coerce here — Telegram chat ids fit in
-      // a JS safe-int. Non-numeric chat ids (rare; e.g. tests passing
-      // 'test-chat') fall back to NaN which the resolver treats as a
-      // miss → defaults policy.
-      chatId: Number(input.chatId),
+    const settings = buildClaudeSessionSettings({
+      policy: resolvedPolicyForSession,
+      skills: activeSkills.map((s) => ({ name: s.name, execAllow: s.execAllow })),
+      contextKey: policyContextKey,
     });
-    let resolved;
-    try {
-      resolved = deps.resolvePolicy(ctxKey);
-    } catch (e) {
-      deps.logger.warn(
-        { err: (e as Error).message, ctxKey },
-        'policy resolution failed — falling back to bypassPermissions',
-      );
-      resolved = null;
-    }
-    if (resolved) {
-      const settings = buildClaudeSessionSettings({
-        policy: resolved,
-        skills: activeSkills.map((s) => ({ name: s.name, execAllow: s.execAllow })),
-        contextKey: ctxKey,
-      });
-      // Claude Code reads `.claude/settings.json` in the cwd OR the
-      // exact path passed via `--settings`. We use the `--settings`
-      // form so the file lives inside the session workspace and gets
-      // cleaned up with the rest of session artifacts.
-      const { writeFileSync, mkdirSync, existsSync: exists } = await import('node:fs');
-      const { resolve: rpath } = await import('node:path');
-      const settingsDir = rpath(sessionDir, '.claude');
-      if (!exists(settingsDir)) mkdirSync(settingsDir, { recursive: true });
-      claudeSettingsPath = rpath(settingsDir, 'settings.json');
-      writeFileSync(claudeSettingsPath, JSON.stringify(settings, null, 2) + '\n', {
-        mode: 0o600,
-      });
-      permissionMode = settings.permissions.defaultMode;
-    }
+    // Claude Code reads `.claude/settings.json` in the cwd OR the
+    // exact path passed via `--settings`. We use the `--settings`
+    // form so the file lives inside the session workspace and gets
+    // cleaned up with the rest of session artifacts.
+    const { writeFileSync, mkdirSync, existsSync: exists } = await import('node:fs');
+    const { resolve: rpath } = await import('node:path');
+    const settingsDir = rpath(sessionDir, '.claude');
+    if (!exists(settingsDir)) mkdirSync(settingsDir, { recursive: true });
+    claudeSettingsPath = rpath(settingsDir, 'settings.json');
+    writeFileSync(claudeSettingsPath, JSON.stringify(settings, null, 2) + '\n', {
+      mode: 0o600,
+    });
+    permissionMode = settings.permissions.defaultMode;
   }
 
   // Per-skill env additions.
@@ -297,10 +335,29 @@ async function runOne(
     ANDYBIOTICLAW_CHAT_ID: input.chatId,
     ANDYBIOTICLAW_DB_PATH: input.dbPath,
     // The CLI's `schedule add` command reads this to look up the
-    // policy.scheduleKinds for Emma's current context. Replaces the old
-    // ANDYBIOTICLAW_AGENT_CAN_BASH=1 env-var gate.
+    // policy.scheduleKinds for the agent's current context. Replaces
+    // the old ANDYBIOTICLAW_AGENT_CAN_BASH=1 env-var gate.
     ANDYBIOTICLAW_CONTEXT_KEY: `${input.agentId}:telegram:${input.chatId}`,
   };
+
+  // Per-agent OAuth token: when the agent config sets `tokenEnvVar`,
+  // resolve that env var in the parent process and route it to the
+  // child as CLAUDE_CODE_OAUTH_TOKEN. Lets two agents on one host
+  // run on two different Claude subscriptions. If the var is set but
+  // empty, log a warn and fall through to whatever
+  // CLAUDE_CODE_OAUTH_TOKEN is already in the env (default agent's
+  // token, possibly).
+  if (input.agentTokenEnvVar) {
+    const token = process.env[input.agentTokenEnvVar];
+    if (token && token.trim() !== '') {
+      extraEnv.CLAUDE_CODE_OAUTH_TOKEN = token;
+    } else {
+      deps.logger.warn(
+        { agentId: input.agentId, tokenEnvVar: input.agentTokenEnvVar },
+        'agent.tokenEnvVar set but the env var is empty — falling back to CLAUDE_CODE_OAUTH_TOKEN',
+      );
+    }
+  }
   for (const skill of activeSkills) {
     const envKey = `SKILL_${skill.name.toUpperCase().replace(/-/g, '_')}_DIR`;
     extraEnv[envKey] = skill.skillDir;
@@ -323,6 +380,15 @@ async function runOne(
     }
   }
 
+  // Per-agent system prompt override: if the agent config has a
+  // systemPromptFile, route it through the existing
+  // `basePromptPathOverride` knob. The path is resolved against
+  // project root so an operator can ship `prompts/work-agent.md`
+  // alongside their config.
+  const basePromptPathOverride = input.agentSystemPromptFile
+    ? resolve(projectRoot(), input.agentSystemPromptFile)
+    : undefined;
+
   const { systemPrompt } = assembleContext({
     agentName: input.agentName,
     model: input.model,
@@ -332,6 +398,7 @@ async function runOne(
     activeSkills: skillPromptSnapshots,
     conversationHistory: history,
     memoryToolDescribed: true,
+    ...(basePromptPathOverride ? { basePromptPathOverride } : {}),
     ...(input.conversationBudgetChars !== undefined
       ? { historyBudgetChars: input.conversationBudgetChars }
       : {}),

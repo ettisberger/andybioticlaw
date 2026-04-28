@@ -20,6 +20,7 @@ import { createChatRunner, createQueueManager } from '../agent/queue.js';
 import type { RateLimitTracker } from '../agent/rate-limit-tracker.js';
 import type { LiveSessionsTracker } from '../observability/live-sessions.js';
 import type { VoiceStateRepo } from '../db/repositories/voice-state.js';
+import type { AgentConfigEntry } from '../config/schema.js';
 import { executeSession } from '../agent/session.js';
 import { registerCommands, TELEGRAM_MENU_COMMANDS } from './handlers/commands.js';
 import { registerDmHandler } from './handlers/dm.js';
@@ -29,13 +30,8 @@ import { registerMemoryCallbacks } from './handlers/memory-callbacks.js';
 
 export interface BotConfigView {
   botToken: string;
-  agentName: string;
-  /** Stable agent id (e.g. 'emma'). Threaded onto every session row. */
-  agentId: string;
-  model: string;
   timezone: string;
   cwd: string;
-  streamIdleTimeoutMs(): number;
   streamEditIntervalMs(): number;
   longTaskNotifyAfterMs(): number;
   conversationHistoryLimit(): number;
@@ -44,8 +40,13 @@ export interface BotConfigView {
   voiceMaxDurationSec(): number;
   /** Language hint for voice transcription; 'auto' lets the model detect. */
   voiceLanguage(): string;
-  /** Per-message model chooser for DMs. If absent, `model` is used. */
-  chooseModel?(userText: string): string;
+  /**
+   * Resolve the agent that should handle a given message. Per-message
+   * agent fields (id, name, model, streamIdleTimeoutSec, routing) come
+   * from the resolved agent — there's no constructor-time agent
+   * baked into the bot service.
+   */
+  resolveAgent(chatId: number, userId: number): AgentConfigEntry;
 }
 
 export interface BotDeps {
@@ -196,14 +197,11 @@ export function createTelegramService(deps: BotDeps): TelegramService {
     errors: deps.errors,
     queue,
     cwd: deps.config.cwd,
-    agentName: deps.config.agentName,
-      agentId: deps.config.agentId,
-    model: deps.config.model,
-    ...(deps.config.chooseModel ? { chooseModel: deps.config.chooseModel } : {}),
+    resolveAgent: (chatId, userId) =>
+      deps.config.resolveAgent(chatId, userId),
     timezone: deps.config.timezone,
     principalUserId: deps.principalChatId,
     memoryAutoAccept: () => deps.config.memoryAutoAccept(),
-    streamIdleTimeoutMs: () => deps.config.streamIdleTimeoutMs(),
     streamEditIntervalMs: () => deps.config.streamEditIntervalMs(),
     longTaskNotifyAfterMs: () => deps.config.longTaskNotifyAfterMs(),
     conversationHistoryLimit: () => deps.config.conversationHistoryLimit(),
@@ -221,8 +219,7 @@ export function createTelegramService(deps: BotDeps): TelegramService {
     sessions: deps.sessions,
     budget: deps.budget,
     audit: deps.audit,
-    agentName: deps.config.agentName,
-    model: deps.config.model,
+    resolveAgent: (chatId, userId) => deps.config.resolveAgent(chatId, userId),
     timezone: deps.config.timezone,
     logger: deps.logger,
     submit,
