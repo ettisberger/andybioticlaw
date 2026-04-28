@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.22.11](https://github.com/ettisberger/andybioticlaw/compare/v0.22.10...v0.22.11) (2026-04-28)
+
+
+### Features
+
+* **dev:** ANDYBIOTICLAW_DISABLE_TELEGRAM env to skip bot for local smoke-tests ([567dc4b](https://github.com/ettisberger/andybioticlaw/commit/567dc4b2ddcdcd829addb5485f9409e2b37c4ddb))
+
 ## [0.22.10](https://github.com/ettisberger/andybioticlaw/compare/v0.22.9...v0.22.10) (2026-04-28)
 
 
