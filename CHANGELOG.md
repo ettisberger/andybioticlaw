@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.22.8](https://github.com/ettisberger/andybioticlaw/compare/v0.22.7...v0.22.8) (2026-04-28)
+
+
+### Features
+
+* **dashboard:** hand-render agents + bindings on /config; explain observability ([1fe4972](https://github.com/ettisberger/andybioticlaw/commit/1fe49723110d5ebe53029bb5823bfd92e6744396))
+
 ## [0.22.7](https://github.com/ettisberger/andybioticlaw/compare/v0.22.6...v0.22.7) (2026-04-28)
 
 
