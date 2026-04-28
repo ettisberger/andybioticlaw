@@ -96,6 +96,28 @@ Skill secrets are **never** injected into other skills' MCP server
 env blocks: `buildMcpConfig()` interpolates `${SECRET_NAME}` templates
 only for secrets declared in that server's own skill.
 
+#### 2a. Skill visibility — per-agent + per-context
+
+The set of skills an agent can use in a given chat is the
+intersection of three filters, applied at session start by
+`registry.activeForAgent(scope, agent.skills, policy.skillsVisible)`:
+
+1. The skill is `enabled` (operator toggle in CLI / dashboard).
+2. The skill's `scope` includes the session's scope (`dm` or
+   `group`).
+3. The agent's `skills` config (`['*']` = every enabled skill;
+   explicit list = subset). Configured per-agent in `config.yaml`.
+4. The resolved policy's `skillsVisible` (`['*']` = no narrowing;
+   explicit list = subset of the agent's skills, by chat). Loaded
+   fresh from `data/policies.json` for each session via
+   `<agentId>:<channel>:<chatId>`.
+
+Both filters are enforced — a skill that's enabled globally and
+allowed for an agent can still be hidden from a specific chat by
+that chat's `policy.skillsVisible`. Useful when the same agent
+serves multiple groups but you want a tighter skill set in some
+of them.
+
 ### 3. Per-session subprocess env
 
 Every `claude` spawn gets:

@@ -60,7 +60,8 @@ export interface SessionExecuteInput {
    * `CLAUDE_CODE_OAUTH_TOKEN` into the spawned session — this is how
    * two agents on one host can use two different subscriptions.
    * Unset → fall back to whatever `CLAUDE_CODE_OAUTH_TOKEN` is in
-   * the parent process env (today's single-agent default).
+   * the parent process env (the default for agents that don't pin a
+   * custom token env var).
    */
   agentTokenEnvVar?: string;
   streamIdleTimeoutMs: number;
@@ -351,6 +352,12 @@ async function runOne(
     const token = process.env[input.agentTokenEnvVar];
     if (token && token.trim() !== '') {
       extraEnv.CLAUDE_CODE_OAUTH_TOKEN = token;
+      // Tell the outbound redactor about this token so any literal
+      // appearance in the agent's reply (e.g. an error message that
+      // echoes the env var, or a prompt-injection echo) gets scrubbed
+      // before reaching Telegram. Same pattern as the skill-secret
+      // loop below; without this, a per-agent token is unredacted.
+      input.secretsRef?.values.add(token);
     } else {
       deps.logger.warn(
         { agentId: input.agentId, tokenEnvVar: input.agentTokenEnvVar },

@@ -125,15 +125,21 @@ mcp_servers:
     expect(result.failed).toHaveLength(1);
   });
 
-  it('activeFor respects enabled flag and scope', () => {
+  it('activeForAgent respects enabled flag and scope (with wildcard agent + policy)', () => {
     writeSkill('a', `name: a\nversion: 0.1.0\ndescription: x\nenabled: true\nscope: [dm]`);
     writeSkill('b', `name: b\nversion: 0.1.0\ndescription: x\nenabled: false\nscope: [dm]`);
     writeSkill('c', `name: c\nversion: 0.1.0\ndescription: x\nenabled: true\nscope: [group]`);
     const registry = createSkillRegistry(db);
     loadSkills({ dir: skillsDir, logger, registry });
-    const dmActive = registry.activeFor('dm').map((s) => s.name).sort();
+    const dmActive = registry
+      .activeForAgent('dm', ['*'], ['*'])
+      .map((s) => s.name)
+      .sort();
     expect(dmActive).toEqual(['a']);
-    const grpActive = registry.activeFor('group').map((s) => s.name).sort();
+    const grpActive = registry
+      .activeForAgent('group', ['*'], ['*'])
+      .map((s) => s.name)
+      .sort();
     expect(grpActive).toEqual(['c']);
   });
 
