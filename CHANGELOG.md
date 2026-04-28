@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.22.7](https://github.com/ettisberger/andybioticlaw/compare/v0.22.6...v0.22.7) (2026-04-28)
+
+
+### Features
+
+* settings + init wizard cleanup; retire briefings; fix EROFS on .claude.json ([050d95b](https://github.com/ettisberger/andybioticlaw/commit/050d95bd5409078eab556190f496511ceeb3f50c))
+
 ## [0.22.6](https://github.com/ettisberger/andybioticlaw/compare/v0.22.5...v0.22.6) (2026-04-27)
 
 
