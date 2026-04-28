@@ -41,6 +41,13 @@ ProtectSystem=strict
 ProtectHome=read-only
 # Data dir for SQLite, logs, session workspaces.
 ReadWritePaths=__INSTALL_DIR__/data
+# Config dir — the dashboard's `/api/agents` PATCH endpoint and the
+# init wizard's basic-auth flip both rewrite `config/config.yaml`.
+# Without this, any dashboard config-edit returns 500 EROFS under
+# the running systemd unit (init wizard runs outside the sandbox so
+# is unaffected). Same class of bug as the `.claude.json` EROFS
+# below — every path the running service writes to needs a hole here.
+ReadWritePaths=__INSTALL_DIR__/config
 # Claude CLI's subscription-token cache — the CLI periodically refreshes
 # the OAuth token in-place, which fails under ProtectHome=read-only
 # without this exception.

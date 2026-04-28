@@ -207,7 +207,18 @@ export const agentsRoutes =
         // we keep the prior bytes in memory and rewrite if Zod
         // rejects.
         const prior = readFileSync(deps.configPath, 'utf8');
-        writeFileSync(deps.configPath, nextYaml);
+        try {
+          writeFileSync(deps.configPath, nextYaml);
+        } catch (e) {
+          // Most likely EROFS under systemd's ProtectHome=read-only
+          // when `config/` isn't in ReadWritePaths. Surface a clear
+          // message so the operator knows what to fix instead of
+          // staring at a generic 500.
+          reply.code(500);
+          return {
+            error: `failed to write config.yaml: ${(e as Error).message} — check systemd ReadWritePaths includes ${deps.configPath}'s parent`,
+          };
+        }
         try {
           loadConfig();
         } catch (e) {
