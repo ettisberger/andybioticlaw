@@ -31,6 +31,18 @@ a one-line add to Backlog is enough — don't gate on a full spec.
   past `MemoryManager.snapshot()`'s `maxEntries=50` cutoff — that's
   when pruning candidates actually differ from "everything Emma
   has."
+- **Per-agent boot credentials soft-check** — today the boot-time
+  `runStartupCredentialsCheck` only validates the default agent's
+  `credentialsDir`. When a non-default agent has its own
+  `tokenEnvVar` or distinct `credentialsDir`, a misconfigured
+  token (typo, expired, unset env var) doesn't surface until the
+  first message routes to that agent. Add a warn-only loop in
+  `src/index.ts` that walks `config.agents.slice(1)` after the
+  default-agent hard check: cheap env-var presence check for
+  `tokenEnvVar`, full `claude auth status` probe for distinct
+  dirs. Hard-fail stays for the default agent. ~ 30 min, only
+  matters for separate-auth multi-agent setups; the runner's
+  lazy SIGKILL on bad init events is the existing safety net.
 
 ## Backlog — medium scope (a weekend each)
 
@@ -89,8 +101,6 @@ a one-line add to Backlog is enough — don't gate on a full spec.
   `curl attacker.com` exfil path that outbound-redaction can't.
 - **Multi-user / group chat scope** — real
   `telegram.group.runMode: workspace` support with per-chat isolation.
-- **Multiple personas per context** — "work-Emma" vs "personal-Emma"
-  system prompts picked by chat origin.
 
 ## Backlog — lower priority / not yet compelling
 
@@ -101,6 +111,27 @@ a one-line add to Backlog is enough — don't gate on a full spec.
 
 ## Shipped
 
+- **Multi-agent runtime** — the schema, `bindings:`, and the
+  per-agent YAML patcher had been N-agent-ready since the
+  multi-agent refactor; the runtime trailed (every dispatch
+  hardcoded `'emma'`). Closed the gap end-to-end:
+  `resolveBinding()` is wired into the Telegram DM handler;
+  dispatch threads an `AgentConfigEntry` through to
+  `SessionExecuteInput` per message; `agent.systemPromptFile` and
+  `agent.tokenEnvVar` are honored (per-agent system prompts +
+  per-agent OAuth tokens with outbound redaction); the scheduler
+  parses each schedule's persisted `context`
+  (`<agentId>:<channel>:<chatId>`) to fire under the right agent;
+  `policy.skillsVisible` is now enforced via
+  `registry.activeForAgent`; schema path classifiers
+  (`isHotReloadable` / `isRestartRequired`) match
+  `agents.<i>.<field>` for any index so adding agent #2 doesn't
+  need a schema edit. Boot summary log lists each agent + bindings
+  count. Dashboard `/agents` page is editable via a
+  comment-preserving YAML patcher (`src/config/agent-yaml-edit.ts`,
+  18 unit tests). Adding a second agent is now a config edit +
+  restart — no code change. See `docs/ARCHITECTURE.md` § "Adding
+  a second agent."
 - **Briefings retired** — the dedicated morning + evening BriefingManager
   + four Settings entries are gone. Operators set up their daily digest
   as a regular `agent-task` schedule (created by Emma herself or via
@@ -146,8 +177,9 @@ a one-line add to Backlog is enough — don't gate on a full spec.
   retired" entry above for the rationale.
 - **Model routing (Opus ↔ Haiku)** — opt-in heuristic router (length +
   keyword + `/opus` / `/haiku` slash prefix) at `src/agent/route.ts`.
-  Toggled from Settings → Agent → "Cheap-model router".
-  *(see `feat: proactive briefings + model routing + memory hygiene + roadmap`)*
+  Per-agent: each agent has its own `routing.enabled` +
+  `routing.minCharsForOpus`. Edited from the dashboard `/agents`
+  page.
 - **Memory hygiene — DB plumbing only** — migration 0007 adds
   `last_used_at` + `pinned` columns. `MemoryManager.snapshot()` bumps
   `last_used_at` for every entry it reads into context. Dashboard UI
