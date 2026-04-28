@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.22.14](https://github.com/ettisberger/andybioticlaw/compare/v0.22.13...v0.22.14) (2026-04-28)
+
+
+### Features
+
+* **install:** final hardening pass before fresh-VPS test ([0a3531b](https://github.com/ettisberger/andybioticlaw/commit/0a3531b076e4dc095373fc787e6cbb69faa14eb6))
+
 ## [0.22.13](https://github.com/ettisberger/andybioticlaw/compare/v0.22.12...v0.22.13) (2026-04-28)
 
 
