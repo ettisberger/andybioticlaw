@@ -263,7 +263,28 @@ async function main(): Promise<void> {
 
   let telegram: ReturnType<typeof createTelegramService> | null = null;
   let scheduler: ReturnType<typeof createSchedulerEngine> | null = null;
-  if (!botToken) {
+  // Local-dev escape hatch: set ANDYBIOTICLAW_DISABLE_TELEGRAM=1 to boot
+  // everything except the bot. Useful when smoke-testing the dashboard
+  // on a laptop with the same .env as a running production VPS — without
+  // it, both instances would race to poll /getUpdates and Telegram
+  // 409-kicks the loser. NEVER set this in the systemd unit's env.
+  const telegramDisabledByEnv =
+    process.env.ANDYBIOTICLAW_DISABLE_TELEGRAM === '1';
+  if (telegramDisabledByEnv && process.env.NODE_ENV === 'production') {
+    // Hard-fail loudly — this flag is a dev convenience and must never
+    // accidentally suppress the bot in prod (the systemd unit sets
+    // NODE_ENV=production). Easier to surface at boot than to debug
+    // a "why isn't Emma answering" hour later.
+    logger.error(
+      'ANDYBIOTICLAW_DISABLE_TELEGRAM=1 set with NODE_ENV=production — refusing to boot. Unset the env var to start the bot.',
+    );
+    process.exit(1);
+  }
+  if (telegramDisabledByEnv) {
+    logger.warn(
+      'ANDYBIOTICLAW_DISABLE_TELEGRAM=1 — bot disabled by env. Dashboard, CLI, and scheduled jobs still work.',
+    );
+  } else if (!botToken) {
     logger.warn(
       'TELEGRAM_BOT_TOKEN is unset — bot disabled. Dashboard, CLI, and scheduled jobs still work.',
     );
