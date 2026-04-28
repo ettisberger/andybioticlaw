@@ -48,7 +48,23 @@ agents:
       minCharsForOpus: 120
 
 # Routing rules — map incoming messages to a specific agent. Empty
-# array means everything goes to the default agent.
+# array means everything goes to the default agent above.
+#
+# Most-specific rule wins, in this precedence order:
+#   chatId+userId match  >  chatId match  >  userId match  >
+#   channel catch-all   >  default agent fallback
+#
+# Example (commented out — uncomment + edit to enable):
+#
+#   bindings:
+#     - agentId: work
+#       match:
+#         channel: telegram
+#         userIds: [123456789]          # DMs from this user → work agent
+#     - agentId: research
+#       match:
+#         channel: telegram
+#         chatIds: [-1009876543210]     # this group chat → research agent
 bindings: []
 
 telegram:

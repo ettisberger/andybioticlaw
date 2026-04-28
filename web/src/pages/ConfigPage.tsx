@@ -1,19 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import {
   Activity,
   Bot,
   Brain,
+  ChevronDown,
+  ChevronRight,
   Clock,
   History,
   MessageCircle,
   Monitor,
   Puzzle,
+  Route,
   Settings as SettingsIcon,
   Wallet,
 } from 'lucide-react';
 import { apiGet } from '../lib/api';
-import { Badge, Card, ErrorBanner, PageTitle } from '../components/ui';
+import { Badge, Card, ErrorBanner, PageTitle, Table, Td, Th } from '../components/ui';
 import { humanizeCron } from './config/cron-translate';
 
 const VIEW_KEY = 'abl_config_view';
@@ -130,16 +133,243 @@ function CardsView({ config, hotReloadable, restartRequired }: CardsViewProps) {
 
   return (
     <div className="space-y-4">
-      {sections.map(([sectionKey, sectionValue]) => (
-        <SectionCard
-          key={sectionKey}
-          path={sectionKey}
-          title={sectionKey}
-          value={sectionValue}
-          hotReloadable={hotReloadable}
-          restartRequired={restartRequired}
-        />
+      {sections.map(([sectionKey, sectionValue]) => {
+        const Custom = CUSTOM_RENDERERS[sectionKey];
+        if (Custom) {
+          return <Custom key={sectionKey} value={sectionValue} />;
+        }
+        return (
+          <SectionCard
+            key={sectionKey}
+            path={sectionKey}
+            title={sectionKey}
+            value={sectionValue}
+            hotReloadable={hotReloadable}
+            restartRequired={restartRequired}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── custom section renderers ─────────────────────────────────────────
+//
+// Some top-level config sections (notably `agents` — an array of nested
+// objects) render badly through the generic `flattenSection` pipeline.
+// The registry lets us hand-render those without forking the whole
+// CardsView. Sections without an entry fall through to SectionCard.
+
+interface CustomSectionProps {
+  value: unknown;
+}
+
+const CUSTOM_RENDERERS: Record<string, ComponentType<CustomSectionProps>> = {
+  agents: AgentsConfigSection,
+  bindings: BindingsConfigSection,
+};
+
+interface AgentEntry {
+  id: string;
+  name: string;
+  default?: boolean;
+  model: string;
+  haikuModel: string;
+  skills: string[];
+  routing?: { enabled: boolean; minCharsForOpus: number };
+}
+
+function AgentsConfigSection({ value }: CustomSectionProps) {
+  const agents = (Array.isArray(value) ? value : []) as AgentEntry[];
+  return (
+    <Card>
+      <SectionHeader
+        icon={Bot}
+        title="Agents"
+        subtitle="Each entry is a Claude Code persona. Exactly one is the default; bindings (below) decide which non-default agents handle which messages."
+      />
+      {agents.length === 0 ? (
+        <div className="text-sm text-ink-faint">No agents configured.</div>
+      ) : (
+        <Table>
+          <thead>
+            <tr>
+              <Th>Default</Th>
+              <Th>Id</Th>
+              <Th>Name</Th>
+              <Th>Model</Th>
+              <Th>Cheap fallback</Th>
+              <Th>Router</Th>
+              <Th>Skills</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {agents.map((a) => (
+              <tr key={a.id} className="hover:bg-surface-muted/50">
+                <Td>{a.default ? <Badge tone="accent">default</Badge> : null}</Td>
+                <Td className="font-mono text-xs text-info-ink">{a.id}</Td>
+                <Td className="text-sm font-medium text-ink">{a.name}</Td>
+                <Td className="font-mono text-xs text-ink-dim">{a.model}</Td>
+                <Td className="font-mono text-xs text-ink-faint">{a.haikuModel}</Td>
+                <Td>
+                  {a.routing?.enabled ? (
+                    <span className="flex items-center gap-2">
+                      <Badge tone="success">on</Badge>
+                      <span className="text-xs text-ink-faint">
+                        ≥{a.routing.minCharsForOpus} chars → Opus
+                      </span>
+                    </span>
+                  ) : (
+                    <Badge tone="neutral">off</Badge>
+                  )}
+                </Td>
+                <Td>
+                  <div className="flex flex-wrap gap-1">
+                    {a.skills.map((s) => (
+                      <Badge key={s} tone={s === '*' ? 'success' : 'info'}>
+                        {s}
+                      </Badge>
+                    ))}
+                  </div>
+                </Td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      )}
+    </Card>
+  );
+}
+
+interface BindingEntry {
+  agentId: string;
+  match: {
+    channel: string;
+    chatIds?: number[];
+    userIds?: number[];
+  };
+}
+
+const BINDINGS_EXAMPLE = `bindings:
+  - agentId: work
+    match:
+      channel: telegram
+      userIds: [123456789]   # DMs from this Telegram user → work agent
+  - agentId: research
+    match:
+      channel: telegram
+      chatIds: [-1009876543210]   # this group chat → research agent`;
+
+function BindingsConfigSection({ value }: CustomSectionProps) {
+  const bindings = (Array.isArray(value) ? value : []) as BindingEntry[];
+  const [showExample, setShowExample] = useState(false);
+
+  return (
+    <Card>
+      <SectionHeader
+        icon={Route}
+        title="Bindings"
+        subtitle="Routing rules — match incoming messages to a specific agent. Most-specific rule wins (chatId+userId > chatId > userId > channel). No match → the default agent."
+      />
+      {bindings.length === 0 ? (
+        <div className="space-y-3 text-sm">
+          <div className="text-ink-dim">
+            <span className="text-ink-faint">∅ no rules</span> — every message
+            routes to the default agent above.
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowExample((v) => !v)}
+            className="inline-flex items-center gap-1 text-xs text-accent-ink hover:underline"
+          >
+            {showExample ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            {showExample ? 'Hide example' : 'Show example rule'}
+          </button>
+          {showExample && (
+            <pre className="overflow-auto rounded-md bg-surface-muted/60 p-3 font-mono text-xs leading-relaxed text-ink-dim">
+              {BINDINGS_EXAMPLE}
+            </pre>
+          )}
+        </div>
+      ) : (
+        <Table>
+          <thead>
+            <tr>
+              <Th>Agent</Th>
+              <Th>Channel</Th>
+              <Th>Chat IDs</Th>
+              <Th>User IDs</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {bindings.map((b, i) => (
+              <tr key={i} className="hover:bg-surface-muted/50">
+                <Td>
+                  <Badge tone="accent">{b.agentId}</Badge>
+                </Td>
+                <Td className="font-mono text-xs text-ink-dim">{b.match.channel}</Td>
+                <Td>
+                  <IdList ids={b.match.chatIds} />
+                </Td>
+                <Td>
+                  <IdList ids={b.match.userIds} />
+                </Td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      )}
+    </Card>
+  );
+}
+
+function IdList({ ids }: { ids: number[] | undefined }) {
+  if (!ids || ids.length === 0) {
+    return <span className="text-xs text-ink-faint">any</span>;
+  }
+  const head = ids.slice(0, 3);
+  const rest = ids.length - head.length;
+  return (
+    <span className="flex flex-wrap items-center gap-1">
+      {head.map((id) => (
+        <code
+          key={id}
+          className="rounded bg-surface-muted px-1 py-0.5 font-mono text-[11px] tabular-nums text-ink-dim"
+        >
+          {id}
+        </code>
       ))}
+      {rest > 0 && (
+        <span className="text-[11px] text-ink-faint">+{rest} more</span>
+      )}
+    </span>
+  );
+}
+
+function SectionHeader({
+  icon: Icon,
+  title,
+  subtitle,
+}: {
+  icon: ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
+  title: string;
+  subtitle?: string;
+}) {
+  return (
+    <div className="mb-3">
+      <div className="flex items-center gap-2.5">
+        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-bg text-accent-ink">
+          <Icon size={16} strokeWidth={2} />
+        </span>
+        <h2 className="text-base font-semibold capitalize tracking-tight text-ink">
+          {title}
+        </h2>
+      </div>
+      {subtitle && (
+        <div className="mt-1.5 pl-[42px] text-xs leading-snug text-ink-faint">
+          {subtitle}
+        </div>
+      )}
     </div>
   );
 }
@@ -221,14 +451,26 @@ function FieldRow({
     <ReloadTag tone="success">live</ReloadTag>
   ) : null;
 
+  const description = FIELD_DESCRIPTIONS[row.path];
+
   return (
-    <div
-      className="flex items-center gap-3 py-1 text-sm"
-      style={{ paddingLeft: `${row.depth * 12}px` }}
-    >
-      <span className="min-w-[180px] text-ink-dim">{humanizeKey(row.label)}</span>
-      <span className="flex-1">{renderValue(row.value, row.path)}</span>
-      {tag && <span className="shrink-0">{tag}</span>}
+    <div>
+      <div
+        className="flex items-center gap-3 py-1 text-sm"
+        style={{ paddingLeft: `${row.depth * 12}px` }}
+      >
+        <span className="min-w-[180px] text-ink-dim">{humanizeKey(row.label)}</span>
+        <span className="flex-1">{renderValue(row.value, row.path)}</span>
+        {tag && <span className="shrink-0">{tag}</span>}
+      </div>
+      {description && (
+        <div
+          className="pb-1 text-xs leading-snug text-ink-faint"
+          style={{ paddingLeft: `${row.depth * 12 + 180 + 12}px` }}
+        >
+          {description}
+        </div>
+      )}
     </div>
   );
 }
@@ -426,6 +668,23 @@ const NULL_LABELS: Record<string, string> = {
   'observability.errorChatIdOverride': 'default chat',
 };
 
+/**
+ * One-line plain-English explanation for fields whose schema names
+ * aren't self-explanatory. Rendered dim under the value in FieldRow.
+ * Keep entries terse — the goal is "operator opens dashboard, gets
+ * the gist without reading source".
+ */
+const FIELD_DESCRIPTIONS: Record<string, string> = {
+  'observability.heartbeatIntervalSec':
+    'How often the service writes a liveness snapshot. Powers the Sessions / live-state widgets.',
+  'observability.heartbeatRetentionDays':
+    'How long to keep those snapshots before the daily cleanup prunes them.',
+  'observability.errorsToTelegram':
+    'When on: every internal service error is DM’d to the principal so crashes surface immediately.',
+  'observability.errorChatIdOverride':
+    'If set, error DMs go here instead of the principal’s chat (e.g. a private admin group id).',
+};
+
 function numberSuffix(path: string): string | null {
   const last = lastSegment(path).toLowerCase();
   // Order matters — more-specific matches must come first.
@@ -471,7 +730,8 @@ function enumTone(
 
 const SECTION_ICONS: Record<string, React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>> = {
   service: SettingsIcon,
-  agent: Bot,
+  agents: Bot,
+  bindings: Route,
   telegram: MessageCircle,
   budget: Wallet,
   memory: Brain,
