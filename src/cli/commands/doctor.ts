@@ -353,12 +353,25 @@ export async function checkClaudeAuth(credentialsDir: string): Promise<DoctorRow
 }
 
 export async function checkTelegram(allowedUserIds: number[]): Promise<DoctorRow> {
-  const token = process.env['TELEGRAM_BOT_TOKEN'];
-  if (!token) {
+  const tokenRaw = process.env['TELEGRAM_BOT_TOKEN'];
+  // Distinguish "not set at all" (warn — bot disabled is a valid
+  // operating mode) from "set but empty/whitespace" (fail — almost
+  // certainly a typo'd .env line that would silently disable the bot
+  // without the operator realising). The wizard never writes empty,
+  // but a hand-edited .env can land here.
+  if (tokenRaw === undefined) {
     return {
       name: 'Telegram',
       status: 'warn',
       detail: 'TELEGRAM_BOT_TOKEN unset — bot disabled',
+    };
+  }
+  const token = tokenRaw.trim();
+  if (token === '') {
+    return {
+      name: 'Telegram',
+      status: 'fail',
+      detail: 'TELEGRAM_BOT_TOKEN set but empty — fix .env (likely a stray quotes / blank line)',
     };
   }
   if (allowedUserIds.length === 0) {

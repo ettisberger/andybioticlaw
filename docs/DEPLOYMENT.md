@@ -73,7 +73,7 @@ ssh "$ADMIN_USER"@<vps-ip>    # re-login as the non-root user
 ```bash
 sudo apt-get update
 sudo apt-get install -y \
-  curl ca-certificates sqlite3 logrotate git build-essential \
+  curl ca-certificates sqlite3 logrotate rsync git build-essential \
   python3 python3-dev
 
 # Node.js 20 LTS via NodeSource (or use Ubuntu's newer Node if you prefer).
@@ -263,6 +263,13 @@ Arrow keys + Enter. Select **"Run setup wizard"**. The wizard asks:
 - Dashboard password (required when basic-auth is enabled — default;
   press Enter to explicitly disable basic-auth for a localhost-only
   setup)
+- Claude auth — pick **"Paste a long-lived OAuth token"** and paste
+  the `sk-ant-oat-…` you got from `claude setup-token` in § 6a; OR
+  pick **"Skip"** if you already authenticated via `claude login`
+  in § 6b (session credentials in `~/.claude/.credentials.json`)
+- Skills picker — multi-select of every shipped skill; defaults to
+  all checked. Uncheck any you don't want this agent to use; press
+  Enter on **Done** to confirm
 
 The wizard writes `.env` + patches `config.yaml` and validates the
 result. Re-running is idempotent.

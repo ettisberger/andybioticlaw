@@ -105,8 +105,23 @@ async function runInitCommandInner(): Promise<void> {
           `  ${dim('  2. send /newbot, pick display name + @username')}\n` +
           `  ${dim('  3. copy the token (format: 1234567890:ABC-DEF…)')}\n\n`,
       );
-      const token = await askSecret(stdin, stdout, `  ${lavender('?')} bot token: `);
-      if (!token) throw new InitAbortedError();
+      // Validate format inline so a typo / pasted-something-else is
+      // caught here rather than at first poll. BotFather tokens are
+      // always `<digits>:<base64ish>` with the suffix at least 30
+      // chars (real tokens are usually 35).
+      let token: string | null = null;
+      while (token === null) {
+        const raw = await askSecret(stdin, stdout, `  ${lavender('?')} bot token: `);
+        if (!raw) throw new InitAbortedError();
+        const trimmed = raw.trim();
+        if (!isValidBotToken(trimmed)) {
+          stdout.write(
+            `  ${yellow('!')} ${dim("doesn't look like a BotFather token (expected `<digits>:<35+chars>`) — try again")}\n`,
+          );
+          continue;
+        }
+        token = trimmed;
+      }
       envUpdates.TELEGRAM_BOT_TOKEN = token;
     }
 
@@ -639,6 +654,20 @@ async function pickSkills(
   if (idx < 0) return null;
   if (selected.size === available.length) return '*';
   return available.filter((s) => selected.has(s.name)).map((s) => s.name);
+}
+
+/**
+ * BotFather tokens are `<bot-id-digits>:<auth-suffix>` where the
+ * suffix is base64-ish and at least 30 chars (real tokens are 35).
+ * We validate the shape inline in the wizard so a typo or a pasted
+ * "wrong thing" is caught here rather than at first poll —
+ * Telegram's `getMe` would otherwise fail with a 401 buried in
+ * pino logs the operator has to dig for.
+ *
+ * Exported for unit testing.
+ */
+export function isValidBotToken(token: string): boolean {
+  return /^\d{6,}:[A-Za-z0-9_-]{30,}$/.test(token);
 }
 
 /**

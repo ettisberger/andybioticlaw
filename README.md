@@ -20,7 +20,7 @@ A single-operator, self-hosted AI agent. Telegram on the front, the Claude CLI o
 ```bash
 # 1. System dependencies (Ubuntu/Debian — adjust apt for other distros)
 sudo apt-get update
-sudo apt-get install -y curl ca-certificates sqlite3 logrotate git \
+sudo apt-get install -y curl ca-certificates sqlite3 logrotate rsync git \
   build-essential python3 python3-dev
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt-get install -y nodejs

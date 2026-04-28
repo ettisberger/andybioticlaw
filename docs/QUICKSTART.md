@@ -41,7 +41,7 @@ ssh root@<vps-ip>
 
 apt-get update
 apt-get install -y \
-  curl ca-certificates sqlite3 logrotate git build-essential \
+  curl ca-certificates sqlite3 logrotate rsync git build-essential \
   python3 python3-dev
 
 # Node.js 20 LTS

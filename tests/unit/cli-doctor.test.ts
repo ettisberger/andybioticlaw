@@ -11,6 +11,7 @@ import {
   checkLogs,
   checkSchedules,
   checkServiceRunning,
+  checkTelegram,
 } from '../../src/cli/commands/doctor.js';
 
 /**
@@ -223,5 +224,38 @@ describe('doctor — checkLogs', () => {
     const row = checkLogs(dir);
     expect(row.status).toBe('ok');
     expect(row.detail).toMatch(/writable/);
+  });
+});
+
+describe('doctor — checkTelegram (early-return paths)', () => {
+  // We don't test the network branch (would hit api.telegram.org); we
+  // do pin the operator-friendly distinction between "unset"
+  // (legitimate "bot disabled" mode) and "set but empty" (almost
+  // certainly a typo'd .env that silently kills the bot).
+  const ORIGINAL = process.env['TELEGRAM_BOT_TOKEN'];
+  afterEach(() => {
+    if (ORIGINAL === undefined) delete process.env['TELEGRAM_BOT_TOKEN'];
+    else process.env['TELEGRAM_BOT_TOKEN'] = ORIGINAL;
+  });
+
+  it('warns when TELEGRAM_BOT_TOKEN is unset (bot intentionally disabled)', async () => {
+    delete process.env['TELEGRAM_BOT_TOKEN'];
+    const row = await checkTelegram([18998064]);
+    expect(row.status).toBe('warn');
+    expect(row.detail).toMatch(/unset/);
+  });
+
+  it('FAILS when TELEGRAM_BOT_TOKEN is set but empty', async () => {
+    process.env['TELEGRAM_BOT_TOKEN'] = '';
+    const row = await checkTelegram([18998064]);
+    expect(row.status).toBe('fail');
+    expect(row.detail).toMatch(/empty/);
+  });
+
+  it('FAILS when TELEGRAM_BOT_TOKEN is set to whitespace only', async () => {
+    process.env['TELEGRAM_BOT_TOKEN'] = '   ';
+    const row = await checkTelegram([18998064]);
+    expect(row.status).toBe('fail');
+    expect(row.detail).toMatch(/empty/);
   });
 });

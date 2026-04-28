@@ -55,6 +55,18 @@ ReadWritePaths=__SERVICE_HOME__/.claude.json
 ReadWritePaths=__SERVICE_HOME__/.cache
 PrivateTmp=yes
 NoNewPrivileges=yes
+# Prevent /dev/* device access — the service only needs network +
+# filesystem in the ReadWritePaths above. No raw devices.
+PrivateDevices=yes
+# Restrict the socket families the service can use:
+#   AF_UNIX  — local sockets (better-sqlite3 doesn't need this, but
+#              MCP servers that talk over stdin/stdout via tsx may
+#              spawn child processes that use AF_UNIX internally)
+#   AF_INET  — IPv4 (Telegram, Anthropic, skill APIs)
+#   AF_INET6 — IPv6 (same)
+# Blocks AF_NETLINK, AF_PACKET, AF_BLUETOOTH, etc. — defense-in-depth
+# against an injected payload trying to open a raw socket.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 
 # Logging to journald; our pino logger ALSO writes data/logs/andybioticlaw.log.
 StandardOutput=journal
