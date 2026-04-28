@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.22.13](https://github.com/ettisberger/andybioticlaw/compare/v0.22.12...v0.22.13) (2026-04-28)
+
+
+### Bug Fixes
+
+* **agent:** redact per-agent OAuth token; drop dead activeFor; doc skillsVisible ([0d860c3](https://github.com/ettisberger/andybioticlaw/commit/0d860c39b2a1bec24a57cbd3c5d00d2dbecbb78c))
+
 ## [0.22.12](https://github.com/ettisberger/andybioticlaw/compare/v0.22.11...v0.22.12) (2026-04-28)
 
 
