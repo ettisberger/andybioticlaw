@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.22.16](https://github.com/ettisberger/andybioticlaw/compare/v0.22.15...v0.22.16) (2026-04-29)
+
+
+### Bug Fixes
+
+* **scheduler:** HTML parse_mode on agent-task output (daily digest) ([e8f692e](https://github.com/ettisberger/andybioticlaw/commit/e8f692e167b714316294353b549d7f228ac8f34a))
+
 ## [0.22.15](https://github.com/ettisberger/andybioticlaw/compare/v0.22.14...v0.22.15) (2026-04-28)
 
 
