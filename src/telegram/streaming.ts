@@ -447,8 +447,11 @@ async function editFinalized(
  * Telegram's 400 response body for malformed HTML/MarkdownV2 is roughly
  * `Bad Request: can't parse entities: <reason>`. grammy wraps that in
  * `GrammyError` but preserves the text. Match loosely.
+ *
+ * Exported so other Telegram-output paths (the scheduler sink, future
+ * channels) can reuse the same detection without re-deriving the regex.
  */
-function isParseEntitiesError(msg: string): boolean {
+export function isParseEntitiesError(msg: string): boolean {
   return /can.?t parse entities/i.test(msg);
 }
 
