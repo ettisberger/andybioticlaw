@@ -1,19 +1,9 @@
 import type { Api } from 'grammy';
 import type { Logger } from 'pino';
 import type { StreamSink, SessionExecuteResult } from '../agent/session.js';
-import { isParseEntitiesError } from '../telegram/streaming.js';
+import { htmlEscape, sendTelegramHtml } from '../telegram/streaming.js';
 
 const MAX_MESSAGE_CHARS = 3900;
-
-/**
- * Escape `&` / `<` / `>` so an operator-provided schedule name like
- * `Build & Deploy <prod>` doesn't trigger the parse-entities fallback.
- * Body content trusts Emma's system-prompt rule about escaping
- * user-supplied strings; this helper is for fields WE control.
- */
-function htmlEscape(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
 
 /**
  * StreamSink for scheduler-triggered agent sessions. Unlike the interactive
@@ -25,10 +15,9 @@ function htmlEscape(s: string): string {
  *     message is from.
  *
  * Telegram parse_mode: HTML matches the interactive DM sink, so any
- * `<b>` / `<i>` / `<a href="…">` Emma emits renders correctly. If the
- * agent emits malformed HTML, Telegram returns a 400 "can't parse
- * entities" — we catch that and resend as plain text so the principal
- * sees the content (with literal `<b>…` markers) rather than nothing.
+ * `<b>` / `<i>` / `<a href="…">` Emma emits renders correctly. The
+ * shared `sendTelegramHtml` helper handles the parse-entities fallback
+ * (resend as plain text on malformed HTML).
  *
  * If the session fails/crashes the sink still sends a short notification
  * so the operator knows the schedule misbehaved.
@@ -41,45 +30,13 @@ export function createSchedulerTelegramSink(opts: {
 }): StreamSink {
   let buffer = '';
 
-  /**
-   * Send `text` with HTML parse_mode. On `can't parse entities` error
-   * (malformed HTML in the agent output), retry once as plain text so
-   * the principal still sees the content. Other errors are logged and
-   * dropped — the schedule still ran, only the notification failed.
-   */
-  async function sendWithHtmlFallback(text: string, label: string): Promise<void> {
-    try {
-      await opts.api.sendMessage(opts.chatId, text, { parse_mode: 'HTML' });
-      return;
-    } catch (e) {
-      const msg = (e as Error).message;
-      if (isParseEntitiesError(msg)) {
-        opts.logger.warn(
-          { err: msg, scheduleName: opts.scheduleName, label },
-          'scheduler output: telegram rejected HTML; resending plain',
-        );
-        try {
-          await opts.api.sendMessage(opts.chatId, text);
-          return;
-        } catch (e2) {
-          opts.logger.warn(
-            { err: (e2 as Error).message, scheduleName: opts.scheduleName, label },
-            'scheduler output: plain-text fallback also failed',
-          );
-          return;
-        }
-      }
-      opts.logger.warn(
-        { err: msg, scheduleName: opts.scheduleName, label },
-        'scheduler output send failed',
-      );
-    }
-  }
-
   async function sendChunked(header: string, body: string): Promise<void> {
     const full = `${header}\n\n${body}`;
     if (full.length <= MAX_MESSAGE_CHARS) {
-      await sendWithHtmlFallback(full, 'single');
+      await sendTelegramHtml(opts.api, opts.chatId, full, {
+        logger: opts.logger,
+        label: `scheduler:${opts.scheduleName}`,
+      });
       return;
     }
     // Split on chunk boundaries.
@@ -89,7 +46,10 @@ export function createSchedulerTelegramSink(opts: {
       const chunk = remaining.slice(0, MAX_MESSAGE_CHARS - (first ? header.length + 2 : 0));
       remaining = remaining.slice(chunk.length);
       const text = first ? `${header}\n\n${chunk}` : chunk;
-      await sendWithHtmlFallback(text, first ? 'chunk-first' : 'chunk');
+      await sendTelegramHtml(opts.api, opts.chatId, text, {
+        logger: opts.logger,
+        label: `scheduler:${opts.scheduleName}:${first ? 'chunk-first' : 'chunk'}`,
+      });
       first = false;
     }
   }

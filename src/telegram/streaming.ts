@@ -456,6 +456,62 @@ export function isParseEntitiesError(msg: string): boolean {
 }
 
 /**
+ * Escape `&` / `<` / `>` so an operator-controlled string (schedule
+ * name, error text, etc.) doesn't trigger Telegram's parse-entities
+ * error when placed inside `<b>` / `<i>`. For free-form agent output
+ * we trust the system-prompt rule about escaping user-supplied
+ * substrings.
+ */
+export function htmlEscape(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/**
+ * Send a Telegram message with HTML parse_mode and a plain-text
+ * fallback if Telegram rejects the body for malformed entities. The
+ * fallback path means the principal sees the content (with literal
+ * `<b>…` markers) instead of nothing.
+ *
+ * Single source of truth for this pattern — used by the scheduler's
+ * agent-task sink and the reminder handler. Adding a third call site
+ * (a future Slack/email-out channel?) means importing this helper,
+ * not re-deriving the fallback logic.
+ */
+export async function sendTelegramHtml(
+  api: Api,
+  chatId: number,
+  text: string,
+  opts: { logger: Logger; label: string },
+): Promise<void> {
+  try {
+    await api.sendMessage(chatId, text, { parse_mode: 'HTML' });
+    return;
+  } catch (e) {
+    const msg = (e as Error).message;
+    if (isParseEntitiesError(msg)) {
+      opts.logger.warn(
+        { err: msg, label: opts.label },
+        'telegram rejected HTML; resending as plain',
+      );
+      try {
+        await api.sendMessage(chatId, text);
+        return;
+      } catch (e2) {
+        opts.logger.warn(
+          { err: (e2 as Error).message, label: opts.label },
+          'telegram plain-text fallback also failed',
+        );
+        return;
+      }
+    }
+    opts.logger.warn(
+      { err: msg, label: opts.label },
+      'telegram send failed',
+    );
+  }
+}
+
+/**
  * Rolling-window rate limiter: counts events within the last `windowMs`.
  * Also exported for unit tests.
  */

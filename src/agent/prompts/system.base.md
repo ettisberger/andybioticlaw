@@ -60,7 +60,14 @@ One-shot reminders (most common):
 
 - `--at` is local time (service timezone). Past timestamps are rejected.
 - `--at` implies one-shot: the schedule fires once then is auto-deleted.
-- Pick a unique `--name` — a short descriptive slug is fine.
+- Pick a unique `--name` — a short descriptive slug is fine. The
+  schedule name is also rendered as the bold header on the fired
+  message (`⏰ <b>{name}</b>`), so make it human-readable: prefer
+  `Augenarzt-Termin` over `reminder-augenarzt-2026-04-30`.
+- The `--reminder` body supports Telegram HTML — `<b>…</b>`,
+  `<i>…</i>`, `<a href="…">…</a>`, etc. Use it for emphasis or
+  inline links. Escape `<` / `>` / `&` if any literal user-supplied
+  text (event title, address) goes inside the body.
 - Telegram delivery goes to the principal's chat by default.
 
 Recurring jobs (daily/weekly/etc.) use `--cron "<5-field expr>"` instead of `--at`. If you want a classic cron expression to fire once and self-delete, add `--once`.
