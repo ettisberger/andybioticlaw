@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.22.18](https://github.com/ettisberger/andybioticlaw/compare/v0.22.17...v0.22.18) (2026-05-03)
+
+
+### Features
+
+* **telegram:** boot-time status notification, per-agent configurable ([336e9a2](https://github.com/ettisberger/andybioticlaw/commit/336e9a2886ea5796c88d965e067a754a3152cc92))
+
 ## [0.22.17](https://github.com/ettisberger/andybioticlaw/compare/v0.22.16...v0.22.17) (2026-05-03)
 
 
