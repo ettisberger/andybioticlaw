@@ -54,6 +54,25 @@ export const TelegramConfig = z.object({
   longTaskNotifyAfterMs: z.number().int().min(1_000),
   conversationHistoryLimit: z.number().int().min(0).max(500),
   voice: TelegramVoiceConfig.default({ maxDurationSec: 120, language: 'auto' }),
+  /**
+   * Boot-time status notification. When `enabled`, the service sends a
+   * one-line "🤖 <agent> online" message to the principal chat after
+   * every successful systemd start. Useful as a deploy-completion ping.
+   * Default: off (a service that restarts often during dev would spam
+   * the chat). Read once at boot — both fields are restart-required.
+   */
+  statusMessage: z
+    .object({
+      enabled: z.boolean().default(false),
+      /**
+       * Which agent's name appears in the bold header. Defaults to the
+       * agent with `default: true`. Only matters in multi-agent setups
+       * where the operator wants the boot notice branded as a specific
+       * persona (e.g. work-Emma's restart pings the work group).
+       */
+      agentId: z.string().optional(),
+    })
+    .default({ enabled: false }),
 });
 
 export const BudgetConfig = z.object({
@@ -249,6 +268,8 @@ export const RESTART_REQUIRED_PATHS: ReadonlyArray<string> = [
   'telegram.group.allowedGroupIds',
   'telegram.group.runMode',
   'telegram.group.workspaceBase',
+  'telegram.statusMessage.enabled',
+  'telegram.statusMessage.agentId',
   'dashboard.enabled',
   'dashboard.host',
   'dashboard.port',

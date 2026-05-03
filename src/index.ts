@@ -42,6 +42,9 @@ import { createRateLimitTracker } from './agent/rate-limit-tracker.js';
 import { createLiveSessionsTracker } from './observability/live-sessions.js';
 import { createAuthChecker } from './telegram/auth.js';
 import { createTelegramService } from './telegram/bot.js';
+import { sendTelegramHtml } from './telegram/streaming.js';
+import { buildStatusMessage } from './telegram/status-message.js';
+import { readPackageVersion } from './version.js';
 import { createSchedulesRepo } from './db/repositories/schedules.js';
 import { createBudgetStateRepo } from './db/repositories/budget-state.js';
 import { createVoiceStateRepo } from './db/repositories/voice-state.js';
@@ -392,6 +395,41 @@ async function main(): Promise<void> {
     telegramQueueDepths = () => telegram!.queue.depths();
 
     await telegram.start();
+
+    // Optional boot-status notification. When the operator sets
+    // telegram.statusMessage.enabled, send a short "🤖 <agent> online"
+    // message after the bot has started polling. Useful as a
+    // deploy-completion ping. Order: this BEFORE the orphan notice so
+    // the principal reads "I'm back" first, then (if applicable) the
+    // orphan summary as a follow-up.
+    const statusCfg = config.telegram.statusMessage;
+    if (statusCfg.enabled && principalUserId !== null) {
+      const configuredAgentId = statusCfg.agentId;
+      const resolvedAgent =
+        (configuredAgentId !== undefined
+          ? config.agents.find((a) => a.id === configuredAgentId)
+          : undefined) ?? getDefaultAgent(config);
+      if (configuredAgentId && resolvedAgent.id !== configuredAgentId) {
+        logger.warn(
+          { configured: configuredAgentId, fallback: resolvedAgent.id },
+          'telegram.statusMessage.agentId not in agents[] — using default',
+        );
+      }
+      const text = buildStatusMessage({
+        agentName: resolvedAgent.name,
+        agentCount: config.agents.length,
+        defaultAgentId: getDefaultAgent(config).id,
+        version: readPackageVersion(),
+        skillsLoaded: skillRegistry.list().filter((s) => s.enabled).length,
+        activeSchedules: schedulesRepo.list({ enabledOnly: true }).length,
+        startedAt: new Date(),
+        timezone: config.service.timezone,
+      });
+      await sendTelegramHtml(telegram.api, principalUserId, text, {
+        logger,
+        label: 'boot-status',
+      });
+    }
 
     if (orphanResult.count > 0) {
       await telegram.notifyPrincipal(

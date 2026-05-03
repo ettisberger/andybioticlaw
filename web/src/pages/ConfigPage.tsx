@@ -683,6 +683,10 @@ const FIELD_DESCRIPTIONS: Record<string, string> = {
     'When on: every internal service error is DM’d to the principal so crashes surface immediately.',
   'observability.errorChatIdOverride':
     'If set, error DMs go here instead of the principal’s chat (e.g. a private admin group id).',
+  'telegram.statusMessage.enabled':
+    'When on: send a one-line "🤖 online" notification to the principal chat after every boot. Useful as a deploy-completion ping.',
+  'telegram.statusMessage.agentId':
+    'Which agent name appears in the bold header. Defaults to the default agent.',
 };
 
 function numberSuffix(path: string): string | null {

@@ -3,21 +3,10 @@ import { resolve } from 'node:path';
 import type { Logger } from 'pino';
 import { loadManifest, SkillManifestError } from './manifest.js';
 import type { SkillRegistry, SkillRecord } from './registry.js';
-import { projectRoot } from '../config/load.js';
+import { readPackageVersion } from '../version.js';
 
 /** MCP server names the core owns; skills may not register these. */
 const RESERVED_MCP_NAMES = new Set(['andybioticlaw-memory']);
-
-/** Read the core service's semver from the repo's package.json. */
-function readCoreVersion(): string {
-  try {
-    const raw = readFileSync(resolve(projectRoot(), 'package.json'), 'utf8');
-    const parsed = JSON.parse(raw) as { version?: string };
-    return parsed.version ?? '0.0.0';
-  } catch {
-    return '0.0.0';
-  }
-}
 
 /** Parse "X.Y.Z[-suffix]" → [X, Y, Z]; pre-release suffix is ignored. */
 function parseSemver(v: string): [number, number, number] | null {
@@ -110,7 +99,7 @@ export function loadSkills(opts: SkillLoadOptions): SkillLoadResult {
 
       // Reject manifests that declare a core_required minimum we don't meet.
       if (manifest.core_required) {
-        const core = opts.coreVersion ?? readCoreVersion();
+        const core = opts.coreVersion ?? readPackageVersion();
         if (!isCoreCompatible(core, manifest.core_required)) {
           throw new SkillManifestError(manifestPath, [
             `skill requires core ≥ ${manifest.core_required}, but running core is ${core}`,

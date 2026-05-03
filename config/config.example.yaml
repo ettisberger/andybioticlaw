@@ -107,6 +107,18 @@ telegram:
   streamEditIntervalMs: 1200
   longTaskNotifyAfterMs: 60000
   conversationHistoryLimit: 50
+  # Boot-time status notification. When `enabled`, the service sends
+  # a one-line "🤖 <agent> online" message to the principal chat
+  # after every successful systemd start. Includes version, skill
+  # count, schedule count, timestamp. Useful as a deploy-completion
+  # ping. Default: off (a service that restarts often during dev
+  # would spam the chat). Both fields are restart-required.
+  statusMessage:
+    enabled: false
+    # Which agent's name appears in the bold header. Defaults to the
+    # agent with `default: true`. Only matters in multi-agent setups
+    # (e.g. operator wants the work-agent's name on the boot notice).
+    # agentId: emma
 
 budget:
   dailyTokenLimit: 2000000
