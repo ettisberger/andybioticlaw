@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.22.17](https://github.com/ettisberger/andybioticlaw/compare/v0.22.16...v0.22.17) (2026-05-03)
+
+
+### Bug Fixes
+
+* **scheduler:** HTML parse_mode + bold header on reminder fires ([b5a5dfd](https://github.com/ettisberger/andybioticlaw/commit/b5a5dfd5c29f882c6d9e7d176ad2fca6797bb408))
+
 ## [0.22.16](https://github.com/ettisberger/andybioticlaw/compare/v0.22.15...v0.22.16) (2026-04-29)
 
 
