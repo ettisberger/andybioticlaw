@@ -46,6 +46,15 @@ const DEFAULT_TIMEOUT_MS = 5_000;
  * - `-c color.ui=never`     — strip ANSI in case .gitconfig forces it.
  * - `-c core.fsmonitor=false` — defensive; some setups have a slow fsmonitor
  *                               hook that adds seconds to status calls.
+ * - `-c safe.directory=*`   — bypass CVE-2022-24765 ownership check. The
+ *                             dashboard service typically runs as a dedicated
+ *                             user (e.g. `andybioticlaw`) reading repos owned
+ *                             by the operator's normal user. We only run
+ *                             read-only commands (rev-parse, log, status,
+ *                             remote get-url) — none execute hooks — and the
+ *                             scan path is operator-configured trusted input,
+ *                             so the strict ownership check doesn't add
+ *                             security here, just blocks all output.
  *
  * `--no-optional-locks` only applies to subcommands that take a lock
  * (status, fetch, …); it's harmless on the others.
@@ -56,6 +65,8 @@ const GIT_BASE_ARGS = [
   'color.ui=never',
   '-c',
   'core.fsmonitor=false',
+  '-c',
+  'safe.directory=*',
   '--no-optional-locks',
 ];
 
