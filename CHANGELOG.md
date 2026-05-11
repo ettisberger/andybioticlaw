@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.22.21](https://github.com/ettisberger/andybioticlaw/compare/v0.22.20...v0.22.21) (2026-05-11)
+
+
+### Features
+
+* **dashboard:** show model used per session on the list view ([b6cfa6d](https://github.com/ettisberger/andybioticlaw/commit/b6cfa6d67999e9d162e68bfc05ecb5bf93da19ce))
+
 ## [0.22.20](https://github.com/ettisberger/andybioticlaw/compare/v0.22.19...v0.22.20) (2026-05-11)
 
 
