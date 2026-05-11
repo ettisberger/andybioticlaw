@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.22.20](https://github.com/ettisberger/andybioticlaw/compare/v0.22.19...v0.22.20) (2026-05-11)
+
+
+### Bug Fixes
+
+* **projects:** bypass git CVE-2022-24765 ownership check ([ecdad14](https://github.com/ettisberger/andybioticlaw/commit/ecdad140abba948027b510d19c81c33a2ecae668))
+
 ## [0.22.19](https://github.com/ettisberger/andybioticlaw/compare/v0.22.18...v0.22.19) (2026-05-11)
 
 
