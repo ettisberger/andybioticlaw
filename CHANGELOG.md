@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.22.19](https://github.com/ettisberger/andybioticlaw/compare/v0.22.18...v0.22.19) (2026-05-11)
+
+
+### Features
+
+* **dashboard:** read-only Projects page (workspace overview) ([917da45](https://github.com/ettisberger/andybioticlaw/commit/917da45b435a4c4f3843b314e96cf27e3a6138ee))
+
 ## [0.22.18](https://github.com/ettisberger/andybioticlaw/compare/v0.22.17...v0.22.18) (2026-05-03)
 
 
