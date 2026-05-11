@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ApiError, apiDelete, apiGet, apiPost, formatTs, truncate } from '../lib/api';
 import { Badge, Button, ErrorBanner, PageTitle, Table, Td, Th, Empty } from '../components/ui';
 import { estimateUsd, formatUsd } from '../lib/pricing';
+import { formatModelLabel, modelTone } from '../lib/model-label';
 
 /**
  * Sessions that are still in flight cannot be deleted (server refuses
@@ -276,6 +277,7 @@ export function SessionsPage() {
               <Th>Status</Th>
               <Th>Id</Th>
               <Th>Started</Th>
+              <Th>Model</Th>
               <Th>Tokens</Th>
               <Th>Est. cost</Th>
               <Th>Input</Th>
@@ -308,6 +310,11 @@ export function SessionsPage() {
                   </Td>
                   <Td className="font-mono text-xs tabular-nums text-ink-dim">
                     {formatTs(s.started_at)}
+                  </Td>
+                  <Td>
+                    <Badge tone={modelTone(s.model)}>
+                      {formatModelLabel(s.model)}
+                    </Badge>
                   </Td>
                   <Td className="text-xs tabular-nums">
                     {s.tokens_input.toLocaleString()}/{s.tokens_output.toLocaleString()}
