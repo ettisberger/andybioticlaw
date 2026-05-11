@@ -687,6 +687,12 @@ const FIELD_DESCRIPTIONS: Record<string, string> = {
     'When on: send a one-line "🤖 online" notification to the principal chat after every boot. Useful as a deploy-completion ping.',
   'telegram.statusMessage.agentId':
     'Which agent name appears in the bold header. Defaults to the default agent.',
+  'projects.enabled':
+    'When on: scan `folderPath` for git repos and show them on the dashboard /projects page. Adds a "Projects" sidebar link.',
+  'projects.folderPath':
+    'Folder containing one subdir per project. Symlinks are followed. Defaults to ~/projects.',
+  'projects.staleDays':
+    'Repos with no commits in this many days are flagged "stale" (90 = ~3 months). Beyond 6× this value the badge becomes "inactive".',
 };
 
 function numberSuffix(path: string): string | null {

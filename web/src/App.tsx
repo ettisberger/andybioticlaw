@@ -1,8 +1,10 @@
+import { useEffect, useState } from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
 import { Bot } from 'lucide-react';
 import { ThemeToggle } from './components/theme';
+import { apiGet } from './lib/api';
 
-const NAV_ITEMS = [
+const BASE_NAV_ITEMS = [
   { to: '/overview', label: 'Overview' },
   { to: '/stats', label: 'Stats' },
   { to: '/sessions', label: 'Sessions' },
@@ -18,6 +20,29 @@ const NAV_ITEMS = [
 ];
 
 export function App() {
+  // Off-by-default feature flags whose nav links are hidden when off.
+  // Single fetch on mount; flipping a flag in config.yaml takes effect on
+  // next dashboard load — operator restarts the page rather than the
+  // service, fine for an opt-in rarely-changed flag.
+  const [projectsEnabled, setProjectsEnabled] = useState(false);
+  useEffect(() => {
+    apiGet<{ config: { projects?: { enabled?: boolean } } }>('/api/config')
+      .then((d) => setProjectsEnabled(d.config.projects?.enabled === true))
+      .catch(() => {
+        // Silent — config endpoint failing is surfaced elsewhere; nav
+        // just stays in its default (link hidden) state.
+      });
+  }, []);
+
+  const navItems = projectsEnabled
+    ? [
+        ...BASE_NAV_ITEMS.slice(0, 9),
+        { to: '/projects', label: 'Projects' },
+        ...BASE_NAV_ITEMS.slice(9),
+      ]
+    : BASE_NAV_ITEMS;
+
+
   return (
     <div className="flex h-screen">
       {/* Glass sidebar — sits on top of the gradient mesh. Uses a
@@ -41,7 +66,7 @@ export function App() {
         </div>
 
         <nav className="flex flex-col gap-0.5">
-          {NAV_ITEMS.map((item) => (
+          {navItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}

@@ -33,6 +33,7 @@ import { notesRoutes } from './routes/notes.js';
 import { policiesRoutes } from './routes/policies.js';
 import { agentsRoutes } from './routes/agents.js';
 import { skillsRoutes } from './routes/skills.js';
+import { projectsRoutes } from './routes/projects.js';
 import { configRoutes } from './routes/config.js';
 import { auditRoutes } from './routes/audit.js';
 import { logsRoutes } from './routes/logs.js';
@@ -291,6 +292,13 @@ export function createDashboard(deps: DashboardDeps): DashboardService {
   );
 
   app.register(skillsRoutes({ skills: deps.skills }));
+
+  app.register(
+    projectsRoutes({
+      currentConfig: deps.currentConfig,
+      logger: deps.logger,
+    }),
+  );
 
   app.register(
     agentsRoutes({

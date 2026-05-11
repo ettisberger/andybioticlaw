@@ -123,6 +123,25 @@ export const SkillsConfig = z.object({
 });
 
 /**
+ * Read-only "Projects" page in the dashboard. Off by default so existing
+ * installs see no change. Operators who keep a folder of git repos
+ * (`~/projects`, `~/code`, `~/Developer`, `/srv/projects`, …) can flip
+ * `enabled: true` and point `folderPath` at it for a workspace overview.
+ *
+ * The page surfaces git metadata + a couple of project-type marker flags
+ * (Dockerfile / package.json / etc.) — no deploy logic, no proxy parsing,
+ * no container introspection. Pure read-only filesystem + git info.
+ */
+export const ProjectsConfig = z.object({
+  enabled: z.boolean().default(false),
+  /** Folder containing one subdir per project. `~` is expanded; symlinks
+   *  are followed via realpath() before scanning. */
+  folderPath: z.string().min(1).default('~/projects'),
+  /** Repos with no commits in this many days are flagged "stale". */
+  staleDays: z.number().int().min(1).max(3650).default(90),
+}).default({ enabled: false, folderPath: '~/projects', staleDays: 90 });
+
+/**
  * One-line ASCII slug. Used as the stable id for both agents and policy
  * contexts so the same string can appear in URLs, log lines, and DB
  * columns without quoting or escaping.
@@ -226,6 +245,7 @@ export const Config = z.object({
   dashboard: DashboardConfig,
   observability: ObservabilityConfig,
   skills: SkillsConfig,
+  projects: ProjectsConfig,
 });
 
 export type Config = z.infer<typeof Config>;
@@ -253,6 +273,12 @@ export const HOT_RELOADABLE_PATHS: ReadonlyArray<string> = [
   'observability.heartbeatRetentionDays',
   'observability.errorsToTelegram',
   'observability.errorChatIdOverride',
+  // Projects page reads its config on every dashboard fetch — flipping
+  // `enabled` or moving `folderPath` takes effect on the next poll, no
+  // restart needed.
+  'projects.enabled',
+  'projects.folderPath',
+  'projects.staleDays',
 ];
 
 /**

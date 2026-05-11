@@ -167,3 +167,17 @@ observability:
 skills:
   dir: ./skills
   autoLoadOnStart: true
+
+# Read-only "Projects" page in the dashboard. Scans `folderPath`
+# for git repos, surfaces branch / last commit / dirty / activity
+# per repo. Off by default; enable to see your workspace at a
+# glance. Pure git metadata + a couple of marker-file flags
+# (Dockerfile, package.json, …) — no deploy logic, no proxy
+# parsing, no container introspection.
+projects:
+  enabled: false
+  folderPath: ~/projects
+  # Repos with no commits in this many days get a "stale" badge.
+  # 90 days = ~3 months. Above 6× this value the badge becomes
+  # "inactive".
+  staleDays: 90

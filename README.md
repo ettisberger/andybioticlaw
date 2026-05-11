@@ -81,6 +81,10 @@ sudo userdel --remove andybioticlaw    # optional — destroys data
 - Edit interactively: `andybioticlaw config edit` (or pick "Edit settings" from the menu).
 - Hot-reloadable fields: `SIGHUP` or `andybioticlaw config reload` re-reads without restarting.
 
+### Optional dashboard pages
+
+- **Projects** — set `projects.enabled: true` in `config.yaml` to surface a workspace overview at `/projects`. Scans `projects.folderPath` (default `~/projects`) and shows branch, last commit, dirty state, and an activity badge per repo. Read-only; no deploy or container logic. Requires `git` on PATH.
+
 ## Dev setup (contributors)
 
 ```bash
