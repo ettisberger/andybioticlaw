@@ -93,8 +93,23 @@ echo "▸ installing Chromium into $BROWSERS_DIR…"
 PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_DIR" \
   npx --yes playwright install chromium
 
+# Sanity check — playwright sometimes exits 0 without actually
+# downloading (cached "already installed" path against a stale registry,
+# partial extraction, etc.). Verify the binary actually landed before
+# claiming success, otherwise the operator gets a clean "✓ installed"
+# now and an opaque "Executable doesn't exist" error from Emma later.
+CHROME_BIN="$(find "$BROWSERS_DIR" -path '*chrome-linux*/chrome' -type f 2>/dev/null | head -1)"
+if [[ -z "$CHROME_BIN" ]]; then
+  echo "✗ playwright install completed but no chromium binary found under $BROWSERS_DIR" >&2
+  echo "  try:" >&2
+  echo "    rm -rf \"$BROWSERS_DIR\"" >&2
+  echo "    PLAYWRIGHT_BROWSERS_PATH=\"$BROWSERS_DIR\" npx --yes playwright install chromium --force" >&2
+  exit 1
+fi
+
 echo
 echo "✓ browser skill installed."
+echo "  Chromium binary:     $CHROME_BIN"
 echo "  Chromium binaries:   $BROWSERS_DIR"
 echo "  Per-profile data:    $PROFILES_DIR"
 echo "  Screenshots:         $SCREENSHOTS_DIR"

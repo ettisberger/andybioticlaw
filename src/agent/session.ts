@@ -155,6 +155,47 @@ export interface SessionExecuteResult {
  *   - Scoped skill secrets are passed via `extraEnv` — filtered through
  *     `resolveSkillSecret` so scope violations are audited.
  */
+/**
+ * Build the env block injected into every MCP server spawned for this
+ * session (memory-proposal + each active skill's server).
+ *
+ * Exported so the regression test in `tests/unit/session-env.test.ts`
+ * can pin the path math — this used to walk `dirname` twice on dbPath
+ * under the false assumption that the DB lived at `<dataDir>/db/…`,
+ * which put `PLAYWRIGHT_BROWSERS_PATH` one directory above dataDir and
+ * silently broke the browser skill at runtime. dbPath is
+ * `<dataDir>/andybioticlaw.db` (see `src/config/paths.ts:sqliteDbPath`),
+ * so one `dirname()` is enough.
+ *
+ * PLAYWRIGHT_BROWSERS_PATH MUST be set here (in the parent-spawned
+ * env) rather than inside the browser skill's MCP-server constructor:
+ * Playwright caches the browser-registry lookup at import time, so
+ * setting `process.env.PLAYWRIGHT_BROWSERS_PATH = …` afterward is too
+ * late and the launch reports "Executable doesn't exist." Other skills
+ * that don't use Playwright simply ignore this env var.
+ */
+export function buildMemoryMcpEnv(args: {
+  dbPath: string;
+  sessionId: string;
+  chatId: string;
+  configPath: string;
+}): Record<string, string> {
+  const dataDir = dirname(args.dbPath);
+  return {
+    ANDYBIOTICLAW_DB_PATH: args.dbPath,
+    ANDYBIOTICLAW_SESSION_ID: args.sessionId,
+    ANDYBIOTICLAW_CHAT_ID: args.chatId,
+    // Skills like `browser` that need to read live config from disk
+    // (allowlist hot-reload) use this. Other skills can ignore it.
+    ANDYBIOTICLAW_CONFIG_PATH: args.configPath,
+    PLAYWRIGHT_BROWSERS_PATH: resolve(dataDir, 'cache/playwright'),
+    // Node needs at least PATH + maybe HOME to load the dist code cleanly.
+    PATH: process.env.PATH ?? '',
+    HOME: process.env.HOME ?? '',
+    NODE_ENV: process.env.NODE_ENV ?? 'production',
+  };
+}
+
 export async function executeSession(
   input: SessionExecuteInput,
   deps: SessionExecuteDeps,
@@ -277,32 +318,12 @@ async function runOne(
   const sessionDir = resolve(input.sessionWorkspaceRoot, sessionId);
   mkdirSync(sessionDir, { recursive: true });
 
-  // dbPath is at `<dataDir>/db/andybioticlaw.db` — walk up twice for dataDir.
-  const dataDirForEnv = dirname(dirname(input.dbPath));
-
-  const memoryMcpEnv: Record<string, string> = {
-    ANDYBIOTICLAW_DB_PATH: input.dbPath,
-    ANDYBIOTICLAW_SESSION_ID: sessionId,
-    ANDYBIOTICLAW_CHAT_ID: input.chatId,
-    // Skills like `browser` that need to read live config from disk
-    // (allowlist hot-reload) use this. Other skills can ignore it.
-    ANDYBIOTICLAW_CONFIG_PATH: configPathForSession,
-    // Where the browser skill keeps its Chromium binaries. MUST be set
-    // here (in the parent-spawned env) rather than inside the MCP
-    // server's constructor — Playwright caches the browser-registry
-    // lookup at the moment it's imported, so a later
-    // `process.env.PLAYWRIGHT_BROWSERS_PATH = ...` is too late and
-    // Playwright falls back to `~/.cache/ms-playwright`, finds nothing,
-    // and reports "Executable doesn't exist — run npx playwright
-    // install." Set unconditionally because (a) skills that don't use
-    // playwright simply ignore it, (b) we want a single code path,
-    // not a per-skill conditional.
-    PLAYWRIGHT_BROWSERS_PATH: resolve(dataDirForEnv, 'cache/playwright'),
-    // Node needs at least PATH + maybe HOME to load the dist code cleanly.
-    PATH: process.env.PATH ?? '',
-    HOME: process.env.HOME ?? '',
-    NODE_ENV: process.env.NODE_ENV ?? 'production',
-  };
+  const memoryMcpEnv = buildMemoryMcpEnv({
+    dbPath: input.dbPath,
+    sessionId,
+    chatId: input.chatId,
+    configPath: configPathForSession,
+  });
 
   const { config: mcpConfigObject, warnings: mcpWarnings } = buildMcpConfig({
     skills: activeSkills,
