@@ -419,37 +419,48 @@ skill
   )
   .argument('<name>')
   .option('--run', "Execute the apt-install via sudo instead of just printing the line.")
-  .action((name: string, opts: { run?: boolean }) => {
-    const { config, dbHandle, logger } = openRuntime();
-    try {
-      const registry = createSkillRegistry(dbHandle.db);
-      loadSkills({ dir: expandPath(config.skills.dir, projectRoot()), logger, registry });
-      const skillRec = registry.get(name);
-      if (!skillRec) {
-        process.stderr.write(`no skill named ${name}\n`);
-        process.exit(1);
-      }
-      if (skillRec.aptDependencies.length === 0) {
-        process.stdout.write(`(no apt deps for skill "${name}")\n`);
-        return;
-      }
-      const pkgs = skillRec.aptDependencies.join(' ');
-      if (opts.run) {
-        // spawnSync inherits stdio so sudo's TTY password prompt is
-        // visible the way the operator expects.
-        const r = spawnSync(
-          'sudo',
-          ['apt-get', 'install', '-y', ...skillRec.aptDependencies],
-          { stdio: 'inherit' },
-        );
-        process.exit(typeof r.status === 'number' ? r.status : 1);
-      }
-      // Emit ONLY the command, no decoration, so the operator can
-      // pipe it: `sudo $(andybioticlaw skill apt-deps browser)`.
-      process.stdout.write(`apt-get install -y ${pkgs}\n`);
-    } finally {
-      dbHandle.close();
+  .option(
+    '--skills-dir <path>',
+    "Override the skills directory (default: <install-root>/skills).",
+  )
+  .action(async (name: string, opts: { run?: boolean; skillsDir?: string }) => {
+    // This command MUST be runnable by the operator's normal user (NOT
+    // the service user), because the operator is the one with sudo.
+    // That means we cannot openRuntime() — it touches .env and the
+    // SQLite DB, both owned by the service user and 0600. Read the
+    // manifest directly off disk instead. No DB, no .env, no secrets.
+    const { readSkillManifestForApt } = await import('../skills/apt-deps-helper.js');
+    const result = readSkillManifestForApt(name, opts.skillsDir);
+    if (result.kind === 'not-found') {
+      process.stderr.write(
+        `no skill named '${name}' found under ${result.skillsDir}\n` +
+          `  (use --skills-dir <path> if your install is at a non-default location)\n`,
+      );
+      process.exit(1);
     }
+    if (result.kind === 'invalid-manifest') {
+      process.stderr.write(`skill '${name}' manifest is malformed: ${result.error}\n`);
+      process.exit(1);
+    }
+    if (result.aptDependencies.length === 0) {
+      process.stdout.write(`(no apt deps for skill "${name}")\n`);
+      return;
+    }
+    if (opts.run) {
+      // spawnSync inherits stdio so sudo's TTY password prompt is
+      // visible the way the operator expects.
+      const r = spawnSync(
+        'sudo',
+        ['apt-get', 'install', '-y', ...result.aptDependencies],
+        { stdio: 'inherit' },
+      );
+      process.exit(typeof r.status === 'number' ? r.status : 1);
+    }
+    // Emit ONLY the command, no decoration, so the operator can
+    // pipe it: `sudo $(andybioticlaw skill apt-deps browser)`.
+    process.stdout.write(
+      `apt-get install -y ${result.aptDependencies.join(' ')}\n`,
+    );
   });
 
 skill
