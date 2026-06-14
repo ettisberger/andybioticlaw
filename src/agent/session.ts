@@ -11,10 +11,12 @@ import type { ResolvedPolicy } from '../policies/schema.js';
 import { snapshotToContextFragment } from '../memory/manager.js';
 import type { SkillRegistry } from '../skills/registry.js';
 import { buildMcpConfig, mcpConfigPath, writeMcpConfig } from '../skills/mcp.js';
+import { applySkillTemplating } from '../skills/templating.js';
 import { assembleContext } from './context.js';
 import type { ContextAssemblyInput, SkillPromptSnapshot } from './context.js';
 import { runClaude } from './runner.js';
 import { projectRoot } from '../config/load.js';
+import { defaultConfigPath } from '../config/paths.js';
 import type { RunClaudeResult } from './runner.js';
 import type { RateLimitTracker } from './rate-limit-tracker.js';
 import type { LiveSessionsTracker } from '../observability/live-sessions.js';
@@ -247,10 +249,21 @@ async function runOne(
     input.memoryMaxEntries ?? 50,
   );
 
+  // Resolve config path once for both env-injection (browser MCP server
+  // reads the live YAML to honor hot-reloaded allowlist) and for the
+  // SKILL.md `{{profiles}}` substitution below.
+  const configPathForSession =
+    process.env.ANDYBIOTICLAW_CONFIG_PATH ?? defaultConfigPath(projectRoot());
+
   const skillPromptSnapshots: SkillPromptSnapshot[] = activeSkills.map((s) => {
     let content = '';
     try {
       content = readFileSync(s.skillMdPath, 'utf8');
+      content = applySkillTemplating({
+        skillName: s.name,
+        content,
+        configPath: configPathForSession,
+      });
     } catch (e) {
       deps.logger.warn(
         { skill: s.name, err: (e as Error).message },
@@ -268,6 +281,9 @@ async function runOne(
     ANDYBIOTICLAW_DB_PATH: input.dbPath,
     ANDYBIOTICLAW_SESSION_ID: sessionId,
     ANDYBIOTICLAW_CHAT_ID: input.chatId,
+    // Skills like `browser` that need to read live config from disk
+    // (allowlist hot-reload) use this. Other skills can ignore it.
+    ANDYBIOTICLAW_CONFIG_PATH: configPathForSession,
     // Node needs at least PATH + maybe HOME to load the dist code cleanly.
     PATH: process.env.PATH ?? '',
     HOME: process.env.HOME ?? '',

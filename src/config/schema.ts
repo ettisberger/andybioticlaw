@@ -142,6 +142,54 @@ export const ProjectsConfig = z.object({
 }).default({ enabled: false, folderPath: '~/projects', staleDays: 90 });
 
 /**
+ * Browser-automation skill config. The `browser` skill (skills/browser/)
+ * wraps Playwright + Chromium and exposes a snapshot/ref toolset to
+ * Emma. Per-profile user-data-dirs persist logged-in identities across
+ * service restarts; a hostname allowlist enforces SSRF-style guardrails
+ * on every request.
+ *
+ * Off by default — opt-in like the projects feature. Reading this block
+ * happens in two places: (1) the dashboard (when Phase 3 lands) and
+ * (2) the per-session MCP server itself, which re-reads on file change
+ * to pick up allowlist edits without a restart.
+ */
+export const BrowserProfile = z.object({
+  /** Profile name — used as a folder name under data/browser/profiles/ and
+   *  shown to the agent in SKILL.md, so safe filesystem chars only. */
+  name: z.string().regex(/^[a-z][a-z0-9-]*$/, 'profile name must be kebab-case, starting with a letter'),
+  /** One-line summary the agent sees in SKILL.md, e.g. "ProtonMail account". */
+  description: z.string().max(200).optional(),
+});
+export type BrowserProfile = z.infer<typeof BrowserProfile>;
+
+export const BrowserDashboardConfig = z.object({
+  enabled: z.boolean().default(true),
+  /** Delete browser_events rows older than this many days. */
+  retentionDays: z.number().int().min(1).max(365).default(7),
+  /** Delete oldest screenshot files (LRU by created_at) until total dir
+   *  size is under this many MB. */
+  retentionMb: z.number().int().min(10).max(10_000).default(50),
+  /** Capture a screenshot on every `browser_snapshot` call too (off by
+   *  default — snapshots fire often during a normal session and would
+   *  dominate disk usage). Click/type/navigate are always captured. */
+  screenshotOnSnapshot: z.boolean().default(false),
+}).default({ enabled: true, retentionDays: 7, retentionMb: 50, screenshotOnSnapshot: false });
+
+export const BrowserConfig = z.object({
+  enabled: z.boolean().default(false),
+  /** Patterns: bare host ("proton.me"), wildcard ("*.proton.me", any
+   *  subdomain ≥1 label), or "*" (allow all — operator escape hatch).
+   *  Empty array = block everything. Hostnames are canonicalized to
+   *  punycode before comparison so IDN homoglyphs don't bypass. */
+  hostnameAllowlist: z.array(z.string().min(1)).default([]),
+  profiles: z.array(BrowserProfile).default([]),
+  /** Optional default profile. Today the agent always passes `profile`
+   *  on each call; future enhancement may use this. */
+  defaultProfile: z.string().optional(),
+  dashboard: BrowserDashboardConfig,
+}).default({ enabled: false, hostnameAllowlist: [], profiles: [], dashboard: { enabled: true, retentionDays: 7, retentionMb: 50, screenshotOnSnapshot: false } });
+
+/**
  * One-line ASCII slug. Used as the stable id for both agents and policy
  * contexts so the same string can appear in URLs, log lines, and DB
  * columns without quoting or escaping.
@@ -246,6 +294,7 @@ export const Config = z.object({
   observability: ObservabilityConfig,
   skills: SkillsConfig,
   projects: ProjectsConfig,
+  browser: BrowserConfig,
 });
 
 export type Config = z.infer<typeof Config>;
@@ -279,6 +328,15 @@ export const HOT_RELOADABLE_PATHS: ReadonlyArray<string> = [
   'projects.enabled',
   'projects.folderPath',
   'projects.staleDays',
+  // Browser allowlist + retention/screenshot toggles are hot-reloadable.
+  // The MCP server fs.watches the config file and re-reads these. Profile
+  // list / enabled toggle are RESTART_REQUIRED below — they change MCP
+  // server spawn or the SKILL.md content templated at session-assembly.
+  'browser.hostnameAllowlist',
+  'browser.dashboard.enabled',
+  'browser.dashboard.retentionDays',
+  'browser.dashboard.retentionMb',
+  'browser.dashboard.screenshotOnSnapshot',
 ];
 
 /**
@@ -304,6 +362,12 @@ export const RESTART_REQUIRED_PATHS: ReadonlyArray<string> = [
   'dashboard.basicAuth.passwordHash',
   'skills.dir',
   'skills.autoLoadOnStart',
+  // Toggling browser on/off changes which MCP servers spawn; profile list
+  // changes the {{profiles}} substitution in SKILL.md so a restart is
+  // needed for the agent to see the new list.
+  'browser.enabled',
+  'browser.profiles',
+  'browser.defaultProfile',
 ];
 
 /**

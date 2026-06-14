@@ -181,3 +181,47 @@ projects:
   # 90 days = ~3 months. Above 6× this value the badge becomes
   # "inactive".
   staleDays: 90
+
+# Browser-automation skill (skills/browser/). When enabled, Emma can
+# drive a headless Chromium via Playwright using a snapshot/ref API —
+# navigate, click, fill forms, log into sites with persistent profiles.
+#
+# Profiles each have their own user-data-dir (cookies + localStorage)
+# under data/browser/profiles/<name>/. Phase 2 ships a CLI flow to
+# capture storageState.json locally and upload it to the dashboard;
+# for now, log in once locally and scp the file into the profile dir.
+#
+# Reload semantics:
+#   - hostnameAllowlist + dashboard.* → hot-reloadable
+#   - enabled + profiles + defaultProfile → RESTART_REQUIRED
+#
+# Off by default. Install the skill first: `andybioticlaw skill install browser`.
+browser:
+  enabled: false
+  # Allowed hostnames. Patterns:
+  #   "proton.me"            — exact host
+  #   "*.proton.me"          — any subdomain (≥1 label); NOT proton.me itself
+  #   "*"                    — allow everything (escape hatch — not recommended)
+  # Hostnames are canonicalized to punycode before comparison so IDN
+  # homoglyphs (Cyrillic-`о` in `protоn.me`) don't bypass.
+  hostnameAllowlist: []
+  # Named profiles — each is a separate logged-in identity.
+  profiles: []
+  #   - name: proton-mail
+  #     description: ProtonMail account (read inbox, search messages)
+  #   - name: github
+  #     description: github.com — read notifications, comment on issues
+  # Optional default profile. Today the agent always passes `profile` on
+  # each call; future enhancement may use this.
+  # defaultProfile: proton-mail
+  dashboard:
+    enabled: true
+    # Delete browser_events rows older than this many days.
+    retentionDays: 7
+    # Delete oldest screenshots (LRU by created_at) until total dir size
+    # is under this many MB.
+    retentionMb: 50
+    # Capture a screenshot on every browser_snapshot call (off by default
+    # — snapshots fire often during a normal session and would dominate
+    # disk usage). Click/type/navigate are always captured regardless.
+    screenshotOnSnapshot: false

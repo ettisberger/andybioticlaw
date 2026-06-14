@@ -1,0 +1,40 @@
+name: browser
+version: 0.1.0
+description: Drive a real web browser (Playwright + Chromium) — log in, navigate, read pages, click, fill forms. Snapshot/ref API; per-profile persistent identity; hostname allowlist.
+enabled: true
+
+scope:
+  - dm
+
+# All Chromium runtime libs needed under our systemd unit (ProtectSystem=strict,
+# PrivateDevices=yes). install.sh runs `npx playwright install-deps chromium`
+# which adds these via apt; listing them here makes the dependency explicit.
+apt_dependencies:
+  - libnss3
+  - libatk1.0-0
+  - libatk-bridge2.0-0
+  - libcups2
+  - libdrm2
+  - libxkbcommon0
+  - libxcomposite1
+  - libxdamage1
+  - libxrandr2
+  - libgbm1
+  - libpango-1.0-0
+  - libasound2
+
+system_commands:
+  - node
+  - npm
+
+# No secrets by default. Profiles that need to call `browser_type` with
+# `{{SECRET_NAME}}` (e.g. an auto-resume of an MFA-less site) can be added
+# here by the operator on a per-deploy basis.
+required_secrets: []
+
+mcp_servers:
+  - name: browser
+    command: node
+    args:
+      - ./mcp-server/index.js
+    env: {}

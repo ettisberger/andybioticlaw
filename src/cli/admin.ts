@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
+import { resolve as pathResolve } from 'node:path';
 import { Command } from 'commander';
 import { bootstrapEnv, loadConfig, ConfigLoadError, projectRoot } from '../config/load.js';
 import { getDefaultAgent } from '../config/agents-helper.js';
@@ -1099,6 +1100,73 @@ agent
       process.exit(1);
     }
     process.stdout.write(JSON.stringify(found, null, 2) + '\n');
+  });
+
+// --- browser --------------------------------------------------------------
+// Inspection commands for the browser skill. Phase 1 ships `status` only —
+// the operator's compass. Login + import flow lands in Phase 2.
+const browser = program.command('browser').description('Inspect and manage the browser skill');
+
+browser
+  .command('status')
+  .description('Show configured profiles + storageState/cookie state per profile')
+  .action(() => {
+    const { config, dataDir } = openRuntime();
+    if (!config.browser.enabled) {
+      process.stdout.write(
+        'browser skill: disabled (set browser.enabled: true in config.yaml)\n',
+      );
+      return;
+    }
+    process.stdout.write('browser skill: enabled\n');
+    process.stdout.write(
+      `  allowlist (${config.browser.hostnameAllowlist.length}): ` +
+        (config.browser.hostnameAllowlist.length === 0
+          ? '(none — every navigation will be rejected)'
+          : config.browser.hostnameAllowlist.join(', ')) +
+        '\n',
+    );
+    if (config.browser.profiles.length === 0) {
+      process.stdout.write(
+        '  profiles: (none — add browser.profiles entries in config.yaml)\n',
+      );
+      return;
+    }
+    process.stdout.write('  profiles:\n');
+    const profilesDir = pathResolve(dataDir, 'browser/profiles');
+    for (const p of config.browser.profiles) {
+      const dir = pathResolve(profilesDir, p.name);
+      const stateFile = pathResolve(dir, 'storageState.json');
+      let stateStatus = '✗ no storageState';
+      let earliestExpiry: string | null = null;
+      if (existsSync(stateFile)) {
+        try {
+          const st = statSync(stateFile);
+          const ageDays = Math.floor((Date.now() - st.mtimeMs) / (1000 * 60 * 60 * 24));
+          stateStatus = `✓ ${st.size} bytes (last loaded ${ageDays}d ago)`;
+          const parsed = JSON.parse(readFileSync(stateFile, 'utf8'));
+          let soonest = Number.POSITIVE_INFINITY;
+          for (const c of parsed?.cookies ?? []) {
+            if (typeof c?.expires === 'number' && c.expires > 0) {
+              const ms = c.expires * 1000;
+              if (ms < soonest) soonest = ms;
+            }
+          }
+          if (Number.isFinite(soonest)) {
+            earliestExpiry = new Date(soonest).toISOString().slice(0, 10);
+          }
+        } catch (e) {
+          stateStatus = `⚠ corrupt: ${(e as Error).message}`;
+        }
+      }
+      const desc = p.description ? `  — ${p.description}` : '';
+      process.stdout.write(`    • ${p.name}${desc}\n`);
+      process.stdout.write(`        dir:     ${dir}\n`);
+      process.stdout.write(`        state:   ${stateStatus}\n`);
+      if (earliestExpiry) {
+        process.stdout.write(`        earliest cookie expiry: ${earliestExpiry}\n`);
+      }
+    }
   });
 
 // --- remaining stubs for later phases ------------------------------------
