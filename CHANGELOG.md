@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.22.29](https://github.com/ettisberger/andybioticlaw/compare/v0.22.28...v0.22.29) (2026-06-14)
+
+
+### Bug Fixes
+
+* **browser:** correct PLAYWRIGHT_BROWSERS_PATH off-by-one in session env ([c800b5e](https://github.com/ettisberger/andybioticlaw/commit/c800b5eab0c64d6e8530342387bef6f753163640))
+
 ## [0.22.28](https://github.com/ettisberger/andybioticlaw/compare/v0.22.27...v0.22.28) (2026-06-14)
 
 
