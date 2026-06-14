@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.22.27](https://github.com/ettisberger/andybioticlaw/compare/v0.22.26...v0.22.27) (2026-06-14)
+
+
+### Bug Fixes
+
+* **browser:** revert WebFetch deny; keep soft guidance only ([3b29570](https://github.com/ettisberger/andybioticlaw/commit/3b29570e3f76b15709802a55a2ed4ce68ca09fe7))
+* **browser:** steer Emma off WebFetch when the skill is active ([18e721d](https://github.com/ettisberger/andybioticlaw/commit/18e721d01d25bb2033bbba7d39932a8e8b68cfbe))
+
 ## [0.22.26](https://github.com/ettisberger/andybioticlaw/compare/v0.22.25...v0.22.26) (2026-06-14)
 
 
