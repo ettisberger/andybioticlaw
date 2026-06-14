@@ -7,13 +7,18 @@ scope:
   - dm
 
 # All Chromium runtime libs needed under our systemd unit (ProtectSystem=strict,
-# PrivateDevices=yes). install.sh runs `npx playwright install-deps chromium`
-# which adds these via apt; listing them here makes the dependency explicit.
+# PrivateDevices=yes). install.sh skips apt; the operator runs
+# `sudo $(andybioticlaw skill apt-deps browser)` to install these.
+#
+# Entries may use `pkg | alt-pkg` alternation. Ubuntu 24.04 renamed
+# several libs as part of the t64 ABI transition (`libasound2` became
+# `libasound2t64`, etc.) — the alternation lets the same manifest work
+# on both Ubuntu 22.04 (original names) and 24.04+ (t64 names).
 apt_dependencies:
   - libnss3
-  - libatk1.0-0
-  - libatk-bridge2.0-0
-  - libcups2
+  - libatk1.0-0 | libatk1.0-0t64
+  - libatk-bridge2.0-0 | libatk-bridge2.0-0t64
+  - libcups2 | libcups2t64
   - libdrm2
   - libxkbcommon0
   - libxcomposite1
@@ -21,7 +26,7 @@ apt_dependencies:
   - libxrandr2
   - libgbm1
   - libpango-1.0-0
-  - libasound2
+  - libasound2t64 | libasound2
 
 system_commands:
   - node

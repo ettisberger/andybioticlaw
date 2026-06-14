@@ -1,7 +1,40 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import yaml from 'js-yaml';
 import { projectRoot } from '../config/load.js';
+
+/**
+ * Resolve an apt-dependency spec to a single installable package name.
+ *
+ * A spec is either a bare package name (`libnss3`) or a pipe-delimited
+ * alternation (`libasound2 | libasound2t64`). For alternations we pick
+ * the first entry that `apt-cache show` reports as an installable
+ * candidate. This is what lets one manifest cover both Ubuntu 22.04
+ * (`libasound2`) and Ubuntu 24.04+ where the package was renamed
+ * under the t64 ABI transition (`libasound2t64`).
+ *
+ * Fallback rules:
+ *   - Bare name → return as-is.
+ *   - Alternation with at least one installable → return the first.
+ *   - Alternation with none installable, or `apt-cache` missing
+ *     (non-Debian host) → return the FIRST entry. The caller will then
+ *     fail at `dpkg-query` time with a clear "missing" diagnostic
+ *     pointing at that name, which is fine — better than this helper
+ *     guessing.
+ */
+export function resolveAptAlternation(spec: string): string {
+  const alternatives = spec.split('|').map((s) => s.trim()).filter(Boolean);
+  if (alternatives.length === 0) return spec.trim();
+  if (alternatives.length === 1) return alternatives[0]!;
+  // Probe each via apt-cache show. spawnSync with stdio:ignore returns
+  // status===0 only when the package has an installable record.
+  for (const alt of alternatives) {
+    const r = spawnSync('apt-cache', ['show', alt], { stdio: 'ignore' });
+    if (r.status === 0) return alt;
+  }
+  return alternatives[0]!;
+}
 
 /**
  * Read a single skill's manifest from disk to extract `apt_dependencies`.
@@ -87,7 +120,7 @@ export function readSkillManifestForApt(
         error: '`apt_dependencies` entries must all be strings',
       };
     }
-    deps.push(v);
+    deps.push(resolveAptAlternation(v));
   }
   return { kind: 'ok', aptDependencies: deps, manifestPath };
 }

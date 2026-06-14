@@ -8,6 +8,7 @@ import type { SkillRegistry } from './registry.js';
 import type { SkillRecord } from './registry.js';
 import { dim } from '../cli/ansi.js';
 import { section } from '../cli/section.js';
+import { resolveAptAlternation } from './apt-deps-helper.js';
 
 const pexec = promisify(execFile);
 
@@ -98,7 +99,13 @@ export function checkAptDeps(packages: readonly string[]): string[] {
   if (probe.status !== 0) return [];
 
   const missing: string[] = [];
-  for (const pkg of packages) {
+  for (const spec of packages) {
+    // Resolve "libA | libB" alternations to whichever side is actually
+    // installable on this host. On Ubuntu 24.04 `libasound2` is a
+    // virtual package with no installation candidate; `libasound2t64`
+    // is the real one. Without this, the preflight would always
+    // report libasound2 as missing.
+    const pkg = resolveAptAlternation(spec);
     const r = spawnSync(
       'dpkg-query',
       ['-W', '-f=${Status}', pkg],
