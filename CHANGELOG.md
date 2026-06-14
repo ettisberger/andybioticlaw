@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.22.30](https://github.com/ettisberger/andybioticlaw/compare/v0.22.29...v0.22.30) (2026-06-14)
+
+
+### Features
+
+* **browser:** detect cross-platform Playwright chromium layouts ([6895e7d](https://github.com/ettisberger/andybioticlaw/commit/6895e7dd5017d4fce80158ce8863e20da79d1e43))
+
 ## [0.22.29](https://github.com/ettisberger/andybioticlaw/compare/v0.22.28...v0.22.29) (2026-06-14)
 
 
