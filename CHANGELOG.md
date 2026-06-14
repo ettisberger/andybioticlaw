@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.22.23](https://github.com/ettisberger/andybioticlaw/compare/v0.22.22...v0.22.23) (2026-06-14)
+
+
+### Bug Fixes
+
+* **skills:** preflight apt deps; never sudo from install.sh ([5596f25](https://github.com/ettisberger/andybioticlaw/commit/5596f252970fac79f13f75d452e7ac81de362794))
+
 ## [0.22.22](https://github.com/ettisberger/andybioticlaw/compare/v0.22.21...v0.22.22) (2026-06-14)
 
 
