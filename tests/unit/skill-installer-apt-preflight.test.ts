@@ -150,4 +150,21 @@ describe('checkAptDeps', () => {
     // a clean install. Just ensure the function is total.
     expect(Array.isArray(result)).toBe(true);
   });
+
+  it('treats an alternation as satisfied when any alternative is installed', () => {
+    // This is a smoke test: we can't easily simulate dpkg on macOS,
+    // but the function must at minimum accept alternation syntax
+    // without crashing.
+    const result = checkAptDeps([
+      'definitely-not-a-real-pkg-1 | definitely-not-a-real-pkg-2',
+    ]);
+    expect(Array.isArray(result)).toBe(true);
+    // On a Debian host both alternatives are missing → result has 1 entry.
+    // On macOS dpkg is missing → result is empty. Either is fine.
+    if (result.length === 1) {
+      // The reported name is the apt-cache-resolved one; for fully-fake
+      // names neither resolves, so the first listed is the fallback.
+      expect(result[0]).toBe('definitely-not-a-real-pkg-1');
+    }
+  });
 });

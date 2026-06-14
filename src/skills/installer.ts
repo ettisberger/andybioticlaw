@@ -100,22 +100,28 @@ export function checkAptDeps(packages: readonly string[]): string[] {
 
   const missing: string[] = [];
   for (const spec of packages) {
-    // Resolve "libA | libB" alternations to whichever side is actually
-    // installable on this host. On Ubuntu 24.04 `libasound2` is a
-    // virtual package with no installation candidate; `libasound2t64`
-    // is the real one. Without this, the preflight would always
-    // report libasound2 as missing.
-    const pkg = resolveAptAlternation(spec);
-    const r = spawnSync(
-      'dpkg-query',
-      ['-W', '-f=${Status}', pkg],
-      { encoding: 'utf8' },
-    );
-    if (r.status !== 0) {
-      missing.push(pkg);
-      continue;
+    // For an alternation `libA | libB`, the spec is satisfied if ANY
+    // listed alternative is dpkg-installed. We can't pick one ahead
+    // of time and only check that — on Ubuntu 24.04, the transitional
+    // `libatk1.0-0` is reported by apt-cache as installable, but what's
+    // actually installed once you `apt install libatk1.0-0` is the
+    // real package `libatk1.0-0t64`. dpkg-query against the
+    // transitional name will say "not installed" because the
+    // transitional pkg is itself replaced once the real one lands.
+    const alternatives = spec.split('|').map((s) => s.trim()).filter(Boolean);
+    const installed = alternatives.some((alt) => {
+      const r = spawnSync(
+        'dpkg-query',
+        ['-W', '-f=${Status}', alt],
+        { encoding: 'utf8' },
+      );
+      return r.status === 0 && /install ok installed/.test(r.stdout);
+    });
+    if (!installed) {
+      // Report the *resolved* (apt-cache-installable) name as missing,
+      // so the operator sees the name they should `apt install`.
+      missing.push(resolveAptAlternation(spec));
     }
-    if (!/install ok installed/.test(r.stdout)) missing.push(pkg);
   }
   return missing;
 }
