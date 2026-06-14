@@ -15,6 +15,7 @@ import type { SkillRegistry } from '../skills/registry.js';
 import type { SchedulesRepo } from '../db/repositories/schedules.js';
 import type { HeartbeatsRepo } from '../db/repositories/heartbeats.js';
 import type { AuditRepo } from '../db/repositories/audit.js';
+import type { BrowserImportRepo } from '../db/repositories/browser-import.js';
 import type { BudgetTracker } from '../agent/budget.js';
 import type { QueueManager } from '../agent/queue.js';
 import type {
@@ -34,6 +35,7 @@ import { policiesRoutes } from './routes/policies.js';
 import { agentsRoutes } from './routes/agents.js';
 import { skillsRoutes } from './routes/skills.js';
 import { projectsRoutes } from './routes/projects.js';
+import { browserRoutes } from './routes/browser.js';
 import { configRoutes } from './routes/config.js';
 import { auditRoutes } from './routes/audit.js';
 import { logsRoutes } from './routes/logs.js';
@@ -81,6 +83,11 @@ export interface DashboardDeps {
   resolveAgentById: (agentId: string) => AgentConfigEntry;
   /** Absolute path to the editable config.yaml. Used by the agent-edit endpoint. */
   configPath: string;
+  /** Absolute path to the resolved service.dataDir. Used by the browser
+   *  routes to write profile state under data/browser/. */
+  dataDir: string;
+  /** Repo backing the browser storageState import window. */
+  browserImport: BrowserImportRepo;
   /**
    * Trigger an in-process config reload (same path SIGHUP would
    * take). Used by the agent-edit endpoint after writing config.yaml
@@ -296,6 +303,16 @@ export function createDashboard(deps: DashboardDeps): DashboardService {
   app.register(
     projectsRoutes({
       currentConfig: deps.currentConfig,
+      logger: deps.logger,
+    }),
+  );
+
+  app.register(
+    browserRoutes({
+      currentConfig: deps.currentConfig,
+      dataDir: deps.dataDir,
+      importRepo: deps.browserImport,
+      audit: deps.audit,
       logger: deps.logger,
     }),
   );

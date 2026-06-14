@@ -1103,8 +1103,10 @@ agent
   });
 
 // --- browser --------------------------------------------------------------
-// Inspection commands for the browser skill. Phase 1 ships `status` only —
-// the operator's compass. Login + import flow lands in Phase 2.
+// Operator commands for the browser skill. `status` is read-only; the
+// `import-window` family + `login` together cover the storageState upload
+// flow (operator runs `login` on their laptop after opening a window on
+// the VPS — see SKILL.md).
 const browser = program.command('browser').description('Inspect and manage the browser skill');
 
 browser
@@ -1166,6 +1168,156 @@ browser
       if (earliestExpiry) {
         process.stdout.write(`        earliest cookie expiry: ${earliestExpiry}\n`);
       }
+    }
+  });
+
+// `browser login` — does NOT run a browser on the VPS. Instead, prints
+// the recipe for running scripts/browser-login.mjs on the operator's
+// laptop, with a pre-filled upload URL. The CLI doesn't try to be
+// clever: it just composes the command, because the actual headed
+// chromium has to live where there's a display.
+browser
+  .command('login')
+  .description("Print the laptop-side recipe for capturing a profile's storageState")
+  .argument('<profile>')
+  .option(
+    '--dashboard-url <url>',
+    'Public URL of this dashboard (default: best-effort guess from config)',
+  )
+  .action((profile: string, opts: { dashboardUrl?: string }) => {
+    const { config } = openRuntime();
+    if (!config.browser.profiles.find((p) => p.name === profile)) {
+      process.stderr.write(
+        `no profile '${profile}' configured. Available: ${
+          config.browser.profiles.map((p) => p.name).join(', ') || '(none)'
+        }\n`,
+      );
+      process.exit(1);
+    }
+    const guessUrl =
+      opts.dashboardUrl ??
+      `http://${config.dashboard.host === '0.0.0.0' ? '<vps-host>' : config.dashboard.host}:${config.dashboard.port}`;
+    const importUrl = `${guessUrl.replace(/\/$/, '')}/api/browser/profiles/${profile}/import`;
+    process.stdout.write(
+      [
+        `# Step 1 (on this VPS): open a 5-minute import window for this profile.`,
+        `andybioticlaw browser import-window open ${profile} --ttl 5m`,
+        ``,
+        `# Step 2 (on your laptop): run the login helper.`,
+        `# This needs node 20+ and an internet connection — it npx-installs Playwright.`,
+        `# Replace <user> + <password> with the dashboard basic-auth credentials.`,
+        `npx --yes -p playwright@1.52.0 node \\`,
+        `  /path/to/andybioticlaw/scripts/browser-login.mjs \\`,
+        `  --profile ${profile} \\`,
+        `  --upload ${importUrl} \\`,
+        `  --basic-auth <user>:<password>`,
+        ``,
+        `# Alternatively, if you don't want the script to upload, write the`,
+        `# captured storageState to a local file and scp it yourself:`,
+        `npx --yes -p playwright@1.52.0 node \\`,
+        `  /path/to/andybioticlaw/scripts/browser-login.mjs \\`,
+        `  --profile ${profile} \\`,
+        `  --output ./storageState-${profile}.json`,
+        ``,
+      ].join('\n'),
+    );
+  });
+
+// Import-window subcommand group. Open/close/status are all light
+// SQLite writes via createBrowserImportRepo.
+const importWindow = browser
+  .command('import-window')
+  .description('Open / close / list authorization windows for storageState upload');
+
+function parseTtl(arg: string): number {
+  // Accepts e.g. "5m", "120s", "1h", or bare seconds. Returns ms.
+  const m = arg.match(/^(\d+)\s*(s|m|h)?$/i);
+  if (!m) throw new Error(`invalid ttl '${arg}' — try '5m', '120s', '1h'`);
+  const n = Number(m[1]);
+  const unit = (m[2] ?? 's').toLowerCase();
+  const factor = unit === 'h' ? 3600 : unit === 'm' ? 60 : 1;
+  return n * factor * 1000;
+}
+
+importWindow
+  .command('open')
+  .description('Open an import window for a profile (default ttl 5m)')
+  .argument('<profile>')
+  .option('--ttl <duration>', "Window TTL — e.g. '5m', '120s', '1h'", '5m')
+  .action(async (profileArg: string, opts: { ttl: string }) => {
+    const { config, dbHandle } = openRuntime();
+    try {
+      if (!config.browser.profiles.find((p) => p.name === profileArg)) {
+        process.stderr.write(`no profile '${profileArg}' configured\n`);
+        process.exit(1);
+      }
+      const { createBrowserImportRepo } = await import(
+        '../db/repositories/browser-import.js'
+      );
+      const repo = createBrowserImportRepo(dbHandle.db);
+      const ttlMs = parseTtl(opts.ttl);
+      const w = repo.open(profileArg, ttlMs);
+      process.stdout.write(
+        `opened import window for '${profileArg}' — expires ${new Date(w.expiresAtMs).toISOString()} (in ${Math.round(ttlMs / 1000)}s)\n`,
+      );
+    } finally {
+      dbHandle.close();
+    }
+  });
+
+importWindow
+  .command('close')
+  .description('Close (revoke) the import window for a profile')
+  .argument('<profile>')
+  .action(async (profileArg: string) => {
+    const { dbHandle } = openRuntime();
+    try {
+      const { createBrowserImportRepo } = await import(
+        '../db/repositories/browser-import.js'
+      );
+      const repo = createBrowserImportRepo(dbHandle.db);
+      const closed = repo.close(profileArg);
+      process.stdout.write(
+        closed ? `closed window for '${profileArg}'\n` : `no open window for '${profileArg}'\n`,
+      );
+    } finally {
+      dbHandle.close();
+    }
+  });
+
+importWindow
+  .command('status')
+  .description('List all import windows (open + recently consumed)')
+  .action(async () => {
+    const { dbHandle } = openRuntime();
+    try {
+      const { createBrowserImportRepo } = await import(
+        '../db/repositories/browser-import.js'
+      );
+      const repo = createBrowserImportRepo(dbHandle.db);
+      const windows = repo.list();
+      if (windows.length === 0) {
+        process.stdout.write('(no windows)\n');
+        return;
+      }
+      const now = Date.now();
+      for (const w of windows) {
+        let state: string;
+        if (w.consumedAtMs !== null) {
+          state = `consumed at ${new Date(w.consumedAtMs).toISOString()}`;
+        } else if (w.expiresAtMs < now) {
+          state = `expired at ${new Date(w.expiresAtMs).toISOString()}`;
+        } else {
+          const remaining = Math.round((w.expiresAtMs - now) / 1000);
+          state = `OPEN — expires in ${remaining}s`;
+        }
+        process.stdout.write(`  • ${w.profile} — ${state}\n`);
+        if (w.consumedChecksum) {
+          process.stdout.write(`        sha256: ${w.consumedChecksum}\n`);
+        }
+      }
+    } finally {
+      dbHandle.close();
     }
   });
 

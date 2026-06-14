@@ -48,6 +48,7 @@ import { readPackageVersion } from './version.js';
 import { createSchedulesRepo } from './db/repositories/schedules.js';
 import { createBudgetStateRepo } from './db/repositories/budget-state.js';
 import { createVoiceStateRepo } from './db/repositories/voice-state.js';
+import { createBrowserImportRepo } from './db/repositories/browser-import.js';
 import { createSchedulerEngine } from './scheduler/engine.js';
 import { createDashboard } from './dashboard/server.js';
 import type { DispatchDeps } from './agent/dispatch.js';
@@ -140,6 +141,7 @@ async function main(): Promise<void> {
   const schedulesRepo = createSchedulesRepo(dbHandle.db);
   const budgetStateRepo = createBudgetStateRepo(dbHandle.db);
   const voiceStateRepo = createVoiceStateRepo(dbHandle.db);
+  const browserImportRepo = createBrowserImportRepo(dbHandle.db);
 
   const orphanResult = sessions.markRunningAsOrphaned();
   if (orphanResult.count > 0) {
@@ -599,6 +601,8 @@ async function main(): Promise<void> {
     resolveAgentById: (agentId) =>
       config.agents.find((a) => a.id === agentId) ?? getDefaultAgent(config),
     configPath: loaded.configPath,
+    dataDir,
+    browserImport: browserImportRepo,
     reloadConfig: () => reloader.reload(),
     rateLimitTracker,
     liveSessions,
