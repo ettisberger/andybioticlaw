@@ -84,6 +84,7 @@ sudo userdel --remove andybioticlaw    # optional — destroys data
 ### Optional dashboard pages
 
 - **Projects** — set `projects.enabled: true` in `config.yaml` to surface a workspace overview at `/projects`. Scans `projects.folderPath` (default `~/projects`) and shows branch, last commit, dirty state, and an activity badge per repo. Read-only; no deploy or container logic. Requires `git` on PATH.
+- **Browser** — set `browser.enabled: true` plus install the `browser` skill (`andybioticlaw skill install browser`) to give Emma a real headless Chromium via Playwright. Snapshot/ref API drives navigate / click / type / submit / screenshot. Per-named-profile user-data-dirs (`data/browser/profiles/<name>/`) keep logged-in identities isolated and persistent across restarts; a hostname allowlist (`browser.hostnameAllowlist`, IDN-homoglyph-safe via punycode) is the SSRF guard. Initial login happens on the operator's laptop via `scripts/browser-login.mjs` and uploads `storageState.json` to the dashboard's gated import endpoint (basic-auth required, one-shot import window, audit-logged). The `/browser` page shows a per-session timeline with screenshot thumbnails; retention cron prunes old rows + files daily.
 
 ## Dev setup (contributors)
 
