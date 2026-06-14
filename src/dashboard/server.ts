@@ -16,6 +16,7 @@ import type { SchedulesRepo } from '../db/repositories/schedules.js';
 import type { HeartbeatsRepo } from '../db/repositories/heartbeats.js';
 import type { AuditRepo } from '../db/repositories/audit.js';
 import type { BrowserImportRepo } from '../db/repositories/browser-import.js';
+import type { BrowserEventsRepo } from '../db/repositories/browser-events.js';
 import type { BudgetTracker } from '../agent/budget.js';
 import type { QueueManager } from '../agent/queue.js';
 import type {
@@ -36,6 +37,7 @@ import { agentsRoutes } from './routes/agents.js';
 import { skillsRoutes } from './routes/skills.js';
 import { projectsRoutes } from './routes/projects.js';
 import { browserRoutes } from './routes/browser.js';
+import { browserActivityRoutes } from './routes/browser-activity.js';
 import { configRoutes } from './routes/config.js';
 import { auditRoutes } from './routes/audit.js';
 import { logsRoutes } from './routes/logs.js';
@@ -88,6 +90,8 @@ export interface DashboardDeps {
   dataDir: string;
   /** Repo backing the browser storageState import window. */
   browserImport: BrowserImportRepo;
+  /** Repo backing the browser activity feed (Phase 3). */
+  browserEvents: BrowserEventsRepo;
   /**
    * Trigger an in-process config reload (same path SIGHUP would
    * take). Used by the agent-edit endpoint after writing config.yaml
@@ -313,6 +317,15 @@ export function createDashboard(deps: DashboardDeps): DashboardService {
       dataDir: deps.dataDir,
       importRepo: deps.browserImport,
       audit: deps.audit,
+      logger: deps.logger,
+    }),
+  );
+
+  app.register(
+    browserActivityRoutes({
+      currentConfig: deps.currentConfig,
+      dataDir: deps.dataDir,
+      events: deps.browserEvents,
       logger: deps.logger,
     }),
   );

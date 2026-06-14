@@ -98,7 +98,7 @@ describe('migration runner — fresh boot', () => {
         .map((r) => r.name);
       expect(scheduleCols2).toContain('context');
 
-      expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+      expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
 
       close();
     } finally {
@@ -117,7 +117,7 @@ describe('migration runner — fresh boot', () => {
       const rows = second.db
         .prepare<[], { n: number }>('SELECT COUNT(*) AS n FROM schema_version')
         .all();
-      expect(rows[0]!.n).toBe(10);
+      expect(rows[0]!.n).toBe(11);
       second.close();
     } finally {
       rmSync(dir, { recursive: true, force: true });

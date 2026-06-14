@@ -13,6 +13,7 @@ import { NotesPage } from './pages/NotesPage';
 import { PoliciesPage } from './pages/PoliciesPage';
 import { SkillsPage } from './pages/SkillsPage';
 import { ProjectsPage } from './pages/ProjectsPage';
+import { BrowserPage } from './pages/BrowserPage';
 import { LogsPage } from './pages/LogsPage';
 import { ConfigPage } from './pages/ConfigPage';
 import { AuditPage } from './pages/AuditPage';
@@ -53,6 +54,7 @@ ReactDOM.createRoot(root).render(
           <Route path="/policies" element={<PoliciesPage />} />
           <Route path="/skills" element={<SkillsPage />} />
           <Route path="/projects" element={<ProjectsPage />} />
+          <Route path="/browser" element={<BrowserPage />} />
           <Route path="/logs" element={<LogsPage />} />
           <Route path="/config" element={<ConfigPage />} />
           <Route path="/audit" element={<AuditPage />} />

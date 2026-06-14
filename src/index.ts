@@ -49,6 +49,9 @@ import { createSchedulesRepo } from './db/repositories/schedules.js';
 import { createBudgetStateRepo } from './db/repositories/budget-state.js';
 import { createVoiceStateRepo } from './db/repositories/voice-state.js';
 import { createBrowserImportRepo } from './db/repositories/browser-import.js';
+import { createBrowserEventsRepo } from './db/repositories/browser-events.js';
+import { runBrowserRetention } from './browser/retention.js';
+import cron from 'node-cron';
 import { createSchedulerEngine } from './scheduler/engine.js';
 import { createDashboard } from './dashboard/server.js';
 import type { DispatchDeps } from './agent/dispatch.js';
@@ -142,6 +145,7 @@ async function main(): Promise<void> {
   const budgetStateRepo = createBudgetStateRepo(dbHandle.db);
   const voiceStateRepo = createVoiceStateRepo(dbHandle.db);
   const browserImportRepo = createBrowserImportRepo(dbHandle.db);
+  const browserEventsRepo = createBrowserEventsRepo(dbHandle.db);
 
   const orphanResult = sessions.markRunningAsOrphaned();
   if (orphanResult.count > 0) {
@@ -231,6 +235,34 @@ async function main(): Promise<void> {
     messageRetentionDays: () => config.messages.retentionDays,
   });
   memoryTtl.start();
+
+  // Browser activity retention — daily sweep at 03:30 in the service
+  // timezone. Prunes `browser_events` rows older than retentionDays and
+  // deletes oldest screenshot PNGs until total dir size is under
+  // retentionMb. The cron registers unconditionally; if the browser
+  // feature is disabled there's just nothing to delete.
+  const browserScreenshotsDir = resolve(dataDir, 'browser/screenshots');
+  const browserRetentionTask = cron.schedule(
+    '30 3 * * *',
+    () => {
+      try {
+        runBrowserRetention({
+          db: dbHandle.db,
+          screenshotsDir: browserScreenshotsDir,
+          retentionDays: config.browser.dashboard.retentionDays,
+          retentionMb: config.browser.dashboard.retentionMb,
+          logger,
+        });
+      } catch (e) {
+        logger.warn(
+          { err: (e as Error).message },
+          'browser retention sweep failed',
+        );
+      }
+    },
+    { timezone: config.service.timezone },
+  );
+  browserRetentionTask.start();
 
   const rateLimitTracker = createRateLimitTracker();
   const liveSessions = createLiveSessionsTracker();
@@ -603,6 +635,7 @@ async function main(): Promise<void> {
     configPath: loaded.configPath,
     dataDir,
     browserImport: browserImportRepo,
+    browserEvents: browserEventsRepo,
     reloadConfig: () => reloader.reload(),
     rateLimitTracker,
     liveSessions,
@@ -649,6 +682,7 @@ async function main(): Promise<void> {
 
     memoryTtl.stop();
     heartbeat.stop();
+    browserRetentionTask.stop();
     if (scheduler) scheduler.stop();
     try {
       await dashboard.stop();

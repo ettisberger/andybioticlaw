@@ -25,22 +25,45 @@ export function App() {
   // next dashboard load — operator restarts the page rather than the
   // service, fine for an opt-in rarely-changed flag.
   const [projectsEnabled, setProjectsEnabled] = useState(false);
+  const [browserEnabled, setBrowserEnabled] = useState(false);
   useEffect(() => {
-    apiGet<{ config: { projects?: { enabled?: boolean } } }>('/api/config')
-      .then((d) => setProjectsEnabled(d.config.projects?.enabled === true))
+    apiGet<{
+      config: {
+        projects?: { enabled?: boolean };
+        browser?: { enabled?: boolean; dashboard?: { enabled?: boolean } };
+      };
+    }>('/api/config')
+      .then((d) => {
+        setProjectsEnabled(d.config.projects?.enabled === true);
+        setBrowserEnabled(
+          d.config.browser?.enabled === true &&
+            d.config.browser?.dashboard?.enabled !== false,
+        );
+      })
       .catch(() => {
         // Silent — config endpoint failing is surfaced elsewhere; nav
         // just stays in its default (link hidden) state.
       });
   }, []);
 
-  const navItems = projectsEnabled
-    ? [
-        ...BASE_NAV_ITEMS.slice(0, 9),
-        { to: '/projects', label: 'Projects' },
-        ...BASE_NAV_ITEMS.slice(9),
-      ]
-    : BASE_NAV_ITEMS;
+  let navItems = BASE_NAV_ITEMS;
+  if (projectsEnabled) {
+    navItems = [
+      ...navItems.slice(0, 9),
+      { to: '/projects', label: 'Projects' },
+      ...navItems.slice(9),
+    ];
+  }
+  if (browserEnabled) {
+    // Insert right after Projects (or where Projects would be) so the
+    // optional features cluster together.
+    const insertAt = projectsEnabled ? 10 : 9;
+    navItems = [
+      ...navItems.slice(0, insertAt),
+      { to: '/browser', label: 'Browser' },
+      ...navItems.slice(insertAt),
+    ];
+  }
 
 
   return (
