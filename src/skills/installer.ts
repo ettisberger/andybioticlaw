@@ -1,4 +1,4 @@
-import { execFile, spawn } from 'node:child_process';
+import { execFile, spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -59,6 +59,61 @@ export interface InstallResult {
 }
 
 /**
+ * Thrown when a skill declares `apt_dependencies` and one or more of
+ * them aren't installed on the host. The CLI catches this to render
+ * the operator-facing two-step recipe. `install.sh` is NOT run.
+ *
+ * No-op on non-Debian hosts: if `dpkg-query` isn't on PATH we skip the
+ * check entirely (we don't know the package state and can't fix it).
+ */
+export class MissingAptDepsError extends Error {
+  readonly skillName: string;
+  readonly missing: string[];
+
+  constructor(skillName: string, missing: string[]) {
+    super(
+      `skill '${skillName}' needs apt packages that are not installed: ${missing.join(', ')}`,
+    );
+    this.name = 'MissingAptDepsError';
+    this.skillName = skillName;
+    this.missing = missing;
+  }
+}
+
+/**
+ * Probe each apt package via `dpkg-query -W -f='${Status}' <pkg>`.
+ * A package is "installed" when its Status field contains
+ * `install ok installed` (the standard dpkg state for a fully-applied
+ * package). Anything else — not found, half-configured, deinstall —
+ * counts as missing.
+ *
+ * Returns the missing subset (empty if everything's in place, or if
+ * `dpkg-query` isn't available so we can't tell).
+ */
+export function checkAptDeps(packages: readonly string[]): string[] {
+  if (packages.length === 0) return [];
+  // No dpkg-query → non-Debian host. Bail out silently; the operator
+  // is responsible for their own packaging on macOS / RHEL / alpine.
+  const probe = spawnSync('dpkg-query', ['--version'], { stdio: 'ignore' });
+  if (probe.status !== 0) return [];
+
+  const missing: string[] = [];
+  for (const pkg of packages) {
+    const r = spawnSync(
+      'dpkg-query',
+      ['-W', '-f=${Status}', pkg],
+      { encoding: 'utf8' },
+    );
+    if (r.status !== 0) {
+      missing.push(pkg);
+      continue;
+    }
+    if (!/install ok installed/.test(r.stdout)) missing.push(pkg);
+  }
+  return missing;
+}
+
+/**
  * Run the skill's `install.sh` if present. `install.sh` MUST be idempotent —
  * the skill contract requires it. Output is recorded in `skill_state.last_install_output`
  * for later inspection via CLI / dashboard.
@@ -87,6 +142,20 @@ export async function installSkill(
     });
     deps.logger.info({ name }, 'skill install: no install.sh, recorded as installed');
     return { name, ran: false, exitCode: 0, stdout: '', stderr: '' };
+  }
+
+  // apt-dep preflight. Throw a structured error before the preview so
+  // the CLI can render the two-step recipe (operator does apt as root,
+  // service user re-runs install). install.sh never touches sudo —
+  // see ADR in skills/browser/install.sh.
+  const missing = checkAptDeps(skill.aptDependencies);
+  if (missing.length > 0) {
+    deps.audit.record({
+      kind: 'skill_install_blocked',
+      actor: 'cli',
+      detail: { name, reason: 'missing_apt_deps', missing, version: skill.version },
+    });
+    throw new MissingAptDepsError(name, missing);
   }
 
   // Preview the script so the operator can eyeball it before it runs as

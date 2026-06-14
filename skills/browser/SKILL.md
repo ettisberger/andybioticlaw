@@ -182,9 +182,29 @@ Stop and tell the principal when:
 
 ## Before enabling
 
-1. Run `andybioticlaw skill install browser` to install Playwright +
-   Chromium + the runtime apt libs.
-2. Add a `browser:` block to `config/config.yaml`:
+Installing the browser skill is a two-step dance because the system
+packages Chromium needs require `apt` (= sudo), and the service user
+`andybioticlaw` is intentionally **not** in the sudoers list.
+
+1. **As your normal operator account** (with sudo), install the
+   Chromium runtime libs:
+   ```bash
+   sudo $(andybioticlaw skill apt-deps browser)
+   ```
+   That command prints + runs `apt-get install -y libnss3 libatk1.0-0 …`
+   — exactly the package list the manifest declares. Idempotent; safe
+   to re-run.
+
+2. **As the service user** (`andybioticlaw`), install the skill itself
+   — this downloads Chromium (~170 MB) into `data/cache/playwright/`
+   and never touches `apt`:
+   ```bash
+   sudo -iu andybioticlaw andybioticlaw skill install browser
+   ```
+   If you skipped step 1, this CLI will abort with the exact recipe
+   above — nothing on disk changes.
+
+3. Add a `browser:` block to `config/config.yaml`:
    ```yaml
    browser:
      enabled: true
@@ -195,9 +215,15 @@ Stop and tell the principal when:
        - name: proton-mail
          description: Your ProtonMail account
    ```
-3. Restart the service. `profiles[]` is RESTART_REQUIRED — a SIGHUP
+
+4. Restart the service. `profiles[]` is RESTART_REQUIRED — a SIGHUP
    reload won't pick up new profiles.
-4. Verify: `andybioticlaw browser status`.
+
+5. Verify: `andybioticlaw browser status`.
+
+`andybioticlaw doctor` will also surface the apt-deps gap as a warning
+row if step 1 was skipped, so a deployment where Chromium silently
+blank-screens isn't a mystery to debug later.
 
 ## Per-profile login (Phase 2 — coming soon)
 

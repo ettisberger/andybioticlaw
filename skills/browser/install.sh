@@ -1,20 +1,32 @@
 #!/usr/bin/env bash
 # browser skill installer.
 #
+# Service-user friendly: this script NEVER calls sudo. apt-dep checking
+# happens in the CLI's `installSkill()` preflight (see
+# src/skills/installer.ts checkAptDeps). If apt packages are missing,
+# the CLI aborts before this script runs and prints a two-step recipe
+# for the operator. If you're running install.sh directly (Ansible /
+# manual debugging), run `andybioticlaw skill apt-deps browser` first
+# to see + install the system packages yourself.
+#
 # Steps:
 #   1. Verify environment: disk space, noexec, node version.
-#   2. Install MCP server deps via `npm install` (Playwright is the heavy one).
-#   3. Install Chromium browser binary into PLAYWRIGHT_BROWSERS_PATH —
+#   2. Ensure runtime dirs exist with correct modes.
+#   3. Install MCP server deps via `npm install` (Playwright is the heavy one).
+#   4. Install Chromium browser binary into PLAYWRIGHT_BROWSERS_PATH —
 #      pointed at <install-dir>/data/cache/playwright so it lands under
 #      the writable systemd ReadWritePaths.
-#   4. Install Chromium runtime apt libs via `npx playwright install-deps`
-#      (needs sudo; we re-exec with sudo if not root). Operator can skip
-#      with --no-system-deps if they've already installed them.
 #
-# Idempotent — re-running is safe; the npm + playwright install commands
-# no-op when the targets are already present.
+# Idempotent — re-running is safe; npm install + playwright install
+# both no-op when the targets are already present.
 
 set -euo pipefail
+
+if [[ "$#" -gt 0 ]]; then
+  echo "unknown flag(s): $*" >&2
+  echo "  this script takes no flags. apt deps are handled by the CLI preflight." >&2
+  exit 64
+fi
 
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # skill is at <install-dir>/skills/browser/ — install-dir is two levels up.
@@ -23,14 +35,6 @@ SERVER_DIR="$SKILL_DIR/mcp-server"
 BROWSERS_DIR="$INSTALL_DIR/data/cache/playwright"
 PROFILES_DIR="$INSTALL_DIR/data/browser/profiles"
 SCREENSHOTS_DIR="$INSTALL_DIR/data/browser/screenshots"
-
-SKIP_SYSTEM_DEPS=0
-for arg in "$@"; do
-  case "$arg" in
-    --no-system-deps) SKIP_SYSTEM_DEPS=1 ;;
-    *) echo "unknown flag: $arg" >&2; exit 64 ;;
-  esac
-done
 
 # ---------------------------------------------------------------------------
 # Step 1: preflight
@@ -89,22 +93,6 @@ echo "▸ installing Chromium into $BROWSERS_DIR…"
 PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_DIR" \
   npx --yes playwright install chromium
 
-# ---------------------------------------------------------------------------
-# Step 5: Chromium runtime apt libs (needs sudo).
-# ---------------------------------------------------------------------------
-if [[ "$SKIP_SYSTEM_DEPS" -eq 1 ]]; then
-  echo "▸ skipping playwright install-deps (--no-system-deps)"
-else
-  echo "▸ installing Chromium runtime libs (apt) — needs sudo"
-  if [[ "$EUID" -ne 0 ]]; then
-    sudo PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_DIR" \
-      npx --yes playwright install-deps chromium
-  else
-    PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_DIR" \
-      npx --yes playwright install-deps chromium
-  fi
-fi
-
 echo
 echo "✓ browser skill installed."
 echo "  Chromium binaries:   $BROWSERS_DIR"
@@ -116,3 +104,8 @@ echo "  1. Add a 'browser:' block to config/config.yaml (see config.example.yaml
 echo "  2. Define at least one profile + a hostname allowlist."
 echo "  3. Restart the service ('andybioticlaw config reload' is not enough — profiles[] is restart-required)."
 echo "  4. Run 'andybioticlaw browser status' to verify the skill is live."
+echo
+echo "(If you ran install.sh directly and Chromium fails to launch at runtime,"
+echo " you probably skipped the apt-deps preflight. Fix:"
+echo "    sudo \$(andybioticlaw skill apt-deps browser)"
+echo " as your operator user, then restart the service.)"

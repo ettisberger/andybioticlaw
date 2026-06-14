@@ -36,6 +36,7 @@ import { contextKey as makeContextKey } from '../../agent/runtime-context.js';
 import { openDatabase } from '../../db/index.js';
 import { createSkillRegistry } from '../../skills/registry.js';
 import { loadSkills } from '../../skills/loader.js';
+import { checkAptDeps } from '../../skills/installer.js';
 import { createSchedulesRepo } from '../../db/repositories/schedules.js';
 import { createSessionsRepo } from '../../db/repositories/sessions.js';
 import { createBudgetTracker } from '../../agent/budget.js';
@@ -521,6 +522,7 @@ export async function checkSkills(
   const enabled = registry.list().filter((s) => s.enabled);
   const extras: string[] = [];
   let failures = 0;
+  let warnings = 0;
 
   for (const skill of enabled) {
     const installSh = resolve(skill.skillDir, 'install.sh');
@@ -540,11 +542,24 @@ export async function checkSkills(
         }
       }
     }
-    const tag = mcpProbe ? '✗' : '✓';
+    // apt deps — same dpkg-query probe the installer uses. Reports as
+    // warning, not failure: missing apt deps don't crash the service
+    // outright (only the skill that needs them), so we want the row
+    // visible without flipping the whole Skills check red.
+    const missingApt = checkAptDeps(skill.aptDependencies);
+    if (missingApt.length > 0) warnings++;
+
+    const tag = mcpProbe ? '✗' : missingApt.length > 0 ? '⚠' : '✓';
     const note: string[] = [];
     if (!hasInstall) note.push('no install.sh');
     if (!hasMcp) note.push('no mcp');
     if (mcpProbe) note.push(mcpProbe);
+    if (missingApt.length > 0) {
+      const sample = missingApt.slice(0, 3).join(', ');
+      const more = missingApt.length > 3 ? ` (+${missingApt.length - 3} more)` : '';
+      note.push(`missing apt: ${sample}${more}`);
+      note.push(`fix: sudo $(andybioticlaw skill apt-deps ${skill.name})`);
+    }
     extras.push(`${tag} ${skill.name}@${skill.version}${note.length ? ' — ' + note.join(', ') : ''}`);
   }
 
@@ -557,7 +572,17 @@ export async function checkSkills(
     return {
       name: 'Skills',
       status: 'fail',
-      detail: `${failures} failing of ${enabled.length} enabled`,
+      detail:
+        `${failures} failing of ${enabled.length} enabled` +
+        (warnings > 0 ? `, ${warnings} with missing apt deps` : ''),
+      extras,
+    };
+  }
+  if (warnings > 0) {
+    return {
+      name: 'Skills',
+      status: 'warn',
+      detail: `${warnings} of ${enabled.length} enabled missing apt deps`,
       extras,
     };
   }

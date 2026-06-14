@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { resolve as pathResolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { Command } from 'commander';
 import { bootstrapEnv, loadConfig, ConfigLoadError, projectRoot } from '../config/load.js';
 import { getDefaultAgent } from '../config/agents-helper.js';
@@ -11,7 +12,7 @@ import { createMemoryRepo } from '../db/repositories/memory.js';
 import { createMemoryManager } from '../memory/manager.js';
 import { createSkillRegistry } from '../skills/registry.js';
 import { loadSkills } from '../skills/loader.js';
-import { installSkill, uninstallSkill } from '../skills/installer.js';
+import { installSkill, uninstallSkill, MissingAptDepsError } from '../skills/installer.js';
 import { createSchedulesRepo } from '../db/repositories/schedules.js';
 import { createBudgetStateRepo } from '../db/repositories/budget-state.js';
 import { createSessionsRepo } from '../db/repositories/sessions.js';
@@ -387,8 +388,65 @@ skill
         if (out.stderr) process.stderr.write(out.stderr);
       }
     } catch (e) {
+      if (e instanceof MissingAptDepsError) {
+        const sample = e.missing.slice(0, 3).join(', ');
+        const more =
+          e.missing.length > 3
+            ? ` (${e.missing.length - 3} more)`
+            : '';
+        process.stderr.write(
+          `\n✗ skill '${e.skillName}' needs apt packages that are not installed:\n` +
+            `    ${sample}${more}\n\n` +
+            `  Run this as your operator user (NOT as the andybioticlaw service user):\n` +
+            `    sudo $(andybioticlaw skill apt-deps ${e.skillName})\n\n` +
+            `  Then re-run as the service user:\n` +
+            `    sudo -iu andybioticlaw andybioticlaw skill install ${e.skillName}\n\n` +
+            `Aborting — no changes made.\n`,
+        );
+        process.exit(2);
+      }
       process.stderr.write(`FAIL — ${(e as Error).message}\n`);
       process.exit(1);
+    } finally {
+      dbHandle.close();
+    }
+  });
+
+skill
+  .command('apt-deps')
+  .description(
+    "Print the apt-install command for a skill's system packages (run as operator with sudo).",
+  )
+  .argument('<name>')
+  .option('--run', "Execute the apt-install via sudo instead of just printing the line.")
+  .action((name: string, opts: { run?: boolean }) => {
+    const { config, dbHandle, logger } = openRuntime();
+    try {
+      const registry = createSkillRegistry(dbHandle.db);
+      loadSkills({ dir: expandPath(config.skills.dir, projectRoot()), logger, registry });
+      const skillRec = registry.get(name);
+      if (!skillRec) {
+        process.stderr.write(`no skill named ${name}\n`);
+        process.exit(1);
+      }
+      if (skillRec.aptDependencies.length === 0) {
+        process.stdout.write(`(no apt deps for skill "${name}")\n`);
+        return;
+      }
+      const pkgs = skillRec.aptDependencies.join(' ');
+      if (opts.run) {
+        // spawnSync inherits stdio so sudo's TTY password prompt is
+        // visible the way the operator expects.
+        const r = spawnSync(
+          'sudo',
+          ['apt-get', 'install', '-y', ...skillRec.aptDependencies],
+          { stdio: 'inherit' },
+        );
+        process.exit(typeof r.status === 'number' ? r.status : 1);
+      }
+      // Emit ONLY the command, no decoration, so the operator can
+      // pipe it: `sudo $(andybioticlaw skill apt-deps browser)`.
+      process.stdout.write(`apt-get install -y ${pkgs}\n`);
     } finally {
       dbHandle.close();
     }
