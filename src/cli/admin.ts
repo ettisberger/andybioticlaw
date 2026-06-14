@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 import { resolve as pathResolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { Command } from 'commander';
@@ -1176,33 +1176,7 @@ agent
 // `import-window` family + `login` together cover the storageState upload
 // flow (operator runs `login` on their laptop after opening a window on
 // the VPS — see SKILL.md).
-
-/**
- * Locate the Chromium binary Playwright wrote under PLAYWRIGHT_BROWSERS_PATH.
- * Each playwright release pins one chromium build (subdir like
- * `chromium-1140/`); we walk to find the `chrome` executable rather than
- * hardcode the version. Returns null if no chromium-* subdir holds a
- * chrome-linux/chrome binary (= install was never run or the download
- * silently no-op'd).
- */
-function findChromiumBinary(browsersDir: string): string | null {
-  if (!existsSync(browsersDir)) return null;
-  let entries: string[];
-  try {
-    entries = readdirSync(browsersDir);
-  } catch {
-    return null;
-  }
-  for (const entry of entries) {
-    if (!entry.startsWith('chromium-')) continue;
-    // Per-platform layout — Linux is chrome-linux/chrome, mac is
-    // chrome-mac/.../, etc. We only deploy on Linux today; widen if
-    // that changes.
-    const candidate = pathResolve(browsersDir, entry, 'chrome-linux', 'chrome');
-    if (existsSync(candidate)) return candidate;
-  }
-  return null;
-}
+import { findChromiumBinary } from '../browser/chromium-detector.js';
 
 const browser = program.command('browser').description('Inspect and manage the browser skill');
 
