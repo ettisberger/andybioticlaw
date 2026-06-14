@@ -105,10 +105,21 @@ export function buildClaudeSessionSettings(input: BuildSettingsInput): ClaudeSes
   const defaultMode: 'bypassPermissions' | 'default' =
     input.policy.execMode === 'full' ? 'bypassPermissions' : 'default';
 
+  // Per-skill tool denials. When the `browser` skill is active, deny
+  // the built-in `WebFetch` tool outright — Emma reaches for it
+  // reflexively even when the browser_* tools would render JS-heavy
+  // sites correctly + carry per-profile auth. With WebFetch on the
+  // deny list she has no escape hatch and must use the right tool.
+  // Note: this only fires under `default` permission mode; the
+  // existing `bypassPermissions` path ignores deny entries.
+  const deny: string[] = [];
+  const browserActive = input.skills.some((s) => s.name === 'browser');
+  if (browserActive) deny.push('WebFetch');
+
   return {
     permissions: {
       allow,
-      deny: [],
+      deny,
       defaultMode,
     },
     _meta: {

@@ -104,12 +104,30 @@ describe('buildClaudeSessionSettings', () => {
     ]);
   });
 
-  it('deny array is always empty (reserved for a future denyExec axis)', () => {
+  it('deny array is empty when no skill that denies tools is active', () => {
     const s = buildClaudeSessionSettings({
       policy: allowlistPolicy,
       skills: [],
       contextKey: 'emma:telegram:1',
     });
     expect(s.permissions.deny).toEqual([]);
+  });
+
+  it('denies WebFetch when the browser skill is active', () => {
+    const s = buildClaudeSessionSettings({
+      policy: allowlistPolicy,
+      skills: [{ name: 'browser', execAllow: [] }],
+      contextKey: 'emma:telegram:1',
+    });
+    expect(s.permissions.deny).toContain('WebFetch');
+  });
+
+  it('does not deny WebFetch when browser skill is not active', () => {
+    const s = buildClaudeSessionSettings({
+      policy: allowlistPolicy,
+      skills: [{ name: 'notes', execAllow: [] }],
+      contextKey: 'emma:telegram:1',
+    });
+    expect(s.permissions.deny).not.toContain('WebFetch');
   });
 });
