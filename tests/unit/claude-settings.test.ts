@@ -104,7 +104,7 @@ describe('buildClaudeSessionSettings', () => {
     ]);
   });
 
-  it('deny array is empty when no skill that denies tools is active', () => {
+  it('deny array is always empty (reserved for a future denyExec axis)', () => {
     const s = buildClaudeSessionSettings({
       policy: allowlistPolicy,
       skills: [],
@@ -113,21 +113,18 @@ describe('buildClaudeSessionSettings', () => {
     expect(s.permissions.deny).toEqual([]);
   });
 
-  it('denies WebFetch when the browser skill is active', () => {
+  it('deny stays empty even when the browser skill is active', () => {
+    // We briefly experimented with denying WebFetch under the browser
+    // skill to push Emma onto browser_* tools — but it forced a
+    // heavyweight Playwright path for every casual read in
+    // browser-active sessions. Reverted to soft guidance in SKILL.md
+    // (see fix(browser): revert WebFetch deny). This test pins the
+    // current behaviour so we don't accidentally re-introduce the deny.
     const s = buildClaudeSessionSettings({
       policy: allowlistPolicy,
       skills: [{ name: 'browser', execAllow: [] }],
       contextKey: 'emma:telegram:1',
     });
-    expect(s.permissions.deny).toContain('WebFetch');
-  });
-
-  it('does not deny WebFetch when browser skill is not active', () => {
-    const s = buildClaudeSessionSettings({
-      policy: allowlistPolicy,
-      skills: [{ name: 'notes', execAllow: [] }],
-      contextKey: 'emma:telegram:1',
-    });
-    expect(s.permissions.deny).not.toContain('WebFetch');
+    expect(s.permissions.deny).toEqual([]);
   });
 });
