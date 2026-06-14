@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.22.25](https://github.com/ettisberger/andybioticlaw/compare/v0.22.24...v0.22.25) (2026-06-14)
+
+
+### Bug Fixes
+
+* **browser:** handle Ubuntu 24.04 t64 package transition ([97c821f](https://github.com/ettisberger/andybioticlaw/commit/97c821f428c62b0f44080ed725184f9553da3ebb))
+
 ## [0.22.24](https://github.com/ettisberger/andybioticlaw/compare/v0.22.23...v0.22.24) (2026-06-14)
 
 
