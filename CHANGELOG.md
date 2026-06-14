@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.22.22](https://github.com/ettisberger/andybioticlaw/compare/v0.22.21...v0.22.22) (2026-06-14)
+
+
+### Features
+
+* **browser:** activity dashboard + retention cron (Phase 3) ([95fa698](https://github.com/ettisberger/andybioticlaw/commit/95fa698fbe62e50160d03f198e418e60b719103f))
+* **browser:** add browser skill — Playwright + snapshot/ref loop (Phase 1) ([fea20b5](https://github.com/ettisberger/andybioticlaw/commit/fea20b590e9b7e8f225e071b4dc4b01262989c35))
+* **browser:** laptop-side login + secure dashboard upload (Phase 2) ([25bcd87](https://github.com/ettisberger/andybioticlaw/commit/25bcd87371e8ed17f66eef49077d5e5b79ff710e))
+
 ## [0.22.21](https://github.com/ettisberger/andybioticlaw/compare/v0.22.20...v0.22.21) (2026-05-11)
 
 
