@@ -29,6 +29,18 @@ describe('matchesPattern', () => {
     expect(matchesPattern('mail.proton.me', 'proton.me')).toBe(false);
   });
 
+  it('implicitly matches www subdomain for an apex pattern', () => {
+    // Apex + www is one logical site — nearly every site does the
+    // apex↔www redirect. Operators don't need to list both.
+    expect(matchesPattern('www.kicktipp.de', 'kicktipp.de')).toBe(true);
+    expect(matchesPattern('kicktipp.de', 'kicktipp.de')).toBe(true);
+  });
+
+  it('does NOT implicitly match arbitrary subdomains for an apex pattern', () => {
+    expect(matchesPattern('api.kicktipp.de', 'kicktipp.de')).toBe(false);
+    expect(matchesPattern('mail.kicktipp.de', 'kicktipp.de')).toBe(false);
+  });
+
   it('wildcard requires at least one subdomain label', () => {
     expect(matchesPattern('mail.proton.me', '*.proton.me')).toBe(true);
     expect(matchesPattern('a.b.proton.me', '*.proton.me')).toBe(true);

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import type { Logger } from 'pino';
 import type { SessionsRepo, SessionSource } from '../db/repositories/sessions.js';
 import type { MessagesRepo } from '../db/repositories/messages.js';
@@ -277,6 +277,9 @@ async function runOne(
   const sessionDir = resolve(input.sessionWorkspaceRoot, sessionId);
   mkdirSync(sessionDir, { recursive: true });
 
+  // dbPath is at `<dataDir>/db/andybioticlaw.db` — walk up twice for dataDir.
+  const dataDirForEnv = dirname(dirname(input.dbPath));
+
   const memoryMcpEnv: Record<string, string> = {
     ANDYBIOTICLAW_DB_PATH: input.dbPath,
     ANDYBIOTICLAW_SESSION_ID: sessionId,
@@ -284,6 +287,17 @@ async function runOne(
     // Skills like `browser` that need to read live config from disk
     // (allowlist hot-reload) use this. Other skills can ignore it.
     ANDYBIOTICLAW_CONFIG_PATH: configPathForSession,
+    // Where the browser skill keeps its Chromium binaries. MUST be set
+    // here (in the parent-spawned env) rather than inside the MCP
+    // server's constructor — Playwright caches the browser-registry
+    // lookup at the moment it's imported, so a later
+    // `process.env.PLAYWRIGHT_BROWSERS_PATH = ...` is too late and
+    // Playwright falls back to `~/.cache/ms-playwright`, finds nothing,
+    // and reports "Executable doesn't exist — run npx playwright
+    // install." Set unconditionally because (a) skills that don't use
+    // playwright simply ignore it, (b) we want a single code path,
+    // not a per-skill conditional.
+    PLAYWRIGHT_BROWSERS_PATH: resolve(dataDirForEnv, 'cache/playwright'),
     // Node needs at least PATH + maybe HOME to load the dist code cleanly.
     PATH: process.env.PATH ?? '',
     HOME: process.env.HOME ?? '',

@@ -38,7 +38,11 @@ export function canonicalize(hostname) {
 
 /**
  * Match a hostname against one allowlist pattern. Patterns:
- *   - exact host: "proton.me"        → matches "proton.me" only
+ *   - exact host: "proton.me"        → matches "proton.me" AND "www.proton.me"
+ *                                       (apex + www is one logical site;
+ *                                        nearly every site does an apex↔www
+ *                                        redirect and forcing the operator
+ *                                        to list both is bad UX)
  *   - wildcard:   "*.proton.me"      → matches any sub.proton.me (≥1 label),
  *                                       NOT "proton.me" itself
  *   - bare wild:  "*"                → matches everything (intentional escape hatch)
@@ -46,6 +50,9 @@ export function canonicalize(hostname) {
  * Pattern is canonicalized the same way as the input hostname so an
  * operator who writes `münich.example` is matched against the
  * punycoded `xn--mnich-kva.example`.
+ *
+ * To allow OTHER subdomains (e.g. `api.proton.me`) the operator must
+ * use the wildcard form — the implicit www is the only exception.
  */
 export function matchesPattern(hostname, pattern) {
   if (pattern === '*') return true;
@@ -55,7 +62,8 @@ export function matchesPattern(hostname, pattern) {
     // *.proton.me → match `<anything>.proton.me`, not bare proton.me
     return host !== pat && host.endsWith('.' + pat);
   }
-  return host === pat;
+  // Exact apex match, or implicit `www.<pattern>`.
+  return host === pat || host === `www.${pat}`;
 }
 
 /**
