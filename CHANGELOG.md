@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.23.0](https://github.com/ettisberger/andybioticlaw/compare/v0.22.30...v0.23.0) (2026-06-15)
+
+
+### Bug Fixes
+
+* **dashboard:** drop cramped Tip card from sidebar ([1ac5917](https://github.com/ettisberger/andybioticlaw/commit/1ac591798f1ea51115b509802a11aa6a63c2ac3a))
+
+
+### Chores
+
+* bump minor on feat: while pre-1.0 ([25278a1](https://github.com/ettisberger/andybioticlaw/commit/25278a1fe5ca1be1023b9f8b1603793e92e26838))
+
 ## [0.22.30](https://github.com/ettisberger/andybioticlaw/compare/v0.22.29...v0.22.30) (2026-06-14)
 
 
