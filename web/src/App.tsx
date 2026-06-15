@@ -113,24 +113,12 @@ export function App() {
           ))}
         </nav>
 
-        <div className="mt-auto space-y-3 pt-6">
+        <div className="mt-auto pt-6">
           <div className="flex items-center justify-between">
             <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-ink-faint">
               theme
             </div>
             <ThemeToggle />
-          </div>
-          <div className="rounded-2xl border border-line/60 bg-surface/40 px-3 py-2.5 backdrop-blur-sm">
-            <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-ink-faint">
-              Tip
-            </div>
-            <div className="mt-1 text-xs leading-relaxed text-ink-dim">
-              CLI still covers what the dashboard can&apos;t — e.g.{' '}
-              <code className="rounded bg-surface px-1 py-0.5 text-[11px] text-ink">
-                andybioticlaw schedule add
-              </code>
-              .
-            </div>
           </div>
         </div>
       </aside>
