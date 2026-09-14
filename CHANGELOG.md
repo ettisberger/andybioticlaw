@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses semantic-ish versioning during pre-1.0 development.
 
+## [0.24.0](https://github.com/ettisberger/andybioticlaw/compare/v0.23.0...v0.24.0) (2026-09-14)
+
+
+### Features
+
+* **agent:** allow principal-supplied credentials in current turn ([25b3ba0](https://github.com/ettisberger/andybioticlaw/commit/25b3ba012424ad2cf6dc6ac7edbdea2231fae821))
+
 ## [0.23.0](https://github.com/ettisberger/andybioticlaw/compare/v0.22.30...v0.23.0) (2026-06-15)
 
 
